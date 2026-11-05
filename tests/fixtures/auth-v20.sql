@@ -6,3 +6,5 @@ CREATE TABLE worker_registrations(id TEXT PRIMARY KEY,worker_id TEXT,principal T
 CREATE TABLE oauth_clients(id TEXT PRIMARY KEY,name TEXT NOT NULL,redirects TEXT NOT NULL,secret_hash TEXT,method TEXT NOT NULL,created_at TEXT NOT NULL,revoked INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE oauth_tokens(hash TEXT PRIMARY KEY,refresh_hash TEXT UNIQUE,client_id TEXT NOT NULL REFERENCES oauth_clients(id),scopes TEXT NOT NULL,expires TEXT NOT NULL,refresh_expires TEXT NOT NULL,resource TEXT NOT NULL,revoked INTEGER NOT NULL DEFAULT 0,operator_name TEXT);
 CREATE TABLE tower_enrollments(id TEXT PRIMARY KEY,credential_id TEXT,state TEXT);
+CREATE TABLE task_comments(id TEXT PRIMARY KEY);
+CREATE TABLE task_blockers(id TEXT PRIMARY KEY);

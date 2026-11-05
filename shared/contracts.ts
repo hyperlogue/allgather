@@ -91,6 +91,7 @@ export interface Blocker {
   waiting_on: "owner" | "external" | "task";
   body: string;
   dependency_id?: string;
+  resolved_comment_id?: string | null;
   created_at: string;
   resolved_at: string | null;
 }
@@ -153,6 +154,7 @@ export interface TaskContext {
   dependents: Task[];
   children: Task[];
   blockers: Blocker[];
+  resolved_blockers: Blocker[];
   comments: Page<TaskComment> & { older_count: number };
   log_sequence: number;
   commits: { repository_id: string; commit_id: string; verified: number }[];
@@ -893,11 +895,11 @@ export const operations = {
       body: z.string().trim().min(1).max(32000),
     }),
     "tasks:write",
-    "Record an unresolved blocking condition.",
+    "Record a blocker. Optional frontend questions use a fenced questions JSON array of {question,options}; answers are ordinary comments.",
     true,
   ),
   tasks_resolve_blocker: spec(
-    z.object({ ...change, blocker_id: id, comment: text }),
+    z.object({ ...change, blocker_id: id, comment: z.string().trim().min(1).max(128000) }),
     "tasks:write",
     "Resolve a blocking condition and record the reason.",
     true,
@@ -924,9 +926,10 @@ export const operations = {
       ...key,
       body: z.string().trim().min(1).max(128000),
       reply_to: id.optional(),
+      resolve_blocker_id: id.optional(),
     }),
     "tasks:write",
-    "Append a comment without holding the claim.",
+    "Append a comment without holding the claim. resolve_blocker_id atomically answers and resolves one blocker; duplicate answers are rejected.",
     true,
   ),
   tasks_labels: spec(

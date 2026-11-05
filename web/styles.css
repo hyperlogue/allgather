@@ -1401,3 +1401,24 @@ textarea {
   display: grid;
   gap: 1rem;
 }
+
+.task-markdown {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.task-markdown pre {
+  overflow: auto;
+}
+.task-markdown img {
+  max-width: 100%;
+}
+.blocker-row form {
+  display: grid;
+  gap: 12px;
+}
+.blocker-row fieldset {
+  min-width: 0;
+}
+.blocker-row.answered {
+  opacity: 0.8;
+}

@@ -12,6 +12,7 @@ import type {
 } from "../shared/contracts.ts";
 import { call, mutation } from "./api.ts";
 import { ContextLink } from "./context.tsx";
+import { TaskBlocker, TaskMarkdown } from "./task-blocker.tsx";
 import { Dialog, ErrorText, useAction } from "./ui.tsx";
 
 function useDraft<T>(key: string, initial: T): [T, (value: T) => void, () => void] {
@@ -398,7 +399,7 @@ function TaskDetail({
         </div>
         <ErrorText>{error}</ErrorText>
         <div className="task-body">
-          {t.body || <span className="muted">No task body yet.</span>}
+          <TaskMarkdown body={t.body || "No task body yet."} />
         </div>
         {t.defer_until && (
           <p className="muted small">Defer until {new Date(t.defer_until).toLocaleString()}</p>
@@ -457,21 +458,30 @@ function TaskDetail({
           {c.blockers
             .filter((b) => b.waiting_on !== "task")
             .map((b) => (
-              <div className="blocker-row" key={b.id}>
-                <p>{b.body}</p>
-                <small>Waiting on {b.waiting_on}</small>
-                <button
-                  type="button"
-                  className="quiet"
-                  onClick={() => {
-                    openAction("tasks_resolve_blocker");
-                    setTarget(b.id);
-                  }}
-                >
-                  Resolve
-                </button>
-              </div>
+              <TaskBlocker
+                key={b.id}
+                blocker={b}
+                busy={busy}
+                resolve={() => {
+                  openAction("tasks_resolve_blocker");
+                  setTarget(b.id);
+                }}
+                answer={(body) =>
+                  void run(async () => {
+                    await call("task_comments_add", {
+                      task_id: id,
+                      body,
+                      resolve_blocker_id: b.id,
+                      ...mutation(),
+                    });
+                    changed();
+                  })
+                }
+              />
             ))}
+          {c.resolved_blockers.map((b) => (
+            <TaskBlocker key={b.id} blocker={b} busy={busy} resolve={() => {}} answer={() => {}} />
+          ))}
           {!c.blockers.length && <p className="muted">No unresolved waits.</p>}
           {t.status === "open" && (
             <button type="button" className="quiet" onClick={() => openAction("tasks_block")}>
@@ -543,7 +553,7 @@ function TaskDetail({
                   {new Date(entry.created_at).toLocaleString()}
                 </small>
                 {entry.reply_to && <small>Reply to {entry.reply_to}</small>}
-                <p>{entry.body}</p>
+                <TaskMarkdown body={entry.body} />
                 <button type="button" className="quiet" onClick={() => setReply(entry.id)}>
                   Reply
                 </button>

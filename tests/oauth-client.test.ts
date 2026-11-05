@@ -69,7 +69,7 @@ test("upgrading unknown client registrations revokes grants instead of inferring
       "INSERT INTO oauth_tokens(hash,client_id,scopes,expires,refresh_expires,resource) VALUES('old',?,'[\"admin\"]','2099-01-01','2099-01-01',?)",
     ).run(old.client_id, auth.apiResource);
     db.exec(
-      "DROP TABLE tower_invitations; DROP TABLE approval_requests; ALTER TABLE oauth_tokens DROP COLUMN grant_id; DROP TABLE oauth_grants; ALTER TABLE agent_sessions DROP COLUMN project_id; ALTER TABLE oauth_clients DROP COLUMN audience; PRAGMA user_version=21",
+      "ALTER TABLE task_blockers DROP COLUMN resolved_comment_id; DROP TABLE tower_invitations; DROP TABLE approval_requests; ALTER TABLE oauth_tokens DROP COLUMN grant_id; DROP TABLE oauth_grants; ALTER TABLE agent_sessions DROP COLUMN project_id; ALTER TABLE oauth_clients DROP COLUMN audience; PRAGMA user_version=21",
     );
     db.close();
     db = openDatabase(path);

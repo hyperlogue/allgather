@@ -67,6 +67,26 @@ try {
   await b.until(
     `document.querySelector('.comments')?.textContent.includes('Restart check passed.')`,
   );
+  await click("Add a wait");
+  await b.until(`!!document.querySelector('dialog')`);
+  await field(
+    "Context",
+    'Review this decision.\n\n```questions\n[{"question":"Ship this change?","options":["Ship","Request changes"]},{"question":"Follow-up?","options":["None","Later"]}]\n```',
+    "dialog",
+  );
+  await click("Save");
+  await b.until(`document.querySelectorAll('.blocker-row input[type="radio"]').length===6`);
+  await b.evaluate(`document.querySelectorAll('.blocker-row input[type="radio"]')[1].click()`);
+  await b.evaluate(`document.querySelectorAll('.blocker-row input[type="radio"]')[5].click()`);
+  await fill(".blocker-row textarea", "Use a smaller patch.");
+  await click("Confirm answers");
+  await b.until(
+    `!!document.querySelector('.blocker-row.answered') && document.querySelector('.comments')?.textContent.includes('Use a smaller patch.')`,
+  );
+  await b.command("Page.reload");
+  await b.until(`!!document.querySelector('.blocker-row.answered')`);
+  if (await b.evaluate<boolean>(`!!document.querySelector('.blocker-row input[type="radio"]')`))
+    throw new Error("Answered task form became actionable after reload");
   await click("Edit");
   await b.until(`!!document.querySelector('dialog')`);
   await field(

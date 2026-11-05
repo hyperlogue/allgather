@@ -205,6 +205,26 @@ export class Tasks {
     this.w.graph.ensure(c, "comment", this.raw(id).project_id);
     return this.w.one<TaskComment>("SELECT * FROM task_comments WHERE id=?", c)!;
   }
+  private resolve(task: string, blocker: string, body: string, reply?: string) {
+    const row = this.w.one<Blocker>(
+      "SELECT * FROM task_blockers WHERE id=? AND task_id=?",
+      blocker,
+      task,
+    );
+    if (!row) throw new AppError("not_found", "Blocker not found", 404);
+    if (row.resolved_at)
+      throw new AppError("blocker_resolved", "This blocker already has an answer", 409, {
+        comment_id: row.resolved_comment_id,
+      });
+    const comment = this.comment(task, body, reply);
+    this.w.run(
+      "UPDATE task_blockers SET resolved_at=?,resolved_comment_id=? WHERE id=?",
+      this.w.now(),
+      comment.id,
+      blocker,
+    );
+    return comment;
+  }
   comments(id: string, a: Input) {
     this.raw(id);
     const total = this.w.one<{ n: number }>(
@@ -270,6 +290,10 @@ export class Tasks {
         .all<{ id: string }>("SELECT id FROM tasks WHERE parent_id=? ORDER BY created_at,id", id)
         .map((r) => this.get(r.id)),
       blockers: this.blockers(id),
+      resolved_blockers: this.w.all<Blocker>(
+        "SELECT * FROM task_blockers WHERE task_id=? AND resolved_at IS NOT NULL ORDER BY resolved_at DESC,id",
+        id,
+      ),
       comments: { ...this.comments(id, { cursor: offset, limit: 50 }), older_count: offset },
       log_sequence: this.logSequence(id),
       related,
@@ -414,8 +438,18 @@ export class Tasks {
     if (name === "tasks_plan_create") return this.plan(a);
     const id = String(a.task_id),
       t = this.get(id);
-    if (name === "task_comments_add")
-      return this.comment(id, String(a.body), a.reply_to as string | undefined);
+    if (name === "task_comments_add") {
+      if (!a.resolve_blocker_id)
+        return this.comment(id, String(a.body), a.reply_to as string | undefined);
+      const comment = this.resolve(
+        id,
+        String(a.resolve_blocker_id),
+        String(a.body),
+        a.reply_to as string | undefined,
+      );
+      this.bump(id);
+      return comment;
+    }
     this.checkRevision(t, a);
     this.checkClaim(t, a, p);
     switch (name) {
@@ -509,7 +543,7 @@ export class Tasks {
       case "tasks_block":
         this.open(t);
         this.w.run(
-          "INSERT INTO task_blockers VALUES(?,?,?,?,?,NULL)",
+          "INSERT INTO task_blockers(id,task_id,waiting_on,body,created_at,resolved_at) VALUES(?,?,?,?,?,NULL)",
           uid("blocker"),
           id,
           String(a.waiting_on),
@@ -518,20 +552,7 @@ export class Tasks {
         );
         break;
       case "tasks_resolve_blocker":
-        if (
-          !this.w.one(
-            "SELECT 1 FROM task_blockers WHERE id=? AND task_id=? AND resolved_at IS NULL",
-            String(a.blocker_id),
-            id,
-          )
-        )
-          throw new AppError("not_found", "Unresolved blocker not found", 404);
-        this.w.run(
-          "UPDATE task_blockers SET resolved_at=? WHERE id=?",
-          this.w.now(),
-          String(a.blocker_id),
-        );
-        this.comment(id, String(a.comment));
+        this.resolve(id, String(a.blocker_id), String(a.comment));
         break;
       case "tasks_handoff": {
         this.open(t);

@@ -21,7 +21,7 @@ import { migrateTaskWorkflow } from "./task-migration.ts";
 import { migrateTerminalSessions } from "./terminal-migration.ts";
 import { migrateTower } from "./tower-migration.ts";
 
-export const SCHEMA_VERSION = 26;
+export const SCHEMA_VERSION = 27;
 export function writeDatabaseSnapshot(db: Database, path: string) {
   writeFileSync(path, "", { mode: 0o600, flag: "wx" });
   db.query("VACUUM INTO ?").run(path);
@@ -187,6 +187,13 @@ export function openDatabase(path: string) {
   if (version < 24) migrateResourceGrants(db);
   if (version < 25) migrateApprovals(db);
   if (version < 26) migrateTowerInvitations(db);
+  if (version < 27)
+    db.transaction(() =>
+      db.exec(`
+    ALTER TABLE task_blockers ADD COLUMN resolved_comment_id TEXT REFERENCES task_comments(id);
+    PRAGMA user_version=27;
+  `),
+    ).immediate();
   return db;
 }
 export function setting(db: Database, key: string) {

@@ -37,7 +37,7 @@ export async function fixtureApiToken(
       throw new Error(`Fixture authorization ${path}: ${response.status} ${await response.text()}`);
     return response.json();
   };
-  const client = await request("/oauth/register", {
+  const client = await request("/oauth/register-cli", {
     client_name: "Verification API client",
     redirect_uris: ["https://client.example/callback"],
     token_endpoint_auth_method: "none",

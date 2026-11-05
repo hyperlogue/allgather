@@ -61,9 +61,13 @@ function Login({ done }: { done: () => void }) {
   );
 }
 function Consent() {
-  const [info, setInfo] = useState<{ name: string; scopes: string[]; redirect_uri: string } | null>(
-      null,
-    ),
+  const [info, setInfo] = useState<{
+      name: string;
+      scopes: string[];
+      redirect_uri: string;
+      audience: "mcp" | "api";
+      resource: string;
+    } | null>(null),
     [loadError, setLoadError] = useState(""),
     [operatorName, setOperatorName] = useState("");
   const { busy, error, run } = useAction();
@@ -86,6 +90,19 @@ function Consent() {
           <p>
             <strong>{info.name}</strong> requests access to your allgather data.
           </p>
+          <p>
+            {info.audience === "mcp" ? "MCP connector access" : "Private API and CLI access"}:{" "}
+            {info.resource}
+          </p>
+          <p className="notice">
+            The application supplied this name. Allgather has not verified its identity. Approve
+            only a connection you started.
+          </p>
+          {info.scopes.includes("admin") && (
+            <p className="notice">
+              Administrative API access includes machine credentials, policy changes and backups.
+            </p>
+          )}
           <label>
             Agent name
             <input

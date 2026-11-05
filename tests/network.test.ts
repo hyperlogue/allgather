@@ -80,6 +80,7 @@ test("public listener only serves MCP/OAuth and completes consent through the pr
       "/api/tower/enrollments",
       "/tower",
       "/oauth/authorize",
+      "/oauth/register-cli",
       "/artifact-workspace/item",
       "/__r3_preview/item",
       "/health",

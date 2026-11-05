@@ -210,7 +210,7 @@ export class Client {
     try {
       const redirect = `http://127.0.0.1:${callback.port}/callback`,
         resource = this.url + "/api";
-      const registered = await fetch(this.url + "/oauth/register", {
+      const registered = await fetch(this.url + "/oauth/register-cli", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

@@ -8,3 +8,15 @@ export function migrateAuthentication(db: Database) {
 `);
   }).immediate();
 }
+
+export function migrateClientAudiences(db: Database) {
+  db.transaction(() => {
+    db.exec(`
+      ALTER TABLE oauth_clients ADD COLUMN audience TEXT NOT NULL DEFAULT 'mcp' CHECK(audience IN ('mcp','api'));
+      UPDATE oauth_clients SET revoked=1;
+      UPDATE oauth_tokens SET revoked=1;
+      DELETE FROM oauth_codes;
+      PRAGMA user_version=22;
+    `);
+  }).immediate();
+}

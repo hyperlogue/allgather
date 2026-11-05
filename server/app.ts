@@ -373,6 +373,10 @@ export function createApp(
     rate(`register:${options.peer?.(c.req.raw) ?? "local"}`, 10);
     return c.json(auth.register(await c.req.json()), 201);
   });
+  app.post("/oauth/register-cli", async (c) => {
+    rate(`register:${options.peer?.(c.req.raw) ?? "local"}`, 10);
+    return c.json(auth.register(await c.req.json(), "api"), 201);
+  });
   app.get("/api/oauth/request", (c) => {
     if (!auth.principal(c.req.raw)) throw new AppError("unauthorized", "Sign in first", 401);
     return c.json(auth.authorizeInfo(c.req.query()));

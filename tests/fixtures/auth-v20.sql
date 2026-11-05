@@ -3,3 +3,5 @@ CREATE TABLE login_tokens(id TEXT PRIMARY KEY,hash TEXT NOT NULL UNIQUE,label TE
 CREATE TABLE sessions(hash TEXT PRIMARY KEY,expires TEXT NOT NULL,token_id TEXT REFERENCES login_tokens(id));
 CREATE TABLE oauth_codes(hash TEXT PRIMARY KEY,data TEXT NOT NULL,expires TEXT NOT NULL);
 CREATE TABLE worker_registrations(id TEXT PRIMARY KEY,worker_id TEXT,principal TEXT,artifact_id TEXT,body TEXT,state TEXT);
+CREATE TABLE oauth_clients(id TEXT PRIMARY KEY,name TEXT NOT NULL,redirects TEXT NOT NULL,secret_hash TEXT,method TEXT NOT NULL,created_at TEXT NOT NULL,revoked INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE oauth_tokens(hash TEXT PRIMARY KEY,refresh_hash TEXT UNIQUE,client_id TEXT NOT NULL REFERENCES oauth_clients(id),scopes TEXT NOT NULL,expires TEXT NOT NULL,refresh_expires TEXT NOT NULL,resource TEXT NOT NULL,revoked INTEGER NOT NULL DEFAULT 0,operator_name TEXT);

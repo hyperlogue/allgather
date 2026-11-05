@@ -12,6 +12,7 @@ const mcpScopes = [...mcpOperationScopes, "offline_access"];
 const apiScopes = [...scopes, "offline_access"];
 export const OWNER: Principal = { id: "owner", kind: "owner", scopes: ["admin"] };
 interface ClientRow {
+  audience: "mcp" | "api";
   id: string;
   name: string;
   redirects: string;
@@ -64,6 +65,7 @@ export class Auth {
           _client: OAuth2Server.Client,
           scope?: string[],
         ) => {
+          if (!this.allowedResource(_client.id, _user.resource)) return false;
           const selected = scope?.length ? scope : ["tasks:read"];
           return selected.every((s) =>
             (_user.resource === this.apiResource ? apiScopes : mcpScopes).includes(s),
@@ -98,11 +100,7 @@ export class Auth {
             .get(hash(value)) as { data: string; expires: string } | null;
           if (!r) return false;
           const data = JSON.parse(r.data);
-          if (
-            !this.client(data.client.id) ||
-            ![this.resource, this.apiResource].includes(data.resource)
-          )
-            return false;
+          if (!this.allowedResource(data.client.id, data.resource)) return false;
           return { ...data, authorizationCode: value, expiresAt: new Date(r.expires) };
         },
         revokeAuthorizationCode: async (code: OAuth2Server.AuthorizationCode) =>
@@ -113,7 +111,7 @@ export class Auth {
           client: OAuth2Server.Client,
           user: OAuth2Server.User,
         ) => {
-          if (!this.client(client.id))
+          if (!this.allowedResource(client.id, user.resource))
             throw new AppError("revoked_client", "Client access was revoked", 401);
           if (!token.accessTokenExpiresAt || !token.refreshTokenExpiresAt || !token.refreshToken)
             throw new Error("OAuth library returned an incomplete token record");
@@ -156,12 +154,7 @@ export class Auth {
           const row = db
             .query("SELECT * FROM oauth_tokens WHERE refresh_hash=? AND revoked=0")
             .get(hash(value)) as TokenRow | null;
-          if (
-            !row ||
-            !this.client(row.client_id) ||
-            ![this.resource, this.apiResource].includes(row.resource)
-          )
-            return false;
+          if (!row || !this.allowedResource(row.client_id, row.resource)) return false;
           return {
             refreshToken: value,
             refreshTokenExpiresAt: new Date(row.refresh_expires),
@@ -183,13 +176,15 @@ export class Auth {
       .query("SELECT * FROM oauth_clients WHERE id=? AND revoked=0")
       .get(id) as ClientRow | null;
   }
+  private allowedResource(clientId: string, resource: unknown) {
+    const client = this.client(clientId);
+    return !!client && resource === (client.audience === "api" ? this.apiResource : this.resource);
+  }
   private tokenRow(value: string) {
     const r = this.db
       .query("SELECT * FROM oauth_tokens WHERE hash=? AND revoked=0")
       .get(hash(value)) as TokenRow | null;
-    return r && [this.resource, this.apiResource].includes(r.resource) && this.client(r.client_id)
-      ? r
-      : null;
+    return r && this.allowedResource(r.client_id, r.resource) ? r : null;
   }
   principal(request: Request, mcp = false): Principal | null {
     const authorization = request.headers.get("authorization");
@@ -307,7 +302,7 @@ export class Auth {
     const c = /(?:^|;\s*)allgather_session=([^;]+)/.exec(request.headers.get("cookie") ?? "")?.[1];
     if (c) this.db.query("DELETE FROM sessions WHERE hash=?").run(hash(c));
   }
-  register(body: Record<string, unknown>) {
+  register(body: Record<string, unknown>, audience: "mcp" | "api" = "mcp") {
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       throw new AppError("invalid_client_metadata", "Provide a client metadata object");
     }
@@ -351,7 +346,9 @@ export class Auth {
     const name =
       typeof body.client_name === "string" ? body.client_name.trim().slice(0, 120) : "MCP client";
     this.db
-      .query("INSERT INTO oauth_clients VALUES(?,?,?,?,?,?,0)")
+      .query(
+        "INSERT INTO oauth_clients(id,name,redirects,secret_hash,method,created_at,revoked,audience) VALUES(?,?,?,?,?,?,0,?)",
+      )
       .run(
         id,
         name,
@@ -359,6 +356,7 @@ export class Auth {
         clientSecret ? hash(clientSecret) : null,
         String(method),
         new Date().toISOString(),
+        audience,
       );
     return {
       client_id: id,
@@ -397,10 +395,10 @@ export class Auth {
       !/^[A-Za-z0-9_-]{43}$/.test(params.code_challenge ?? "")
     )
       throw new AppError("invalid_request", "Authorization code with S256 PKCE is required");
-    if (![this.resource, this.apiResource].includes(params.resource))
+    if (!this.allowedResource(c.id, params.resource))
       throw new AppError(
         "invalid_target",
-        "The resource must name this server’s MCP or API endpoint",
+        "This client is not registered for the requested resource",
       );
     const selected = (params.scope ?? "tasks:read").split(" ").filter(Boolean);
     if (
@@ -409,7 +407,14 @@ export class Auth {
       )
     )
       throw new AppError("invalid_scope", "Requested scopes are not available");
-    return { client_id: c.id, name: c.name, scopes: selected, redirect_uri: params.redirect_uri };
+    return {
+      client_id: c.id,
+      name: c.name,
+      scopes: selected,
+      redirect_uri: params.redirect_uri,
+      audience: c.audience,
+      resource: params.resource,
+    };
   }
   async authorize(request: Request, params: Record<string, string>) {
     const info = this.authorizeInfo(params);
@@ -482,6 +487,11 @@ export class Auth {
       throw new AppError("invalid_client", "HTTP Basic client authentication is required", 401);
     if (client.method === "client_secret_post" && basic)
       throw new AppError("invalid_client", "Use client_secret_post authentication", 401);
+    if (!this.allowedResource(client.id, body.resource))
+      throw new AppError(
+        "invalid_target",
+        "This client is not registered for the requested resource",
+      );
     const response = new OAuth2Server.Response();
     await this.oauth.token(
       new OAuth2Server.Request({
@@ -501,7 +511,7 @@ export class Auth {
   clients() {
     return this.db
       .query(
-        "SELECT id,name,redirects,method,created_at,revoked FROM oauth_clients ORDER BY created_at DESC",
+        "SELECT id,name,redirects,method,created_at,revoked,audience FROM oauth_clients ORDER BY created_at DESC",
       )
       .all() as Omit<ClientRow, "secret_hash">[];
   }
@@ -524,7 +534,7 @@ export class Auth {
       issuer,
       authorization_endpoint: `${this.baseUrl}/oauth/authorize`,
       token_endpoint: `${issuer}/oauth/token`,
-      registration_endpoint: `${issuer}/oauth/register`,
+      registration_endpoint: `${issuer}/oauth/${surface === "public" ? "register" : "register-cli"}`,
       revocation_endpoint: `${issuer}/oauth/revoke`,
       response_types_supported: ["code"],
       grant_types_supported: ["authorization_code", "refresh_token"],

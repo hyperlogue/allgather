@@ -52,6 +52,7 @@ function fixture() {
       { authorization: `Bearer ${e.polling_token}` },
     );
   return {
+    app,
     db,
     w,
     auth,
@@ -229,6 +230,43 @@ test("credential reset retires unused pairing codes", async () => {
     revokeCredentials(f.db);
     expect((await f.req("/api/tower/enrollments", f.body(i.pairing_code))).status).toBe(401);
     expect((await f.req("/api/tower/invitations", {}, f.owner)).status).toBe(403);
+  } finally {
+    f.db.close();
+  }
+});
+
+test("HTTP machine keys can only be issued through pairing; listing and revocation require owner browser", async () => {
+  const f = fixture();
+  try {
+    const { fixtureApiToken } = await import("../scripts/fixture-auth.ts");
+    const token = await fixtureApiToken(f.owner.origin, f.owner.cookie, ["admin"], (request) =>
+      f.app.fetch(request),
+    );
+    const api = { authorization: `Bearer ${token}` };
+    const enrollment = await f.start(f.body((await f.invite()).pairing_code));
+    const key = await (await f.poll(enrollment)).json();
+    await f.confirm(enrollment, key);
+    for (const headers of [f.owner, api, {}])
+      expect(
+        (
+          await f.req(
+            "/api/tower/credentials",
+            { machine_id: key.machine_id, label: "forged", scopes: ["acp:control"] },
+            headers,
+          )
+        ).status,
+      ).toBe(404);
+    expect(f.w.all("SELECT * FROM tower_credentials")).toHaveLength(1);
+    expect((await f.req("/api/tower/credentials", undefined, api)).status).toBe(403);
+    expect((await f.req("/api/tower/credentials", undefined, f.owner)).status).toBe(200);
+    expect(
+      (await f.req(`/api/tower/credentials/${key.credential_id}/revoke`, {}, api)).status,
+    ).toBe(403);
+    expect(f.w.executions.authenticate(key.access_key)).not.toBeNull();
+    expect(
+      (await f.req(`/api/tower/credentials/${key.credential_id}/revoke`, {}, f.owner)).status,
+    ).toBe(200);
+    expect(f.w.executions.authenticate(key.access_key)).toBeNull();
   } finally {
     f.db.close();
   }

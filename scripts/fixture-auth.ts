@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { controlRequest } from "../server/control.ts";
 import type { PermissionModes } from "../shared/permissions.ts";
 import type { ResourceGrants } from "../shared/resource-grants.ts";
+import type { MachineScope } from "../shared/tower-acp.ts";
 
 export const fixtureResources = { project_ids: "*", machine_ids: "*", unassigned: true } as const;
 
@@ -79,4 +80,58 @@ export async function fixtureApiToken(
   );
   if (!response.ok) throw new Error(`Fixture token exchange: ${response.status}`);
   return ((await response.json()) as { access_token: string }).access_token;
+}
+
+export async function fixtureTowerEnrollment(
+  origin: string,
+  cookie: string,
+  scopes: MachineScope[],
+  name: string,
+  send: (request: Request) => Response | Promise<Response> = fetch,
+) {
+  const post = async (path: string, body: unknown, headers: Record<string, string>) => {
+    const response = await send(
+      new Request(origin + path, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify(body),
+      }),
+    );
+    if (!response.ok) throw new Error(`Fixture pairing failed: ${path} ${response.status}`);
+    return response.json();
+  };
+  const invite = await post(
+    "/api/tower/invitations",
+    { node_label: name, scopes },
+    { cookie, origin },
+  );
+  const hostId = randomBytes(16).toString("hex");
+  const enrollment = await post(
+    "/api/tower/enrollments",
+    {
+      pairing_code: invite.pairing_code,
+      request_id: randomBytes(32).toString("base64url"),
+      host_id: hostId,
+      tower_version: "fixture",
+      requested_scopes: scopes,
+    },
+    {},
+  );
+  const headers = { authorization: `Bearer ${enrollment.polling_token}` },
+    path = `/api/tower/enrollments/${enrollment.enrollment_id}`;
+  const key = await post(`${path}/poll`, {}, headers);
+  await post(
+    `${path}/confirm`,
+    {
+      credential_id: key.credential_id,
+      access_key_hash: createHash("sha256").update(key.access_key).digest("hex"),
+    },
+    headers,
+  );
+  return {
+    host_id: hostId,
+    id: key.credential_id as string,
+    machine_id: key.machine_id as string,
+    access_key: key.access_key as string,
+  };
 }

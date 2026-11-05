@@ -88,7 +88,7 @@ const relay = Bun.serve<RelayData>({
       target = destination + incoming.pathname + incoming.search;
     if (incoming.pathname === "/tower") {
       const upstream = new NativeSocket(target.replace(/^http/, "ws"), {
-        headers: { authorization: request.headers.get("authorization") ?? "" },
+        headers: { authorization: request.headers.get("authorization") ?? "", host: incoming.host },
       });
       const data: RelayData = { upstream, connection: ++connection, pending: [] };
       upstream.onopen = () => {
@@ -106,7 +106,6 @@ const relay = Bun.serve<RelayData>({
       return new Response("WebSocket required", { status: 400 });
     }
     const headers = new Headers(request.headers);
-    headers.set("host", new URL(destination).host);
     try {
       return await fetch(target, {
         method: request.method,
@@ -463,12 +462,23 @@ try {
       frames.slice(reconnectMark).some((f) => f.method === "checkout.snapshot"),
     "Reconnect did not use full recovery",
   );
-  const credential = await request<{ id: string; access_key: string }>("/api/tower/credentials", {
+  const rotation = await request<{ pairing_code: string }>("/api/tower/invitations", {
     machine_id: machineId,
-    label: "Rotation fixture",
     scopes: ["read"],
   });
-  await cli(["login", origin, "--key-stdin"], { input: credential.access_key });
+  const rotated = await processOutput([
+    binary,
+    "--json",
+    "login",
+    origin,
+    rotation.pairing_code,
+    "--read-only",
+  ]);
+  assert(rotated.code === 0 && /"state"\s*:\s*"complete"/.test(rotated.out), "Re-pairing failed");
+  assert(
+    !/(polling_token|access_key)/.test(rotated.out),
+    "Re-pairing printed a private credential",
+  );
   await connected();
   assert(
     (await operation<Machine[]>("machines_list")).length === 1 &&

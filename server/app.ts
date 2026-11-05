@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { AppError, can, operationName, VERSION } from "../shared/contracts.ts";
-import { machineScopes } from "../shared/tower-acp.ts";
 import { approvalWait } from "./approvals.ts";
 import { artifactApi } from "./artifact-api.ts";
 import type { Auth } from "./auth.ts";
@@ -279,41 +278,15 @@ export function createApp(
     });
   });
   app.get("/api/tower/credentials", (c) => {
-    const p = auth.principal(c.req.raw);
-    if (!p || !can(p, "admin"))
-      throw new AppError("forbidden", "Administration access required", 403);
-    workspace.access.run(p, () => workspace.access.require(workspace.access.global()));
+    browserOwner(c.req.raw);
     return c.json(
       workspace.all(
         "SELECT id,machine_id,label,created_at,revoked_at FROM tower_credentials ORDER BY created_at DESC",
       ),
     );
   });
-  app.post("/api/tower/credentials", async (c) => {
-    const p = auth.principal(c.req.raw);
-    if (!p || !can(p, "admin"))
-      throw new AppError("forbidden", "Administration access required", 403);
-    workspace.access.run(p, () => workspace.access.require(workspace.access.global()));
-    const body = await c.req.json();
-    if (
-      typeof body.machine_id !== "string" ||
-      typeof body.label !== "string" ||
-      body.label.length > 160
-    )
-      throw new AppError("invalid_input", "Provide machine_id and a label");
-    const scopes = machineScopes.safeParse(body.scopes ?? ["read", "send"]);
-    if (!scopes.success)
-      throw new AppError(
-        "invalid_scope",
-        "Choose read, send, or explicit acp:control/terminal:control",
-      );
-    return c.json(workspace.executions.issueCredential(body.machine_id, body.label, scopes.data));
-  });
   app.post("/api/tower/credentials/:id/revoke", (c) => {
-    const p = auth.principal(c.req.raw);
-    if (!p || !can(p, "admin"))
-      throw new AppError("forbidden", "Administration access required", 403);
-    workspace.access.run(p, () => workspace.access.require(workspace.access.global()));
+    browserOwner(c.req.raw);
     workspace.executions.revokeCredential(c.req.param("id"));
     workspace.onChange();
     return c.json({ revoked: true });

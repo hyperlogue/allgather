@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server/index.ts";
 import { browserSession } from "./browser.ts";
-import { fixtureLoginToken } from "./fixture-auth.ts";
+import { fixtureLogin, fixtureLoginToken, fixtureTowerEnrollment } from "./fixture-auth.ts";
 
 const executable = process.env.ALLGATHER_TEST_BROWSER;
 if (!executable) throw new Error("Set ALLGATHER_TEST_BROWSER to a Chromium executable");
@@ -269,11 +269,12 @@ try {
     pathSettings.last_attempt_at
   )
     throw new Error("Project path edits did not stay separate from Git collection settings");
-  const createNode = await b.evaluate<{ machine_id: string; access_key: string }>(`(async()=>{
-    const send=async(path,body)=>{const response=await fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});if(!response.ok)throw new Error(await response.text());return response.json();};
-    const {result:machine}=await send('/api/operations/machines_create',{name:'Checkout fixture',operation_key:'browser-checkout-machine'});
-    return send('/api/tower/credentials',{machine_id:machine.id,label:'Synthetic checkout source',scopes:['read']});
-  })()`);
+  const createNode = await fixtureTowerEnrollment(
+    running.settings.ownerUrl,
+    await fixtureLogin(directory, running.settings.ownerUrl),
+    ["read"],
+    "Synthetic checkout source",
+  );
   const NativeSocket = WebSocket as unknown as {
     new (url: string, options: { headers: Record<string, string> }): WebSocket;
   };
@@ -312,7 +313,7 @@ try {
           params: {
             protocol_version: { major: 1, minor: 4 },
             tower_version: "browser-fixture",
-            host_id: "browser-checkout-host",
+            host_id: createNode.host_id,
             capabilities: [
               "policy-sync.v1",
               "session-status.v1",

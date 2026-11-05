@@ -5,13 +5,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { fixtureApiToken, fixtureResources } from "../scripts/fixture-auth.ts";
+import {
+  fixtureApiToken,
+  fixtureResources,
+  fixtureTowerEnrollment,
+} from "../scripts/fixture-auth.ts";
 import { createApp, Updates } from "../server/app.ts";
 import { Auth, OWNER, secret } from "../server/auth.ts";
 import { openDatabase } from "../server/storage.ts";
 import { Workspace } from "../server/workspace.ts";
 import {
-  type Machine,
   type Operation,
   operations,
   type Principal,
@@ -318,21 +321,14 @@ test("MCP terminal admission uses machine consent and rejects unsupported contro
       s,
       "sessions:read sessions:launch sessions:prompt sessions:stop sessions:resume transcripts:read",
     );
-    const headers = { cookie: grant.cookie, origin: base };
-    const created = await s.req(
-      "/api/operations/machines_create",
-      { name: "Synthetic terminal connection", operation_key: randomUUID() },
-      headers,
+    const credential = await fixtureTowerEnrollment(
+      base,
+      grant.cookie,
+      ["read", "terminal:control"],
+      "Terminal consent",
+      (r) => s.app.fetch(r),
     );
-    expect(created.status).toBe(200);
-    const machine = ((await created.json()) as { result: Machine }).result;
-    const issued = await s.req(
-      "/api/tower/credentials",
-      { machine_id: machine.id, label: "Terminal consent", scopes: ["read", "terminal:control"] },
-      headers,
-    );
-    expect(issued.status).toBe(200);
-    const credential = (await issued.json()) as { id: string };
+    const machine = s.w.executions.machine(credential.machine_id);
     s.db
       .query("UPDATE machines SET connected=1,capabilities=?,terminal_controls=? WHERE id=?")
       .run(

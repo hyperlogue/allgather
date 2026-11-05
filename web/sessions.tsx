@@ -808,10 +808,7 @@ function MachineManager({
   close: () => void;
   changed: () => void;
 }) {
-  const [credential, setCredential] = useState<{ access_key: string; machine_id: string } | null>(
-      null,
-    ),
-    [keys, setKeys] = useState<
+  const [keys, setKeys] = useState<
       { id: string; machine_id: string; label: string; revoked_at: string | null }[]
     >([]),
     { busy, error, run } = useAction();
@@ -822,23 +819,6 @@ function MachineManager({
     <Dialog title="Development machines" close={close}>
       <TowerPairing machines={machines} changed={changed} />
       <ErrorText>{error}</ErrorText>
-      {credential && (
-        <div className="pairing">
-          <strong>Connect Tower</strong>
-          <p>
-            Server: <code>{location.origin.replace(/^http/, "ws")}/tower</code>
-          </p>
-          <p>Save this access key now. It is shown once.</p>
-          <textarea readOnly aria-label="Tower access key" value={credential.access_key} />
-          <button
-            type="button"
-            onClick={() => void navigator.clipboard.writeText(credential.access_key)}
-          >
-            Copy access key
-          </button>
-          <pre>tower-cli login --key-stdin</pre>
-        </div>
-      )}
       <ul className="plain-list">
         {machines.map((m) => (
           <li key={m.id}>
@@ -863,23 +843,6 @@ function MachineManager({
                     : `Policy ${m.policy_revision} pending`}
               </small>
             </span>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() =>
-                void run(async () => {
-                  setCredential(
-                    await request("/api/tower/credentials", {
-                      machine_id: m.id,
-                      label: "Tower connection",
-                    }),
-                  );
-                  setKeys(await request("/api/tower/credentials"));
-                })
-              }
-            >
-              New key
-            </button>
           </li>
         ))}
       </ul>

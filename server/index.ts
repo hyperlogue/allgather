@@ -17,7 +17,7 @@ import { backupWorkspace } from "./backup.ts";
 import { type Config, config } from "./config.ts";
 import { startLocalControl } from "./control.ts";
 import { NativeGit } from "./native-git.ts";
-import { NetworkBoundary } from "./network.ts";
+import { listenerRejection, NetworkBoundary } from "./network.ts";
 import { openDatabase } from "./storage.ts";
 import { Tower, type TowerSocketData } from "./tower.ts";
 import { UpstreamSync } from "./upstream-sync.ts";
@@ -86,6 +86,8 @@ export async function startServer(overrides: Partial<Config> = {}) {
       idleTimeout: 60,
       maxRequestBodySize: 200 * 1024 * 1024,
       fetch(request, server) {
+        const rejected = listenerRejection(request, settings.ownerUrl, "private");
+        if (rejected) return rejected;
         const peer = network.client(server.requestIP(request)?.address ?? "", request.headers);
         if (!network.allowsPrivate(peer))
           return new Response("Private network required", { status: 403 });
@@ -130,6 +132,8 @@ export async function startServer(overrides: Partial<Config> = {}) {
           idleTimeout: 60,
           maxRequestBodySize: 32 * 1024 * 1024,
           fetch(request, server) {
+            const rejected = listenerRejection(request, settings.mcpUrl!, "public");
+            if (rejected) return rejected;
             const peer = network.client(server.requestIP(request)?.address ?? "", request.headers);
             if (!peer) return new Response("Invalid proxy chain", { status: 403 });
             peers.set(request, peer);
@@ -144,18 +148,16 @@ export async function startServer(overrides: Partial<Config> = {}) {
         }
       }
       const auth = new Auth(database, settings.ownerUrl, settings.mcpUrl ?? settings.ownerUrl);
-      tower = new Tower(workspace, settings.ownerUrl, `${settings.hostname}:${settings.port}`);
+      tower = new Tower(workspace, settings.ownerUrl);
       tower.start();
       app = createApp(workspace, auth, updates, {
         assets,
-        hostname: `${settings.hostname}:${settings.port}`,
         peer: (r) => peers.get(r) ?? "unknown",
         backup: () => backupWorkspace(workspace),
       });
       if (mcpServer)
         publicApp = createApp(workspace, auth, updates, {
           surface: "public",
-          hostname: `${settings.mcpHostname}:${settings.mcpPort}`,
           peer: (r) => peers.get(r) ?? "unknown",
         });
     } catch (error) {

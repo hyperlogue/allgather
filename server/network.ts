@@ -73,3 +73,28 @@ const publicRoutes = new Map<string, readonly string[]>([
 export function isPublicRoute(request: Request) {
   return publicRoutes.get(new URL(request.url).pathname)?.includes(request.method) === true;
 }
+
+export function listenerRejection(request: Request, origin: string, surface: "private" | "public") {
+  const host = request.headers.get("host") ?? new URL(request.url).host;
+  if (host.toLowerCase() !== new URL(origin).host.toLowerCase())
+    return Response.json(
+      { error: { code: "forbidden_host", message: "Host is not allowed" } },
+      { status: 403 },
+    );
+  if (
+    surface === "private" &&
+    ["tailscale-funnel-request", "cf-connecting-ip", "cf-ray"].some((name) =>
+      request.headers.has(name),
+    )
+  )
+    return Response.json(
+      {
+        error: {
+          code: "public_proxy_forbidden",
+          message: "Public proxies cannot access the owner listener",
+        },
+      },
+      { status: 403 },
+    );
+  return null;
+}

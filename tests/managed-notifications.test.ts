@@ -24,7 +24,7 @@ async function fixture() {
   );
   const owner = fixtureOwner(w);
   const agent = await fixtureAgent(w);
-  tower = new Tower(w, "http://127.0.0.1:4390", "127.0.0.1:4390");
+  tower = new Tower(w, "http://127.0.0.1:4390");
   const call = <T>(name: Operation, a: Record<string, unknown> = {}) =>
     w.execute(name, { operation_key: randomUUID(), ...a }, owner) as T;
   const artifactCall = <T>(name: Operation, a: Record<string, unknown>, p = owner) =>

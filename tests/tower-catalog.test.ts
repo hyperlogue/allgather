@@ -35,7 +35,7 @@ function fixture() {
   const db = openDatabase(":memory:");
   let tower: Tower;
   const w = new Workspace(db, undefined, () => tower?.wake());
-  tower = new Tower(w, "http://127.0.0.1:4390", "127.0.0.1:4390");
+  tower = new Tower(w, "http://127.0.0.1:4390");
   cleanups.push(() => {
     tower.stop();
     db.close();

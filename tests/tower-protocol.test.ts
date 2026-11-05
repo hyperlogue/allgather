@@ -20,7 +20,7 @@ function fixture() {
   let tower: Tower;
   const w = new Workspace(db, undefined, () => tower?.wake(), { managedSessions: true });
   const owner = fixtureOwner(w);
-  tower = new Tower(w, "http://127.0.0.1:4390", "127.0.0.1:4390");
+  tower = new Tower(w, "http://127.0.0.1:4390");
   const call = <T>(name: Operation, input: Record<string, unknown>) =>
       w.execute(name, { operation_key: randomUUID(), ...input }, owner) as T,
     m = call<Machine>("machines_create", { name: "Fixture" }),

@@ -71,6 +71,31 @@ test("public listener only serves MCP/OAuth and completes consent through the pr
       403,
     );
     expect((await request("private", "/api/session")).status).toBe(200);
+    for (const path of ["/api/session", "/tower", "/__r3_preview/item", "/"]) {
+      for (const name of ["Tailscale-Funnel-Request", "Cf-Connecting-Ip", "Cf-Ray"])
+        expect((await request("private", path, { headers: { [name]: "" } })).status).toBe(403);
+      for (const host of [
+        "mcp.example",
+        `127.0.0.1:${running.settings.port}`,
+        "owner.example.evil.invalid",
+      ])
+        expect((await request("private", path, { headers: { host } })).status).toBe(403);
+    }
+    expect(
+      (
+        await request("public", "/.well-known/oauth-authorization-server", {
+          headers: { host: `127.0.0.1:${running.settings.mcpPort}` },
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request("public", "/.well-known/oauth-authorization-server", {
+          headers: { "cf-ray": "fixture" },
+        })
+      ).status,
+    ).toBe(200);
+
     for (const path of [
       "/",
       "/api/session",

@@ -25,6 +25,7 @@ import {
   stateDeltaSchemaFor,
   statusCheckoutIdSchema,
 } from "../shared/tower-sync.ts";
+import { listenerRejection } from "./network.ts";
 import { type CatalogConnection, catalogConnection, TowerCatalog } from "./tower-catalog.ts";
 import { canonical, digest, uid, type Workspace } from "./workspace.ts";
 
@@ -90,18 +91,12 @@ export class Tower {
   constructor(
     private w: Workspace,
     readonly baseUrl: string,
-    private localHost: string,
   ) {
     this.catalog = new TowerCatalog(w, (socket, message) => this.send(socket, message));
   }
   authenticate(request: Request): TowerSocketData | null {
-    const url = new URL(request.url),
-      host = request.headers.get("host") ?? url.host,
-      origin = request.headers.get("origin");
-    if (
-      !new Set([new URL(this.baseUrl).host, this.localHost]).has(host) ||
-      (origin && origin !== this.baseUrl)
-    )
+    const origin = request.headers.get("origin");
+    if (listenerRejection(request, this.baseUrl, "private") || (origin && origin !== this.baseUrl))
       return null;
     const token = request.headers.get("authorization");
     if (!token?.startsWith("Bearer ")) return null;

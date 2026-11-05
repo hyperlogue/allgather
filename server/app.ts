@@ -8,7 +8,7 @@ import { artifactApi } from "./artifact-api.ts";
 import type { Auth } from "./auth.ts";
 import { hashBytes } from "./blobs.ts";
 import { mcpResponse } from "./mcp.ts";
-import { isPublicRoute } from "./network.ts";
+import { isPublicRoute, listenerRejection } from "./network.ts";
 import { RateLimits } from "./rate-limits.ts";
 import { TowerEnrollment } from "./tower-enrollment.ts";
 import type { Workspace } from "./workspace.ts";
@@ -32,7 +32,6 @@ export function createApp(
   options: {
     assets?: (r: Request) => Response | Promise<Response>;
     backup?: () => ReadableStream<Uint8Array>;
-    hostname?: string;
     peer?: (r: Request) => string;
     surface?: "private" | "public";
   } = {},
@@ -42,12 +41,11 @@ export function createApp(
   const enrollment = new TowerEnrollment(workspace, auth.baseUrl);
   const surface = options.surface ?? "private";
   const originUrl = surface === "public" ? auth.mcpBaseUrl : auth.baseUrl;
-  const allowedHosts = new Set([new URL(originUrl).host, options.hostname].filter(Boolean));
   const rates = new RateLimits();
   app.use("*", async (c, next) => {
     if (surface === "public" && !isPublicRoute(c.req.raw)) return c.text("Not found", 404);
-    const host = c.req.header("host") ?? new URL(c.req.url).host;
-    if (!allowedHosts.has(host)) throw new AppError("forbidden_host", "Host is not allowed", 403);
+    const rejected = listenerRejection(c.req.raw, originUrl, surface);
+    if (rejected) return rejected;
     const origin = c.req.header("origin");
     if (origin && origin !== originUrl)
       throw new AppError("forbidden_origin", "Origin is not allowed", 403);

@@ -1,0 +1,129 @@
+import type { ReactNode } from "react";
+import { useTranslation } from "../i18n.ts";
+import { setDiffLayout, useDiffLayout } from "../settings.ts";
+import { cn, StrokeIcon } from "../ui.tsx";
+
+// Lucide-style stroked glyphs for the pane toolbar (24 viewBox, like
+// FoldChevrons in ui.tsx). `d` takes several paths for the two-chevron pairs.
+function ToolbarIcon({ d }: { d: string[] }) {
+  return (
+    <StrokeIcon className="size-4">
+      {d.map((p) => (
+        <path key={p} d={p} />
+      ))}
+    </StrokeIcon>
+  );
+}
+
+// The toolbar's icon-button treatment — exported for widgets composed into its
+// slots (ArtifactView's JumpToFile trigger) so they match the native buttons.
+export const TOOLBAR_BTN =
+  "flex rounded p-1 text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-800 pointer-coarse:p-1.5 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100";
+
+// The unified/side-by-side switch. Reads and writes the global display
+// preference itself (like the settings popup's controls) rather than taking it
+// as a prop — layout is a reading habit, not review state, so there's nothing
+// for an owner to thread through. Mounted via PaneToolbar's `layoutToggle` slot
+// only where a diff is on screen.
+export function DiffLayoutToggle() {
+  const { t } = useTranslation();
+  const layout = useDiffLayout();
+  const split = layout === "split";
+  return (
+    <button
+      type="button"
+      title={split ? t("paneToolbar.switchToUnifiedDiff") : t("paneToolbar.switchToSideBySideDiff")}
+      aria-pressed={split}
+      className={cn(TOOLBAR_BTN, split && "text-neutral-700 dark:text-neutral-200")}
+      onClick={() => setDiffLayout(split ? "unified" : "split")}
+    >
+      {/* One glyph, two states: a framed pane that grows a divider down the
+          middle when split is active — the control shows what you'd be reading,
+          not an abstract mode name. */}
+      <ToolbarIcon
+        d={split ? ["M3 4h18v16H3z", "M12 4v16"] : ["M3 4h18v16H3z", "M6.5 9.5h11", "M6.5 14.5h11"]}
+      />
+    </button>
+  );
+}
+
+// File navigation and folding controls. Version selection and metadata live in
+// the artifact navbar; the diff layout toggle is composed only for diff content.
+export function PaneToolbar({
+  hasFiles,
+  filePicker,
+  onJump,
+  onFoldAll,
+  layoutToggle,
+}: {
+  hasFiles: boolean;
+  // The jump-to-file picker, composed by the caller so
+  // its data wiring stays with the owner of that data instead of threading four
+  // pass-through props here.
+  filePicker?: ReactNode;
+  onJump: (dir: 1 | -1) => void;
+  onFoldAll: (mode: "fold" | "unfold") => void;
+  // The unified/side-by-side switch, composed by the caller (a slot, like
+  // `filePicker`) so it's mounted only where a diff is actually on screen — a
+  // plain files view has no layout to switch. Hidden below md, where the phone
+  // tier forces unified regardless.
+  layoutToggle?: ReactNode;
+}) {
+  const { t } = useTranslation();
+  // h-8 matches the file header height so the file pane's two stacked bars (this
+  // toolbar + each file header) read as one consistent header stack. Intra-panel
+  // only — we deliberately DON'T match the discussion panel's bars across the split
+  // (equal heights there read as one connected bar); those keep their own heights.
+  return (
+    <div className="flex h-8 shrink-0 items-center border-b border-neutral-300 bg-white px-1.5 max-md:h-auto max-md:flex-wrap dark:border-neutral-700 dark:bg-neutral-950">
+      {hasFiles && (
+        <div className="flex items-center max-md:h-8">
+          <button
+            type="button"
+            title={t("paneToolbar.previousFile")}
+            className={TOOLBAR_BTN}
+            onClick={() => onJump(-1)}
+          >
+            <ToolbarIcon d={["m18 15-6-6-6 6"]} />
+          </button>
+          <button
+            type="button"
+            title={t("paneToolbar.nextFile")}
+            className={TOOLBAR_BTN}
+            onClick={() => onJump(1)}
+          >
+            <ToolbarIcon d={["m6 9 6 6 6-6"]} />
+          </button>
+          <div className="mx-1 h-4 w-px bg-neutral-200 dark:bg-neutral-800" />
+          <button
+            type="button"
+            title={t("paneToolbar.foldAllFiles")}
+            className={TOOLBAR_BTN}
+            onClick={() => onFoldAll("fold")}
+          >
+            <ToolbarIcon d={["m7 20 5-5 5 5", "m7 4 5 5 5-5"]} />
+          </button>
+          <button
+            type="button"
+            title={t("paneToolbar.unfoldAllFiles")}
+            className={TOOLBAR_BTN}
+            onClick={() => onFoldAll("unfold")}
+          >
+            <ToolbarIcon d={["m7 15 5 5 5-5", "m7 9 5-5 5 5"]} />
+          </button>
+          <div className="mx-1 h-4 w-px bg-neutral-200 dark:bg-neutral-800" />
+          {filePicker}
+          {/* Desktop-only: the phone tier forces unified, so the control would
+              be a lie below md. Hidden with an inert utility rather than a JS
+              breakpoint read — desktop components don't import from mobile/. */}
+          {layoutToggle && (
+            <div className="flex items-center max-md:hidden">
+              <div className="mx-1 h-4 w-px bg-neutral-200 dark:bg-neutral-800" />
+              {layoutToggle}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

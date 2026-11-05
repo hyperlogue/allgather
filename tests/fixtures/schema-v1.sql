@@ -1,0 +1,21 @@
+-- Frozen Allgather schema version 1.
+CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+      CREATE TABLE projects(id TEXT PRIMARY KEY,name TEXT NOT NULL UNIQUE,description TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL);
+      CREATE TABLE tasks(id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id),title TEXT NOT NULL,description TEXT NOT NULL,kind TEXT NOT NULL,status TEXT NOT NULL,priority INTEGER NOT NULL,epic_id TEXT REFERENCES tasks(id),parent_id TEXT REFERENCES tasks(id),revision INTEGER NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,started_at TEXT,finished_at TEXT,claim_actor TEXT,claim_session TEXT,claim_expires TEXT,blocked_since TEXT,blocked_ms INTEGER NOT NULL DEFAULT 0);
+      CREATE INDEX tasks_project ON tasks(project_id,status,updated_at);
+      CREATE TABLE dependencies(task_id TEXT NOT NULL REFERENCES tasks(id),depends_on TEXT NOT NULL REFERENCES tasks(id),PRIMARY KEY(task_id,depends_on),CHECK(task_id!=depends_on));
+      CREATE TABLE task_relations(task_id TEXT NOT NULL REFERENCES tasks(id),source_id TEXT NOT NULL REFERENCES tasks(id),kind TEXT NOT NULL,PRIMARY KEY(task_id,source_id,kind));
+      CREATE TABLE events(id INTEGER PRIMARY KEY AUTOINCREMENT,project_id TEXT,task_id TEXT,action TEXT NOT NULL,actor TEXT NOT NULL,at TEXT NOT NULL,payload TEXT NOT NULL);
+      CREATE INDEX events_task ON events(task_id,id);
+      CREATE TABLE operations(actor TEXT NOT NULL,key TEXT NOT NULL,operation TEXT NOT NULL,hash TEXT NOT NULL,result TEXT NOT NULL,PRIMARY KEY(actor,key));
+      CREATE TABLE repositories(id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id),name TEXT NOT NULL,created_at TEXT NOT NULL,UNIQUE(project_id,name));
+      CREATE TABLE commits(repository_id TEXT NOT NULL REFERENCES repositories(id),id TEXT NOT NULL,parents TEXT NOT NULL,message TEXT NOT NULL,authored_at TEXT NOT NULL,committed_at TEXT NOT NULL,files TEXT NOT NULL,PRIMARY KEY(repository_id,id));
+      CREATE INDEX commits_date ON commits(repository_id,committed_at);
+      CREATE TABLE scans(id TEXT PRIMARY KEY,repository_id TEXT NOT NULL REFERENCES repositories(id),source_id TEXT NOT NULL,captured_at TEXT NOT NULL,received_at TEXT NOT NULL,refs TEXT NOT NULL,reachable TEXT NOT NULL,shallow INTEGER NOT NULL,truncated INTEGER NOT NULL,error TEXT);
+      CREATE TABLE sources(repository_id TEXT NOT NULL REFERENCES repositories(id),source_id TEXT NOT NULL,latest_scan TEXT NOT NULL REFERENCES scans(id),success_scan TEXT REFERENCES scans(id),PRIMARY KEY(repository_id,source_id));
+      CREATE TABLE task_commits(task_id TEXT NOT NULL REFERENCES tasks(id),repository_id TEXT NOT NULL REFERENCES repositories(id),commit_id TEXT NOT NULL,PRIMARY KEY(task_id,repository_id,commit_id));
+      CREATE TABLE sessions(hash TEXT PRIMARY KEY,expires TEXT NOT NULL);
+      CREATE TABLE oauth_clients(id TEXT PRIMARY KEY,name TEXT NOT NULL,redirects TEXT NOT NULL,secret_hash TEXT,method TEXT NOT NULL,created_at TEXT NOT NULL,revoked INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE oauth_codes(hash TEXT PRIMARY KEY,data TEXT NOT NULL,expires TEXT NOT NULL);
+      CREATE TABLE oauth_tokens(hash TEXT PRIMARY KEY,refresh_hash TEXT UNIQUE,client_id TEXT NOT NULL REFERENCES oauth_clients(id),scopes TEXT NOT NULL,expires TEXT NOT NULL,refresh_expires TEXT NOT NULL,resource TEXT NOT NULL,revoked INTEGER NOT NULL DEFAULT 0);
+      PRAGMA user_version=1;

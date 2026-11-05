@@ -1,0 +1,13 @@
+version: "0.5"
+is_strict: true
+processes:
+  server:
+    command: bun run dev
+    availability:
+      restart: on_failure
+    environment:
+      - "ALLGATHER_PORT=4490"
+      - "ALLGATHER_PUBLIC_URL=http://127.0.0.1:4490"
+      - "XDG_STATE_HOME=${PWD}/workspace"
+      - "XDG_CONFIG_HOME=${PWD}/workspace"
+      - "XDG_RUNTIME_DIR=${PWD}/workspace"

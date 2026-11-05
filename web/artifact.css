@@ -1,0 +1,36 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.artifact-boot {
+  padding: 24px;
+  font:
+    14px / 1.6 system-ui,
+    sans-serif;
+  color: #555;
+}
+.artifact-boot a {
+  color: #0868ce;
+}
+
+.artifact-delivery {
+  flex: none;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 6px 14px;
+  font: 12px / 1.6 system-ui;
+  color: #68717d;
+}
+.artifact-delivery summary {
+  cursor: pointer;
+}
+.artifact-delivery p {
+  margin: 5px 0;
+  max-width: 850px;
+}

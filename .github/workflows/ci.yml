@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CI: "true"
+
+jobs:
+  native:
+    name: Native (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, macos-15]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-toolchain
+      - name: Install locked dependencies
+        run: |
+          bun --no-env-file install --frozen-lockfile
+          git diff --exit-code -- bun.lock bun.nix
+      - name: Typecheck
+        run: bun --no-env-file run typecheck
+      - name: Lint and format
+        run: bun --no-env-file run check
+      - name: Tests
+        run: bun --no-env-file test
+      # Real Tower interoperability uses scripts/verify-tower-managed.ts with
+      # an explicitly supplied binary; CI never assumes a sibling checkout.
+      - name: Build standalone application
+        run: bun --no-env-file scripts/compile.ts
+      - name: Select browser from the Linux runner image
+        if: runner.os == 'Linux'
+        run: |
+          browser=$(command -v google-chrome || command -v chromium)
+          "$browser" --version
+          echo "ALLGATHER_TEST_BROWSER=$browser" >> "$GITHUB_ENV"
+      - name: Verify standalone package
+        run: bun --no-env-file scripts/verify-package.ts
+      - name: Verify browser workflows
+        if: runner.os == 'Linux'
+        run: |
+          bun --no-env-file scripts/verify-browser.ts
+          bun --no-env-file scripts/verify-artifacts.ts
+          bun --no-env-file scripts/verify-tower-enrollment.ts
+          bun --no-env-file scripts/verify-session-controls.ts
+
+  # Verify the Nix distribution independently of the npm-installed toolchain.
+  # The package smoke test runs from an isolated directory with fresh state.
+  nix:
+    name: Nix (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, macos-15]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      - name: Validate workflows
+        if: runner.os == 'Linux'
+        run: nix shell --no-write-lock-file --inputs-from . nixpkgs#actionlint --command actionlint
+      - name: Verify Nix toolchain
+        run: nix shell --no-write-lock-file .#bun .#biome .#node .#npm --command bun --no-env-file scripts/check-toolchain.ts
+      - name: Build Nix package
+        run: nix build --no-write-lock-file .#allgather
+      - name: Verify Nix package
+        run: nix shell --no-write-lock-file .#bun --command bun --no-env-file scripts/verify-package.ts result/bin/allgather
+
+  # Use this one status for branch protection. Skipped or cancelled jobs fail it.
+  check:
+    name: check
+    if: always()
+    needs: [native, nix]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every verification job
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: jq -e 'all(.[]; .result == "success")' <<< "$RESULTS"

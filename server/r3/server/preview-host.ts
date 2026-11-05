@@ -1,0 +1,302 @@
+import { createHash } from "node:crypto";
+import { type ArtifactPreviewContext, artifactMediaKind } from "../shared/artifacts.ts";
+import { matchesEntityTag } from "./artifact-http.ts";
+import { artifactResourceResponse } from "./artifact-resources.ts";
+import { ArtifactError, requireArtifactPath } from "./artifact-validation.ts";
+import type { ArtifactStore } from "./artifacts.ts";
+import { acceptsGzip, gzipBody } from "./compress.ts";
+import {
+  PreviewContexts,
+  type PreviewScope,
+  previewDocumentUrl,
+  previewPolicy,
+  previewRoot,
+} from "./preview-contexts.ts";
+import { previewGateDocument } from "./preview-gate.ts";
+
+export interface PreviewSupport {
+  runtime(scope: PreviewScope): string;
+  utility(scope: PreviewScope): string;
+}
+
+// The host owns only immutable published resources and r3 preview support.
+// It has no application routes, upstream fetch, repo, filesystem path, or shell.
+export class PreviewHost {
+  readonly contexts: PreviewContexts;
+  constructor(
+    private readonly artifacts: ArtifactStore,
+    private readonly support: PreviewSupport,
+    now?: () => number,
+  ) {
+    this.contexts = new PreviewContexts(artifacts, now);
+  }
+  create(
+    artifactId: string,
+    seq: number,
+    path: string,
+    applicationOrigin: string,
+    network?: unknown,
+  ): ArtifactPreviewContext {
+    return this.contexts.create(artifactId, seq, path, applicationOrigin, network);
+  }
+  renew(id: string): ArtifactPreviewContext {
+    return this.contexts.renew(id);
+  }
+  revoke(id: string): void {
+    this.contexts.revoke(id);
+  }
+  revokeArtifact(id: string): void {
+    this.contexts.revokeArtifact(id);
+  }
+  close(): void {
+    this.contexts.close();
+  }
+
+  async fetch(request: Request, applicationOrigins?: ReadonlySet<string>): Promise<Response> {
+    let scope: PreviewScope;
+    try {
+      scope = this.contexts.forRequest(request, applicationOrigins);
+      // Only the Host-guarded application listener supplies configured origins.
+      // Normalize a known reverse proxy's rewritten Host after scope validation;
+      // never derive a trusted origin from arbitrary forwarded request headers.
+      if (request.headers.get("host") !== new URL(scope.origin).host) {
+        const headers = new Headers(request.headers);
+        headers.set("host", new URL(scope.origin).host);
+        request = new Request(request, { headers });
+      }
+    } catch {
+      return new Response("Preview context expired or unavailable", {
+        status: 404,
+        headers: {
+          "content-type": "text/plain; charset=utf-8",
+          "cache-control": "no-store",
+          "content-security-policy": "default-src 'none'; sandbox",
+          "x-content-type-options": "nosniff",
+        },
+      });
+    }
+    const policy = previewPolicy(scope);
+    // Resource errors need the same credential-free CORS contract as successful
+    // reads, so a missing published asset stays a visible 404. Gate HTML never
+    // enters this namespace and must remain unreadable to opaque fetches.
+    if (new URL(request.url).pathname.startsWith(`${new URL(previewRoot(scope)).pathname}/files/`))
+      policy.set("access-control-allow-origin", "*");
+    try {
+      const response = await this.respond(request, scope);
+      for (const [name, value] of policy) response.headers.set(name, value);
+      // Generated documents/scripts have weak validators and no byte ranges.
+      // Keep native resources on their existing exact-byte/range contract.
+      if (
+        !response.headers.has("accept-ranges") &&
+        /^text\/(html|javascript)\b/.test(response.headers.get("content-type") ?? "")
+      ) {
+        response.headers.append("vary", "Accept-Encoding");
+        if (response.status === 200 && response.body && acceptsGzip(request)) {
+          let body = new Uint8Array(await response.arrayBuffer());
+          if (body.byteLength >= 1024) {
+            body = await gzipBody(body);
+            response.headers.set("content-encoding", "gzip");
+          }
+          response.headers.set("content-length", String(body.byteLength));
+          return new Response(body, { status: response.status, headers: response.headers });
+        }
+      }
+      return response;
+    } catch (error) {
+      policy.set("content-type", "text/plain; charset=utf-8");
+      policy.set("cache-control", "no-store");
+      return new Response(
+        error instanceof ArtifactError ? error.message : "Preview request failed",
+        { status: error instanceof ArtifactError ? error.status : 500, headers: policy },
+      );
+    }
+  }
+
+  private runtimeScript(scope: PreviewScope, attributes = ""): string {
+    // Script text is trusted, but literal HTML delimiters in its strings/comments
+    // must not close the element or enter the HTML tokenizer's escaped states.
+    const source = this.support
+      .runtime(scope)
+      .replace(/<\/script/gi, (match) => `<\\/${match.slice(2)}`)
+      .replaceAll("<!--", "<\\!--");
+    return `<script${attributes}>${source}</script>`;
+  }
+
+  private async respond(request: Request, scope: PreviewScope): Promise<Response> {
+    const root = previewRoot(scope);
+    const path = new URL(request.url).pathname.slice(new URL(root).pathname.length);
+    const plain = (body: string | null, status = 200, headers: HeadersInit = {}) =>
+      new Response(request.method === "HEAD" ? null : body, {
+        status,
+        headers: {
+          "content-type": "text/plain; charset=utf-8",
+          "cache-control": "no-store",
+          ...headers,
+        },
+      });
+    if (request.method !== "GET" && request.method !== "HEAD")
+      return plain(null, 405, { allow: "GET, HEAD" });
+    // The blocked check really responds. Success means the browser ignored the
+    // allowlist; a 404 or an intentionally broken address is not a policy proof.
+    if (path === "/r3/check" || path === "/outside/check")
+      return plain(null, 204, { "access-control-allow-origin": "*" });
+    if (path === "/r3/gate") {
+      return plain(previewGateDocument(scope), 200, {
+        "content-type": "text/html; charset=utf-8",
+      });
+    }
+    // The capability authorizes bytes; the trusted workspace gates execution on
+    // browser checks and consent. Bare navigation must not bypass that flow.
+    if (request.headers.get("sec-fetch-dest") === "document")
+      return plain("Open this artifact from r3 to render it.", 403);
+    // Service workers could substitute their own document responses and remove
+    // the server's policy. No publisher script may register as a service worker.
+    if (
+      request.headers.get("service-worker") === "script" ||
+      request.headers.get("sec-fetch-dest") === "serviceworker"
+    )
+      return plain("Service workers are unavailable in artifact previews", 403);
+    if (path === "/r3/runtime.js" || path === "/r3/utility.js") {
+      const script = path.endsWith("runtime.js")
+        ? this.support.runtime(scope)
+        : this.support.utility(scope);
+      const etag = `W/"${createHash("sha256")
+        .update(JSON.stringify([script, [...previewPolicy(scope)]]))
+        .digest("hex")}"`;
+      const reused = matchesEntityTag(request, etag);
+      return plain(reused ? null : script, reused ? 304 : 200, {
+        "content-type": "text/javascript; charset=utf-8",
+        "access-control-allow-origin": "*",
+        "cache-control": "private, no-cache",
+        vary: "Sec-Fetch-Dest",
+        etag,
+      });
+    }
+    if (path === "/r3/markdown") {
+      const filePath = requireArtifactPath(new URL(request.url).searchParams.get("path"));
+      const file = this.artifacts.file(scope.artifactId, scope.versionSeq, filePath);
+      if (!file.renderedHash) return plain("Retained Markdown document not found", 404);
+      const resource = this.artifacts.resource(scope.artifactId, scope.versionSeq, filePath, true);
+      return new Response(
+        request.method === "HEAD" ? null : new Uint8Array(await resource.read()),
+        {
+          headers: {
+            "content-type": "text/plain; charset=utf-8",
+            "cache-control": "no-store",
+            "access-control-allow-origin": "*",
+            "content-disposition": "attachment",
+          },
+        },
+      );
+    }
+    if (path === "/r3/media" && scope.presentation === "media") {
+      const file = this.artifacts.file(scope.artifactId, scope.versionSeq, scope.entryPath);
+      const kind = artifactMediaKind(file.mediaType);
+      if (!kind) return plain("Media resource not found", 404);
+      const tag = kind === "image" ? "img" : kind;
+      // SVG bytes are an image resource on the isolated origin, never inline
+      // markup or an application-origin blob document.
+      const src = previewDocumentUrl(scope, scope.entryPath)
+        .replaceAll("&", "&amp;")
+        .replaceAll('"', "&quot;");
+      const layout =
+        kind === "video"
+          ? "html{overflow:hidden}video{display:block;width:100%;height:auto}"
+          : "body{min-height:100vh;display:grid;place-items:center}img{max-width:100%;max-height:100vh}audio{width:min(90%,40rem)}";
+      return plain(
+        `<!doctype html><html><meta name="viewport" content="width=device-width, initial-scale=1"><title>Media preview</title><style>body{margin:0;background:#171717}${layout}</style><${tag} src="${src}" ${kind === "image" ? 'alt="Published image"' : 'controls preload="metadata"'}${kind === "video" ? " muted" : ""}></${tag}>${this.runtimeScript(scope)}</html>`,
+        200,
+        { "content-type": "text/html; charset=utf-8" },
+      );
+    }
+    if (!path.startsWith("/files/")) return plain("Published resource not found", 404);
+    let filePath: string;
+    try {
+      filePath = requireArtifactPath(decodeURIComponent(path.slice("/files/".length)));
+    } catch {
+      return plain("Published resource not found", 404);
+    }
+    const file = this.artifacts.file(scope.artifactId, scope.versionSeq, filePath);
+    const destination = request.headers.get("sec-fetch-dest");
+    const document =
+      destination === "document" || destination === "iframe" || destination === "frame";
+    const html = document && (!!file.renderedHash || file.mediaType.split(";")[0] === "text/html");
+    // A retained document is immutable, but its executable response includes
+    // context-scoped support and policy. Revalidate after authorization, before
+    // reading or rewriting any published bytes.
+    const etag = html
+      ? `W/"${createHash("sha256")
+          .update(
+            JSON.stringify([
+              "r3-preview-2",
+              file.renderedHash ?? file.hash,
+              !!file.renderedHash,
+              scope.id,
+              this.support.runtime(scope),
+              this.support.utility(scope),
+              [...previewPolicy(scope)],
+            ]),
+          )
+          .digest("hex")}"`
+      : null;
+    const documentHeaders = {
+      "cache-control": "private, no-cache",
+      "content-type": "text/html; charset=utf-8",
+      vary: "Sec-Fetch-Dest",
+      etag: etag ?? "",
+    };
+    if (etag && matchesEntityTag(request, etag))
+      return new Response(null, { status: 304, headers: documentHeaders });
+    if (html && file.renderedHash) {
+      // Markdown bytes arrive from the trusted parent cache after its gate. This
+      // empty shell keeps the native document URL and real response policy.
+      return plain(
+        `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>${this.runtimeScript(scope, " data-r3-markdown data-r3-markdown-shell")}</body></html>`,
+        200,
+        documentHeaders,
+      );
+    }
+    let readRequest = request;
+    if (html) {
+      const headers = new Headers(request.headers);
+      for (const name of ["range", "if-range", "if-none-match"]) headers.delete(name);
+      readRequest = new Request(request.url, { method: request.method, headers });
+    }
+    const response = await artifactResourceResponse(
+      this.artifacts,
+      readRequest,
+      scope.artifactId,
+      scope.versionSeq,
+      filePath,
+      { inline: true, rendered: document && !!file.renderedHash },
+    );
+    response.headers.set("vary", "Sec-Fetch-Dest");
+    if (!html) {
+      response.headers.set("access-control-allow-origin", "*");
+      return response;
+    }
+    // Keep original and retained Markdown bytes unchanged in storage. The
+    // response adds trusted support before publisher scripts.
+    for (const [name, value] of Object.entries(documentHeaders)) response.headers.set(name, value);
+    for (const name of ["content-length", "accept-ranges"]) response.headers.delete(name);
+    if (request.method === "HEAD") return response;
+    let injected = false;
+    // Retain the established utility import without rewriting publisher assets.
+    const imports = JSON.stringify({ imports: { "/r3/utility.js": `${root}/r3/utility.js` } });
+    const runtime = `<script type="importmap">${imports}</script>${this.runtimeScript(scope)}`;
+    return new HTMLRewriter()
+      .on("*", {
+        element(element) {
+          if (injected || element.tagName === "html") return;
+          injected = true;
+          element.before(runtime, { html: true });
+        },
+      })
+      .onDocument({
+        end(end) {
+          if (!injected) end.append(runtime, { html: true });
+        },
+      })
+      .transform(response);
+  }
+}

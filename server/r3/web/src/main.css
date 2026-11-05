@@ -1,0 +1,793 @@
+/* `source(none)` disables Tailwind v4's automatic source detection, which
+   otherwise crawls the repo root and reads build artifacts as text to harvest
+   class names — including the ~100MB compiled `r3` binary, which exhausts the
+   Node heap (OOM). Scan only the app source here (relative to this file). */
+@import "tailwindcss" source(none);
+@source "./";
+
+/* Toggle dark mode by a `.dark` class on <html> rather than the OS setting. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* The r3 palette — semantic ramps anchored on the logo's three arm colors
+   (web/favicon.svg: indigo #6164ff, emerald #009966, rose #ff3356), plus two
+   supporting hues rebuilt at the same saturation. Semantics:
+
+     primary  (indigo)  review / work / update — selection, primary actions
+     success  (emerald) resolution — resolved, accepted, viewed, live presence
+     danger   (rose)    errors and refusal — use sparingly
+     warning  (amber)   needs attention — stale, unsent, the focused line
+     accent   (violet)  the secondary accent — re-anchor, scratch edits
+
+   Each ramp is Tailwind v4's nearest stock ramp (indigo/emerald/rose/amber/
+   violet) shifted in hue and scaled in chroma so it passes EXACTLY through the
+   brand hex at its anchor shade (primary-500, success-600, danger-500); the
+   supporting hues keep their stock lightness curve with chroma scaled by the
+   brands' mean ratio. Lightness curves match stock Tailwind, so the usual
+   light/dark shade pairings (600 on light / 400 on dark) hold. Prefer these
+   over stock green/blue/red/amber/violet everywhere in the app — with one
+   exception: diff add/del (row tints, gutter rails, ± stats) keep stock
+   green/red, the universal diff convention (see .gutter-add / DiffView). */
+@theme {
+  --color-primary-50: oklch(96.3% 0.017 271.421);
+  --color-primary-100: oklch(93.2% 0.032 271.895);
+  --color-primary-200: oklch(87.4% 0.062 273.146);
+  --color-primary-300: oklch(79% 0.106 273.82);
+  --color-primary-400: oklch(68% 0.17 276.042);
+  --color-primary-500: oklch(59.2% 0.225 276.224); /* #6164ff — the logo blue */
+  --color-primary-600: oklch(51.8% 0.253 276.073);
+  --color-primary-700: oklch(46.4% 0.231 276.13);
+  --color-primary-800: oklch(40.5% 0.188 276.473);
+  --color-primary-900: oklch(36.6% 0.139 277.804);
+  --color-primary-950: oklch(26.3% 0.087 280.395);
+
+  --color-success-50: oklch(98% 0.019 163.811);
+  --color-success-100: oklch(95.2% 0.048 160.749);
+  --color-success-200: oklch(90.8% 0.086 161.848);
+  --color-success-300: oklch(85% 0.133 162.676);
+  --color-success-400: oklch(77.1% 0.164 160.921);
+  --color-success-500: oklch(70.3% 0.158 160.178);
+  --color-success-600: oklch(60.3% 0.134 160.923); /* #009966 — the logo green */
+  --color-success-700: oklch(51.5% 0.109 163.31);
+  --color-success-800: oklch(43.9% 0.088 164.611);
+  --color-success-900: oklch(38.5% 0.071 166.638);
+  --color-success-950: oklch(26.9% 0.047 170.25);
+
+  --color-danger-50: oklch(97% 0.014 14.247);
+  --color-danger-100: oklch(94.3% 0.029 14.405);
+  --color-danger-200: oklch(89.6% 0.055 11.826);
+  --color-danger-300: oklch(81.7% 0.105 13.463);
+  --color-danger-400: oklch(72% 0.176 15.253);
+  --color-danger-500: oklch(65.3% 0.234 18.264); /* #ff3356 — the logo red */
+  --color-danger-600: oklch(59.4% 0.239 19.41);
+  --color-danger-700: oklch(52.2% 0.209 18.76);
+  --color-danger-800: oklch(46.3% 0.179 15.522);
+  --color-danger-900: oklch(41.8% 0.152 12.097);
+  --color-danger-950: oklch(27.9% 0.1 13.919);
+
+  --color-warning-50: oklch(98.7% 0.021 95.277);
+  --color-warning-100: oklch(96.2% 0.056 95.617);
+  --color-warning-200: oklch(92.4% 0.114 95.746);
+  --color-warning-300: oklch(87.9% 0.16 91.605);
+  --color-warning-400: oklch(82.8% 0.17 84.429);
+  --color-warning-500: oklch(76.9% 0.167 70.08);
+  --color-warning-600: oklch(66.6% 0.159 58.318);
+  --color-warning-700: oklch(55.5% 0.149 48.998);
+  --color-warning-800: oklch(47.3% 0.13 46.201);
+  --color-warning-900: oklch(41.4% 0.106 45.904);
+  --color-warning-950: oklch(27.9% 0.073 45.635);
+
+  --color-accent-50: oklch(96.9% 0.015 293.756);
+  --color-accent-100: oklch(94.3% 0.028 294.588);
+  --color-accent-200: oklch(89.4% 0.054 293.283);
+  --color-accent-300: oklch(81.1% 0.105 293.571);
+  --color-accent-400: oklch(70.2% 0.173 293.541);
+  --color-accent-500: oklch(60.6% 0.236 292.717);
+  --color-accent-600: oklch(54.1% 0.266 293.009);
+  --color-accent-700: oklch(49.1% 0.256 292.581);
+  --color-accent-800: oklch(43.2% 0.22 292.759);
+  --color-accent-900: oklch(38% 0.179 293.745);
+  --color-accent-950: oklch(28.3% 0.134 291.089);
+}
+
+:root {
+  --font-mono:
+    "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+/* The user font-size setting scales the whole UI: Tailwind's text AND spacing
+   utilities are rem-based (relative to <html>), so driving the root font-size
+   zooms everything proportionally. Applying it to `body` had no effect — the
+   rem utilities ignore body and read the root. Neutral base is 16px (the size
+   Tailwind's scale is calibrated for); the default below is 2px larger. */
+html {
+  font-size: var(--r3-font-size, 18px);
+}
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+}
+
+/* Elevation belongs to detached outer frames. Nested content stays flat. */
+:root {
+  --r3-overlay-rim: rgb(255 255 255 / 0.95);
+  --r3-overlay-contact: rgb(0 0 0 / 0.2);
+  --r3-overlay-cast: rgb(0 0 0 / 0.26);
+  --r3-overlay-border: #a3a3a3;
+}
+html.dark {
+  --r3-overlay-rim: rgb(255 255 255 / 0.18);
+  --r3-overlay-contact: rgb(0 0 0 / 0.6);
+  --r3-overlay-cast: rgb(0 0 0 / 0.7);
+  --r3-overlay-border: #737373;
+}
+.r3-popover,
+.r3-floating,
+.r3-modal,
+.r3-sheet {
+  border-color: var(--r3-overlay-border);
+  border-top-color: color-mix(in srgb, var(--r3-overlay-border), white 20%);
+  box-shadow:
+    inset 0 1px 0 var(--r3-overlay-rim),
+    0 2px 4px var(--r3-overlay-contact),
+    0 8px 24px var(--r3-overlay-cast);
+}
+
+.r3-notifications {
+  position: fixed;
+  z-index: 60;
+  right: env(safe-area-inset-right);
+  bottom: env(safe-area-inset-bottom);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 24rem;
+  max-width: calc(100vw - env(safe-area-inset-left) - env(safe-area-inset-right));
+  max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  padding: 1rem;
+  overflow-y: auto;
+  pointer-events: none;
+}
+.r3-notification {
+  pointer-events: auto;
+}
+.r3-server-update {
+  align-self: flex-end;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: max-content;
+  max-width: 100%;
+  padding: 0.625rem 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+.r3-server-update-icon {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+.r3-server-update-copy {
+  display: flex;
+  align-self: stretch;
+  align-items: center;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.r3-server-update-message {
+  margin-top: 0.125rem;
+  font-size: 0.625rem;
+  line-height: 1.4;
+}
+.r3-server-update-action {
+  align-self: stretch;
+  flex-shrink: 0;
+  justify-content: center;
+  min-width: 4.5rem;
+  white-space: nowrap;
+}
+@media (width < 48rem) {
+  .r3-notifications {
+    bottom: calc(2.5rem + env(safe-area-inset-bottom));
+    max-height: calc(100dvh - 2.5rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+}
+.r3-floating,
+.r3-modal {
+  box-shadow:
+    inset 0 1px 0 var(--r3-overlay-rim),
+    0 3px 6px var(--r3-overlay-contact),
+    0 16px 48px var(--r3-overlay-cast);
+}
+.r3-sheet {
+  box-shadow:
+    inset 0 1px 0 var(--r3-overlay-rim),
+    0 -2px 4px var(--r3-overlay-contact),
+    0 -12px 36px var(--r3-overlay-cast);
+}
+@media (max-width: 767px) {
+  .r3-file-picker {
+    box-shadow:
+      inset 0 1px 0 var(--r3-overlay-rim),
+      0 -2px 4px var(--r3-overlay-contact),
+      0 -12px 36px var(--r3-overlay-cast);
+  }
+}
+
+/* Shared keyboard/AT focus outline for controls without their own focus style.
+   It follows border-radius without affecting layout. Offsets and pane clipping
+   still matter, so keep focusable controls inside their visible scroll area.
+
+   In `@layer base` so any utility beats it: the composers and token fields already
+   style their own focus (`outline-none focus:border-primary-400`), and an unlayered
+   rule would win over that `outline-none` and double up on every text field. This
+   way the ring fills the gap — bare buttons — and stays out of the way where a
+   component has decided. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-primary-500);
+    outline-offset: 1px;
+  }
+  html.dark :focus-visible {
+    outline-color: var(--color-primary-400);
+  }
+}
+
+/* Shiki dual-theme: a token span carries a class from each slot's palette
+   (`sl3 sd7`) and the colours arrive as ONE stylesheet per theme — served in
+   ThemeStyle.css, installed by useSyntaxPalette as <style data-r3-theme-css>. There is
+   deliberately no generic `.shiki-code span` colour rule here any more: it would
+   out-specify every palette class, and the inline custom properties it used to
+   read cost 12x the source size in blob JSON plus a computed style per span.
+   `.sx` is the fallback the server falls to for a colour outside the palette —
+   the old shape, kept so a colour is never lost. */
+html:not(.dark) .sx {
+  color: var(--shiki-light);
+}
+html.dark .sx {
+  color: var(--shiki-dark);
+}
+
+/* Code surface = the syntax theme's OWN editor colours. useSyntaxPalette sets
+   --shiki-*-bg / --shiki-* (background + default foreground) on the content pane
+   from /api/theme-style; these paint the code area like the theme does in an
+   editor, so e.g. Nord isn't pale token colours on r3's near-black card. The
+   background falls back to the neutral card colour when no theme style is loaded
+   (isolated previews, in-flight); the foreground var, when unset, inherits the
+   app's text colour. Setting the default fg matters when the theme's mode differs
+   from the app's (a dark theme in light mode) — un-tokenised text stays legible. */
+.shiki-surface {
+  background-color: var(--shiki-light-bg, var(--color-white));
+  color: var(--shiki-light);
+}
+html.dark .shiki-surface {
+  background-color: var(--shiki-dark-bg, var(--color-neutral-950));
+  color: var(--shiki-dark);
+}
+
+/* Frozen diff/file gutter fills — opaque (the code scrolls under them), painted
+   on the theme surface so line numbers share the code's background. add/del rails
+   blend a green/red into that surface a touch stronger than the row overlay, so
+   the rail reads a little brighter than the code it labels. Diff add/del keep
+   STOCK Tailwind green-500/red-500 (the universal diff convention) rather than
+   the theme's success/danger — same for DiffView's row overlays and ± stats. */
+.gutter-surface {
+  background-color: var(--shiki-light-bg, var(--color-white));
+}
+html.dark .gutter-surface {
+  background-color: var(--shiki-dark-bg, var(--color-neutral-950));
+}
+.gutter-add {
+  background-color: color-mix(
+    in srgb,
+    var(--color-green-500) 24%,
+    var(--shiki-light-bg, var(--color-white))
+  );
+}
+html.dark .gutter-add {
+  background-color: color-mix(
+    in srgb,
+    var(--color-green-500) 24%,
+    var(--shiki-dark-bg, var(--color-neutral-950))
+  );
+}
+.gutter-del {
+  background-color: color-mix(
+    in srgb,
+    var(--color-red-500) 24%,
+    var(--shiki-light-bg, var(--color-white))
+  );
+}
+html.dark .gutter-del {
+  background-color: color-mix(
+    in srgb,
+    var(--color-red-500) 24%,
+    var(--shiki-dark-bg, var(--color-neutral-950))
+  );
+}
+
+/* Side-by-side diff: while a drag-selection is live in one half (DiffView stamps
+   data-selecting on mousedown), the opposite half is unselectable — so a range
+   spanning both columns never forms. That matters because `quote` is the anchor
+   of record and the two halves are separate scroll containers: a cross-column
+   selection's text is DOM-ordered (all of the left column, then all of the
+   right), which is not what the reader highlighted. Prevention beats repair;
+   selection.ts still refuses a cross-half range for the paths no mousedown
+   covers (touch long-press, shift+arrow, Ctrl+A). */
+[data-selecting="old"] [data-split-half="new"],
+[data-selecting="new"] [data-split-half="old"] {
+  user-select: none;
+}
+
+/* Side-by-side filler: the empty half opposite an unmatched add/del. It must
+   occupy a row (the two columns stay vertically locked only while both mount the
+   same number of equal-height rows) while contributing NOTHING to a selection —
+   it stands for "no line here on this side", so a selection dragged past it must
+   not gain a line. Its blank is generated content, not a text node, so no
+   serializer can emit it and no engine can put a stray newline in `quote`; a
+   literal &nbsp; child leaked exactly that. Prevention over repair, again:
+   stripping blank lines from the quote afterwards would be indistinguishable
+   from stripping a blank line the file really has, and `quote` is the anchor of
+   record — it's searched for verbatim. user-select:none covers the same ground
+   for any future text child. */
+.split-filler {
+  user-select: none;
+}
+.split-filler::before {
+  content: "\00a0";
+}
+
+/* Persistent marker on lines/blocks an unresolved threads points at. Every
+   painting region rule is scoped :not(.r3-active-line) so the amber "actively
+   focused" treatment below wins structurally when an element carries both —
+   never by source order, so new rules can land anywhere without flipping it. */
+.r3-threads-region:not(.r3-active-line) {
+  background-color: color-mix(in srgb, var(--color-primary-500) 10%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-primary-500);
+}
+
+/* The source/diff lines an actively-focused threads points at. The fill is
+   pitched up enough that warning-500 reads as clear amber rather than muddy
+   brown against the near-black surface (see ::highlight(r3-active) below). */
+.r3-active-line {
+  background-color: color-mix(in srgb, var(--color-warning-500) 30%, transparent);
+  box-shadow: inset 2px 0 0 var(--color-warning-500);
+}
+
+/* Code/diff rows freeze the line-number gutter (sticky + opaque) so only the
+   code scrolls horizontally — but that opaque rail sits on top of the row's
+   inset left bar and would hide it. Redraw the bar on the first (leftmost)
+   gutter cell so it stays visible and pinned to the left. Scoped to [data-line]
+   rows. Region scoped :not(active) so amber wins when both apply. */
+.r3-active-line[data-line] > span:first-child {
+  box-shadow: inset 2px 0 0 var(--color-warning-500);
+}
+.r3-threads-region[data-line]:not(.r3-active-line) > span:first-child {
+  box-shadow: inset 3px 0 0 var(--color-primary-500);
+}
+
+/* A highlighted threads region is clickable — a plain click jumps the panel to
+   its threads (source/diff rows carry data-fb-id).
+   Pointer + a hover brighten signal it; text selection still works underneath. */
+.shiki-surface [data-fb-id] {
+  cursor: pointer;
+}
+.r3-threads-region[data-fb-id]:not(.r3-active-line):hover {
+  background-color: color-mix(in srgb, var(--color-primary-500) 18%, transparent);
+}
+/* A focused (active) row is also a thread region; the blue hovers above exclude
+   it (:not, like every region rule), so these keep its hover yellow — just
+   brighter than the resting amber. */
+.r3-active-line[data-fb-id]:hover {
+  background-color: color-mix(in srgb, var(--color-warning-500) 42%, transparent);
+}
+
+/* Trusted workspace Markdown: threads, comments, and version descriptions. */
+.r3-markdown {
+  line-height: 1.6;
+}
+.r3-markdown h1,
+.r3-markdown h2,
+.r3-markdown h3 {
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 1.2em 0 0.5em;
+}
+.r3-markdown h1 {
+  font-size: 1.6em;
+}
+.r3-markdown h2 {
+  font-size: 1.3em;
+}
+.r3-markdown h3 {
+  font-size: 1.1em;
+}
+.r3-markdown p,
+.r3-markdown ul,
+.r3-markdown ol,
+.r3-markdown blockquote,
+.r3-markdown pre {
+  margin: 0.6em 0;
+}
+.r3-markdown ul,
+.r3-markdown ol {
+  padding-left: 1.4em;
+}
+.r3-markdown ul {
+  list-style: disc;
+}
+.r3-markdown ol {
+  list-style: decimal;
+}
+.r3-markdown code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+.r3-markdown pre {
+  padding: 0.8em 1em;
+  border-radius: 8px;
+  overflow-x: auto;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+.r3-markdown pre code {
+  background: none;
+  padding: 0;
+}
+.r3-markdown a {
+  color: var(--color-primary-600);
+  text-decoration: underline;
+}
+html.dark .r3-markdown a {
+  color: var(--color-primary-400);
+}
+.r3-markdown blockquote {
+  border-left: 3px solid color-mix(in srgb, currentColor 20%, transparent);
+  padding-left: 1em;
+  opacity: 0.85;
+}
+/* GFM tables: markdown-it renders bare <table>/<th>/<td> with no borders, so
+   without these the grid is invisible (rows and columns run together). Draw the
+   dividers with the same currentColor mix the rest of this block uses so they
+   read in both themes. */
+.r3-markdown table {
+  margin: 0.8em 0;
+  border-collapse: collapse;
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.r3-markdown th,
+.r3-markdown td {
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  padding: 0.4em 0.7em;
+  text-align: left;
+  vertical-align: top;
+}
+.r3-markdown th {
+  font-weight: 600;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+.r3-markdown tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, currentColor 3%, transparent);
+}
+/* Mermaid fences (flowchart + sequenceDiagram) render to an inline SVG
+   (server/mermaid.ts). Horizontal scroll on a wide LR chart, like tables;
+   currentColor so the same strokes/fills follow the light/dark surface. */
+.r3-markdown .r3-mermaid {
+  margin: 0.8em 0;
+  overflow-x: auto;
+  max-width: 100%;
+}
+.r3-markdown .r3-mermaid svg {
+  display: block;
+}
+.r3-markdown .r3-mmd-node {
+  fill: color-mix(in srgb, currentColor 7%, transparent);
+  stroke: color-mix(in srgb, currentColor 38%, transparent);
+  stroke-width: 1.25;
+}
+.r3-markdown .r3-mmd-cluster {
+  fill: color-mix(in srgb, currentColor 4%, transparent);
+  stroke: color-mix(in srgb, currentColor 22%, transparent);
+  stroke-dasharray: 5 3;
+  stroke-width: 1;
+}
+.r3-markdown .r3-mmd-edge {
+  fill: none;
+  stroke: color-mix(in srgb, currentColor 50%, transparent);
+  stroke-width: 1.25;
+}
+.r3-markdown .r3-mmd-edge.r3-mmd-dotted {
+  stroke-dasharray: 5 4;
+}
+.r3-markdown .r3-mmd-edge.r3-mmd-thick {
+  stroke-width: 2.5;
+}
+.r3-markdown .r3-mmd-arrow {
+  fill: color-mix(in srgb, currentColor 55%, transparent);
+}
+.r3-markdown .r3-mmd-label,
+.r3-markdown .r3-mmd-edgelabel,
+.r3-markdown .r3-mmd-cluster-title {
+  fill: currentColor;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  user-select: text;
+}
+.r3-markdown .r3-mmd-cluster-title {
+  font-weight: 600;
+  opacity: 0.75;
+}
+.r3-markdown .r3-mmd-edgelabel {
+  font-size: 11px;
+}
+.r3-markdown .r3-mmd-edgelabel-bg {
+  fill: var(--color-neutral-50);
+}
+html.dark .r3-markdown .r3-mmd-edgelabel-bg {
+  fill: var(--color-neutral-950);
+}
+.r3-markdown .r3-mmd-life {
+  stroke: color-mix(in srgb, currentColor 22%, transparent);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  fill: none;
+}
+
+/* Compact message prose — threads bodies + comments in the panel. Reuses the
+   .r3-markdown styling above but tightens the block rhythm and trims the outer
+   margins so a rendered message sits flush in its card like the plain text it
+   replaced (no leading/trailing gap from the first <p>'s / last block's margin). */
+.r3-msg {
+  line-height: 1.55;
+}
+.r3-msg > :first-child {
+  margin-top: 0;
+}
+.r3-msg > :last-child {
+  margin-bottom: 0;
+}
+.r3-msg p,
+.r3-msg ul,
+.r3-msg ol,
+.r3-msg blockquote,
+.r3-msg pre,
+.r3-msg table {
+  margin: 0.45em 0;
+}
+.r3-msg h1,
+.r3-msg h2,
+.r3-msg h3 {
+  margin: 0.6em 0 0.3em;
+}
+/* Headings in a short message shouldn't balloon — cap them near body size. */
+.r3-msg h1 {
+  font-size: 1.25em;
+}
+.r3-msg h2 {
+  font-size: 1.15em;
+}
+.r3-msg h3 {
+  font-size: 1.05em;
+}
+
+/* An `@path:Lx-y` code reference (agent-authored; markdown.ts) rendered as a
+   click-to-jump link. Reads as a compact monospace chip, tinted primary, so it's
+   visibly a location pointer rather than an external link. */
+.r3-ref {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  color: var(--color-primary-700);
+  background: color-mix(in srgb, var(--color-primary-500) 12%, transparent);
+  border-radius: 4px;
+  padding: 0.05em 0.3em;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.r3-ref:hover {
+  background: color-mix(in srgb, var(--color-primary-500) 22%, transparent);
+}
+html.dark .r3-ref {
+  color: var(--color-primary-300);
+}
+
+/* Arms share the body's bob and tilt; only the antenna and eyes move separately.
+   SVG transforms use the icon's 24-unit viewBox, so motion scales with UI size. */
+.r3-agent-robot {
+  overflow: visible;
+}
+.r3-agent-bob {
+  animation: r3-agent-bob 2.4s ease-in-out infinite;
+}
+.r3-agent-tilt {
+  transform-origin: 12px 13px;
+  animation: r3-agent-tilt 4.8s ease-in-out infinite;
+}
+.r3-agent-antenna {
+  transform-origin: 12px 6px;
+  animation: r3-agent-antenna 4.8s ease-in-out infinite;
+}
+.r3-agent-glance {
+  animation: r3-agent-glance 4.8s ease-in-out infinite;
+}
+.r3-agent-blink {
+  transform-origin: 12px 12px;
+  animation: r3-agent-blink 4.8s linear infinite;
+}
+@keyframes r3-agent-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1.54px);
+  }
+}
+@keyframes r3-agent-tilt {
+  0%,
+  48%,
+  100% {
+    transform: rotate(0);
+  }
+  22%,
+  30% {
+    transform: rotate(4.2deg);
+  }
+  68%,
+  76% {
+    transform: rotate(-4.2deg);
+  }
+}
+@keyframes r3-agent-antenna {
+  0%,
+  12%,
+  52%,
+  100% {
+    transform: rotate(0);
+  }
+  22% {
+    transform: rotate(-15.4deg);
+  }
+  32% {
+    transform: rotate(10.5deg);
+  }
+  42% {
+    transform: rotate(-4.9deg);
+  }
+  66% {
+    transform: rotate(12.6deg);
+  }
+  76% {
+    transform: rotate(-8.4deg);
+  }
+  86% {
+    transform: rotate(3.5deg);
+  }
+}
+@keyframes r3-agent-glance {
+  0%,
+  12%,
+  88%,
+  100% {
+    transform: translateX(0);
+  }
+  22%,
+  42% {
+    transform: translateX(0.595px);
+  }
+  58%,
+  76% {
+    transform: translateX(-0.595px);
+  }
+}
+@keyframes r3-agent-blink {
+  0%,
+  45%,
+  49%,
+  100% {
+    transform: scaleY(1);
+  }
+  47% {
+    transform: scaleY(0.384);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .r3-agent-robot * {
+    animation: none;
+  }
+}
+
+/* Collapse the handoff slot while its action fades toward the threads toggle. */
+.r3-nav-handoff {
+  display: grid;
+  grid-template-columns: 1fr;
+  justify-content: end;
+  transition:
+    grid-template-columns 0.18s ease-out,
+    visibility 0s;
+}
+.r3-nav-handoff[aria-hidden="true"] {
+  grid-template-columns: 0fr;
+  visibility: hidden;
+  transition:
+    grid-template-columns 0.18s ease-out,
+    visibility 0s 0.18s;
+}
+.r3-nav-handoff-content {
+  transition:
+    opacity 0.18s ease-out,
+    transform 0.18s ease-out;
+}
+.r3-nav-handoff[aria-hidden="true"] .r3-nav-handoff-content {
+  opacity: 0;
+  transform: translateX(0.5rem);
+}
+@media (prefers-reduced-motion: reduce) {
+  .r3-nav-handoff,
+  .r3-nav-handoff[aria-hidden="true"],
+  .r3-nav-handoff-content {
+    transition: none;
+  }
+}
+
+/* A short fade + slight upward slide, played on mount — used to animate the
+   threads panel's list when the Active/Resolved filter switches (the switched-in
+   list is re-keyed, so it remounts and replays this). A plain author class (not a
+   Tailwind arbitrary `animate-[…]`) so the keyframe is never tree-shaken. */
+@keyframes r3-fade-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.r3-fade-slide-in {
+  animation: r3-fade-slide-in 0.18s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .r3-fade-slide-in {
+    animation: none;
+  }
+}
+
+/* Empty-state hint fade — asymmetric by design. The transition-duration lives on
+   the *destination* state, so easing INTO `.is-visible` (the list just emptied)
+   takes a gentle 1s, while easing back out (a card or composer arrived) snaps
+   away in 150ms. Always mounted + toggled (not conditionally rendered) so both
+   directions can animate. */
+.r3-hint {
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+}
+.r3-hint.is-visible {
+  opacity: 1;
+  transition: opacity 1s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .r3-hint {
+    transition: none;
+  }
+}
+
+/* Detached workspace controls must not cover a captured preview. */
+html[data-r3-screenshot] .r3-floating,
+html[data-r3-screenshot] .r3-notifications {
+  visibility: hidden;
+}

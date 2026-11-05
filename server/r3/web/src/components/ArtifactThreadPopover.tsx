@@ -1,0 +1,96 @@
+import { useEffect, useRef } from "react";
+import type {
+  ArtifactDetail,
+  ArtifactKind,
+  ArtifactReferenceContext,
+  ArtifactThread,
+} from "../../../shared/artifacts.ts";
+import type { ArtifactComparison } from "../artifact-comparison.ts";
+import { useTranslation } from "../i18n.ts";
+import { suspendKeys } from "../keys.ts";
+import { Button } from "../ui.tsx";
+import {
+  type ArtifactRefJump,
+  type ArtifactTargetJump,
+  ArtifactThreadCard,
+} from "./ArtifactThreads.tsx";
+
+// One conversation uses the same card, server mutations, and draft store as the
+// full panel. Its container owns only focus and dismissal, never discussion state.
+export function ArtifactThreadPopover({
+  thread,
+  agentLabels,
+  context,
+  artifactKind,
+  latestVersionSeq,
+  onLocate,
+  onJumpRef,
+  comparisons,
+  onCompare,
+  onExpand,
+  onClose,
+}: {
+  thread: ArtifactThread;
+  agentLabels?: ArtifactDetail["agentLabels"];
+  context: ArtifactReferenceContext;
+  artifactKind: ArtifactKind;
+  latestVersionSeq: number | null;
+  onLocate: ArtifactTargetJump;
+  onJumpRef: ArtifactRefJump;
+  comparisons?: ReadonlyMap<string, ArtifactComparison>;
+  onCompare?: (commentId: string) => void;
+  onExpand: () => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement;
+    const resume = suspendKeys();
+    root.current?.focus({ preventScroll: true });
+    return () => {
+      resume();
+      if (previous instanceof HTMLElement && previous.isConnected)
+        previous.focus({ preventScroll: true });
+    };
+  }, []);
+  return (
+    <div
+      ref={root}
+      role="dialog"
+      aria-label={t("threadPopover.thread")}
+      tabIndex={-1}
+      data-artifact-thread-popover
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onClose();
+        }
+      }}
+      className="r3-fade-slide-in flex max-h-full min-h-0 flex-col overflow-hidden rounded-lg border border-neutral-300 bg-white r3-floating outline-none dark:border-neutral-700 dark:bg-neutral-950"
+    >
+      <div className="flex shrink-0 items-center gap-2 border-b border-neutral-200 px-3 py-2 dark:border-neutral-800">
+        <span className="flex-1 text-sm font-semibold">{t("threadPopover.thread")}</span>
+        <Button variant="ghost" onClick={onExpand}>
+          {t("threadPopover.openDiscussion")}
+        </Button>
+        <Button variant="ghost" aria-label={t("threadPopover.closeThread")} onClick={onClose}>
+          ×
+        </Button>
+      </div>
+      <div className="min-h-0 overflow-y-auto">
+        <ArtifactThreadCard
+          thread={thread}
+          agentLabels={agentLabels}
+          context={context}
+          artifactKind={artifactKind}
+          latestVersionSeq={latestVersionSeq}
+          onLocate={onLocate}
+          onJumpRef={onJumpRef}
+          comparisons={comparisons}
+          onCompare={onCompare}
+        />
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,554 @@
+import type { Database } from "bun:sqlite";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import OAuth2Server from "@node-oauth/oauth2-server";
+import { AppError, type Principal, type Scope, scopes } from "../shared/contracts.ts";
+import { mcpOperationScopes } from "../shared/mcp-surface.ts";
+import { setSetting, setting } from "./storage.ts";
+
+export const hash = (text: string) => createHash("sha256").update(text).digest("hex");
+export const secret = () => randomBytes(32).toString("base64url");
+const equal = (a: string, b: string) =>
+  a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+const mcpScopes = [...mcpOperationScopes, "offline_access"];
+const apiScopes = [...scopes, "offline_access"];
+export const OWNER: Principal = { id: "owner", kind: "owner", scopes: ["admin"] };
+interface ClientRow {
+  id: string;
+  name: string;
+  redirects: string;
+  secret_hash: string | null;
+  method: string;
+  created_at: string;
+  revoked: number;
+}
+interface TokenRow {
+  hash: string;
+  refresh_hash: string;
+  client_id: string;
+  scopes: string;
+  expires: string;
+  refresh_expires: string;
+  resource: string;
+  revoked: number;
+  operator_name: string | null;
+}
+export class Auth {
+  private readonly oauth: OAuth2Server;
+  readonly resource: string;
+  readonly apiResource: string;
+  constructor(
+    private db: Database,
+    readonly baseUrl: string,
+    ownerKey: string,
+  ) {
+    if (ownerKey.length < 32 || ownerKey.length > 512) {
+      throw new AppError("invalid_owner_key", "The owner key must contain 32 to 512 characters");
+    }
+    this.resource = `${baseUrl}/mcp`;
+    this.apiResource = `${baseUrl}/api`;
+    const ownerHash = setting(db, "owner_key_hash");
+    if (!ownerHash) setSetting(db, "owner_key_hash", hash(ownerKey));
+    else if (!equal(ownerHash, hash(ownerKey)))
+      throw new AppError("owner_key_mismatch", "Owner key does not match this database");
+    this.oauth = new OAuth2Server({
+      authorizationCodeLifetime: 120,
+      accessTokenLifetime: 3600,
+      refreshTokenLifetime: 30 * 86400,
+      requireClientAuthentication: { authorization_code: false, refresh_token: false },
+      model: {
+        getClient: async (id: string, clientSecret?: string) => {
+          const c = this.client(id);
+          if (!c) return false;
+          if (clientSecret && (!c.secret_hash || !equal(c.secret_hash, hash(clientSecret))))
+            return false;
+          return {
+            id: c.id,
+            grants: ["authorization_code", "refresh_token"],
+            redirectUris: JSON.parse(c.redirects),
+          };
+        },
+        validateScope: async (
+          _user: OAuth2Server.User,
+          _client: OAuth2Server.Client,
+          scope?: string[],
+        ) => {
+          const selected = scope?.length ? scope : ["tasks:read"];
+          return selected.every((s) =>
+            (_user.resource === this.apiResource ? apiScopes : mcpScopes).includes(s),
+          )
+            ? selected
+            : false;
+        },
+        saveAuthorizationCode: async (
+          code: Pick<
+            OAuth2Server.AuthorizationCode,
+            | "authorizationCode"
+            | "codeChallenge"
+            | "codeChallengeMethod"
+            | "expiresAt"
+            | "redirectUri"
+            | "scope"
+          >,
+          client: OAuth2Server.Client,
+          user: OAuth2Server.User,
+        ) => {
+          const { authorizationCode, ...rest } = code;
+          db.query("INSERT INTO oauth_codes VALUES(?,?,?)").run(
+            hash(authorizationCode),
+            JSON.stringify({ ...rest, client, user, resource: user.resource }),
+            code.expiresAt.toISOString(),
+          );
+          return { ...code, client, user };
+        },
+        getAuthorizationCode: async (value: string) => {
+          const r = db
+            .query("SELECT data,expires FROM oauth_codes WHERE hash=?")
+            .get(hash(value)) as { data: string; expires: string } | null;
+          if (!r) return false;
+          const data = JSON.parse(r.data);
+          if (
+            !this.client(data.client.id) ||
+            ![this.resource, this.apiResource].includes(data.resource)
+          )
+            return false;
+          return { ...data, authorizationCode: value, expiresAt: new Date(r.expires) };
+        },
+        revokeAuthorizationCode: async (code: OAuth2Server.AuthorizationCode) =>
+          db.query("DELETE FROM oauth_codes WHERE hash=?").run(hash(code.authorizationCode))
+            .changes === 1,
+        saveToken: async (
+          token: OAuth2Server.Token,
+          client: OAuth2Server.Client,
+          user: OAuth2Server.User,
+        ) => {
+          if (!this.client(client.id))
+            throw new AppError("revoked_client", "Client access was revoked", 401);
+          if (!token.accessTokenExpiresAt || !token.refreshTokenExpiresAt || !token.refreshToken)
+            throw new Error("OAuth library returned an incomplete token record");
+          const offline = token.scope?.includes("offline_access");
+          db.query(
+            "INSERT INTO oauth_tokens(hash,refresh_hash,client_id,scopes,expires,refresh_expires,resource,revoked,operator_name) VALUES(?,?,?,?,?,?,?,0,?)",
+          ).run(
+            hash(token.accessToken),
+            offline ? hash(token.refreshToken) : null,
+            client.id,
+            JSON.stringify(token.scope),
+            token.accessTokenExpiresAt.toISOString(),
+            token.refreshTokenExpiresAt.toISOString(),
+            String(user.resource),
+            String(user.operator_name ?? this.client(client.id)?.name ?? "MCP client").slice(
+              0,
+              160,
+            ),
+          );
+          return {
+            ...token,
+            refreshToken: offline ? token.refreshToken : undefined,
+            refreshTokenExpiresAt: offline ? token.refreshTokenExpiresAt : undefined,
+            client,
+            user,
+          };
+        },
+        getAccessToken: async (value: string) => {
+          const row = this.tokenRow(value);
+          if (!row) return false;
+          return {
+            accessToken: value,
+            accessTokenExpiresAt: new Date(row.expires),
+            scope: JSON.parse(row.scopes),
+            client: { id: row.client_id, grants: ["authorization_code", "refresh_token"] },
+            user: { id: "owner", operator_name: row.operator_name, resource: row.resource },
+          };
+        },
+        getRefreshToken: async (value: string) => {
+          const row = db
+            .query("SELECT * FROM oauth_tokens WHERE refresh_hash=? AND revoked=0")
+            .get(hash(value)) as TokenRow | null;
+          if (
+            !row ||
+            !this.client(row.client_id) ||
+            ![this.resource, this.apiResource].includes(row.resource)
+          )
+            return false;
+          return {
+            refreshToken: value,
+            refreshTokenExpiresAt: new Date(row.refresh_expires),
+            scope: JSON.parse(row.scopes),
+            client: { id: row.client_id, grants: ["authorization_code", "refresh_token"] },
+            user: { id: "owner", operator_name: row.operator_name, resource: row.resource },
+          };
+        },
+        revokeToken: async (token: OAuth2Server.RefreshToken) =>
+          db
+            .query("UPDATE oauth_tokens SET revoked=1 WHERE refresh_hash=? AND revoked=0")
+            .run(hash(token.refreshToken)).changes === 1,
+      },
+    });
+  }
+  client(id: unknown) {
+    if (typeof id !== "string" || !id) return null;
+    return this.db
+      .query("SELECT * FROM oauth_clients WHERE id=? AND revoked=0")
+      .get(id) as ClientRow | null;
+  }
+  private tokenRow(value: string) {
+    const r = this.db
+      .query("SELECT * FROM oauth_tokens WHERE hash=? AND revoked=0")
+      .get(hash(value)) as TokenRow | null;
+    return r && [this.resource, this.apiResource].includes(r.resource) && this.client(r.client_id)
+      ? r
+      : null;
+  }
+  ownerKey(value: string) {
+    return equal(setting(this.db, "owner_key_hash") ?? "", hash(value));
+  }
+  principal(request: Request, mcp = false): Principal | null {
+    const authorization = request.headers.get("authorization");
+    if (authorization) {
+      if (!authorization.startsWith("Bearer ")) return null;
+      const token = authorization.slice(7);
+      if (!mcp && this.ownerKey(token))
+        return {
+          ...OWNER,
+          auth_binding: { kind: "owner", hash: hash(token) },
+          inlet: "api",
+        };
+      const row = this.tokenRow(token);
+      if (
+        row &&
+        row.resource === (mcp ? this.resource : this.apiResource) &&
+        Date.parse(row.expires) > Date.now()
+      )
+        return {
+          id: row.client_id,
+          kind: "client",
+          inlet: mcp ? "mcp" : "api",
+          operator_name: row.operator_name ?? this.client(row.client_id)?.name ?? "MCP client",
+          scopes: (JSON.parse(row.scopes) as string[]).filter(
+            (s) => s !== "offline_access",
+          ) as Scope[],
+          auth_binding: { kind: "oauth", hash: hash(token) },
+        };
+      return null;
+    }
+    if (mcp) return null;
+    const cookie = /(?:^|;\s*)allgather_session=([^;]+)/.exec(
+      request.headers.get("cookie") ?? "",
+    )?.[1];
+    if (cookie) {
+      const now = new Date().toISOString(),
+        row = this.db
+          .query(
+            "SELECT s.token_id,t.last_used_at,t.revoked_at FROM sessions s LEFT JOIN login_tokens t ON t.id=s.token_id WHERE s.hash=? AND s.expires>?",
+          )
+          .get(hash(cookie), now) as {
+          token_id: string | null;
+          last_used_at: string | null;
+          revoked_at: string | null;
+        } | null;
+      if (
+        row &&
+        (!row.token_id ||
+          (!row.revoked_at &&
+            row.last_used_at &&
+            Date.parse(row.last_used_at) > Date.now() - 14 * 86400000))
+      ) {
+        if (row.token_id && Date.parse(row.last_used_at!) < Date.now() - 60000)
+          this.db.query("UPDATE login_tokens SET last_used_at=? WHERE id=?").run(now, row.token_id);
+        return {
+          ...OWNER,
+          id: `browser-${hash(cookie).slice(0, 24)}`,
+          inlet: "browser",
+          auth_binding: { kind: "browser", hash: hash(cookie) },
+        };
+      }
+    }
+    return null;
+  }
+  createLoginToken(label = "Browser login", value = secret()) {
+    if (value.length < 32 || value.length > 512)
+      throw new AppError("invalid_login_token", "Login tokens must have 32 to 512 characters");
+    if (!label.trim() || label.length > 160)
+      throw new AppError("invalid_label", "Token label must have 1 to 160 characters");
+    const id = `login-${secret().slice(0, 16)}`,
+      now = new Date().toISOString();
+    this.db
+      .query("INSERT INTO login_tokens VALUES(?,?,?,?,?,NULL)")
+      .run(id, hash(value), label.trim(), now, now);
+    return { id, label: label.trim(), token: value };
+  }
+  hasLoginToken(value: string) {
+    return !!this.db.query("SELECT 1 FROM login_tokens WHERE hash=?").get(hash(value));
+  }
+  loginTokens() {
+    return this.db
+      .query(
+        "SELECT id,label,created_at,last_used_at,revoked_at FROM login_tokens ORDER BY created_at DESC",
+      )
+      .all();
+  }
+  revokeLoginToken(id: string) {
+    this.db
+      .transaction(() => {
+        this.db
+          .query("UPDATE login_tokens SET revoked_at=? WHERE id=?")
+          .run(new Date().toISOString(), id);
+        this.db.query("DELETE FROM sessions WHERE token_id=?").run(id);
+      })
+      .immediate();
+  }
+  signIn(token: string) {
+    const row = this.db
+      .query("SELECT id,last_used_at FROM login_tokens WHERE hash=? AND revoked_at IS NULL")
+      .get(hash(token)) as { id: string; last_used_at: string } | null;
+    if (!row || Date.parse(row.last_used_at) <= Date.now() - 14 * 86400000)
+      throw new AppError("unauthorized", "The login token is invalid, revoked, or inactive", 401);
+    const value = secret(),
+      now = new Date().toISOString();
+    this.db
+      .transaction(() => {
+        this.db.query("DELETE FROM sessions WHERE expires<=?").run(now);
+        this.db.query("UPDATE login_tokens SET last_used_at=? WHERE id=?").run(now, row.id);
+        this.db
+          .query("INSERT INTO sessions(hash,expires,token_id) VALUES(?,?,?)")
+          .run(hash(value), new Date(Date.now() + 30 * 86400000).toISOString(), row.id);
+      })
+      .immediate();
+    return `allgather_session=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${this.baseUrl.startsWith("https:") ? "; Secure" : ""}`;
+  }
+  signOut(request: Request) {
+    const c = /(?:^|;\s*)allgather_session=([^;]+)/.exec(request.headers.get("cookie") ?? "")?.[1];
+    if (c) this.db.query("DELETE FROM sessions WHERE hash=?").run(hash(c));
+  }
+  register(body: Record<string, unknown>) {
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      throw new AppError("invalid_client_metadata", "Provide a client metadata object");
+    }
+    if (
+      (
+        this.db.query("SELECT COUNT(*) AS n FROM oauth_clients WHERE revoked=0").get() as {
+          n: number;
+        }
+      ).n >= 100
+    )
+      throw new AppError("client_limit", "Remove old clients before registering another", 429);
+    const redirects = body.redirect_uris;
+    if (
+      !Array.isArray(redirects) ||
+      redirects.length === 0 ||
+      redirects.length > 10 ||
+      !redirects.every((r) => typeof r === "string" && this.validRedirect(r))
+    )
+      throw new AppError(
+        "invalid_redirect_uri",
+        "Use exact HTTPS callback URLs, or loopback HTTP for local testing",
+      );
+    const method = body.token_endpoint_auth_method ?? "none";
+    if (!["none", "client_secret_post", "client_secret_basic"].includes(String(method)))
+      throw new AppError("invalid_client_metadata", "Unsupported token authentication method");
+    if (
+      body.grant_types &&
+      (!Array.isArray(body.grant_types) ||
+        (body.grant_types as unknown[]).some(
+          (g) => !["authorization_code", "refresh_token"].includes(String(g)),
+        ))
+    )
+      throw new AppError(
+        "invalid_client_metadata",
+        "Only authorization code and refresh grants are available",
+      );
+    if (body.response_types && JSON.stringify(body.response_types) !== '["code"]')
+      throw new AppError("invalid_client_metadata", "Only code responses are available");
+    const id = `client-${secret()}`,
+      clientSecret = method === "none" ? undefined : secret();
+    const name =
+      typeof body.client_name === "string" ? body.client_name.trim().slice(0, 120) : "MCP client";
+    this.db
+      .query("INSERT INTO oauth_clients VALUES(?,?,?,?,?,?,0)")
+      .run(
+        id,
+        name,
+        JSON.stringify(redirects),
+        clientSecret ? hash(clientSecret) : null,
+        String(method),
+        new Date().toISOString(),
+      );
+    return {
+      client_id: id,
+      client_secret: clientSecret,
+      client_id_issued_at: Math.floor(Date.now() / 1000),
+      client_secret_expires_at: clientSecret ? 0 : undefined,
+      client_name: name,
+      redirect_uris: redirects,
+      grant_types: ["authorization_code", "refresh_token"],
+      response_types: ["code"],
+      token_endpoint_auth_method: method,
+    };
+  }
+  private validRedirect(value: string) {
+    try {
+      const u = new URL(value);
+      return (
+        !u.username &&
+        !u.password &&
+        !u.hash &&
+        (u.protocol === "https:" ||
+          (u.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname)))
+      );
+    } catch {
+      return false;
+    }
+  }
+  authorizeInfo(params: Record<string, string>) {
+    const c = this.client(params.client_id);
+    if (!c) throw new AppError("invalid_client", "Unknown or revoked OAuth client");
+    if (!(JSON.parse(c.redirects) as string[]).includes(params.redirect_uri))
+      throw new AppError("invalid_redirect_uri", "Callback URL is not registered");
+    if (
+      params.response_type !== "code" ||
+      params.code_challenge_method !== "S256" ||
+      !/^[A-Za-z0-9_-]{43}$/.test(params.code_challenge ?? "")
+    )
+      throw new AppError("invalid_request", "Authorization code with S256 PKCE is required");
+    if (![this.resource, this.apiResource].includes(params.resource))
+      throw new AppError(
+        "invalid_target",
+        "The resource must name this server’s MCP or API endpoint",
+      );
+    const selected = (params.scope ?? "tasks:read").split(" ").filter(Boolean);
+    if (
+      !selected.every((s) =>
+        (params.resource === this.apiResource ? apiScopes : mcpScopes).includes(s),
+      )
+    )
+      throw new AppError("invalid_scope", "Requested scopes are not available");
+    return { client_id: c.id, name: c.name, scopes: selected, redirect_uri: params.redirect_uri };
+  }
+  async authorize(request: Request, params: Record<string, string>) {
+    const info = this.authorizeInfo(params);
+    const operatorName = params.operator_name?.trim() || info.name;
+    if (operatorName.length > 160)
+      throw new AppError("invalid_operator_name", "Operator name must have at most 160 characters");
+    if (this.principal(request)?.inlet !== "browser")
+      throw new AppError("unauthorized", "Sign in before granting access", 401);
+    const response = new OAuth2Server.Response();
+    await this.oauth.authorize(
+      new OAuth2Server.Request({
+        method: "GET",
+        headers: Object.fromEntries(request.headers),
+        query: params,
+        body: {},
+      }),
+      response,
+      {
+        authenticateHandler: {
+          handle: () => ({ id: "owner", operator_name: operatorName, resource: params.resource }),
+        },
+        allowEmptyState: true,
+      },
+    );
+    const location = new URL(response.headers?.location ?? "");
+    location.searchParams.set("iss", this.baseUrl);
+    return { redirect_uri: location.toString() };
+  }
+  async exchange(request: Request, body: Record<string, string>) {
+    if (!["authorization_code", "refresh_token"].includes(body.grant_type))
+      throw new AppError("unsupported_grant_type", "Unsupported grant type");
+    if (![this.resource, this.apiResource].includes(body.resource))
+      throw new AppError(
+        "invalid_target",
+        "The resource must name this server’s MCP or API endpoint",
+      );
+    const stored =
+      body.grant_type === "authorization_code"
+        ? (this.db
+            .query("SELECT data FROM oauth_codes WHERE hash=?")
+            .get(hash(body.code ?? "")) as { data: string } | null)
+        : (this.db
+            .query("SELECT resource FROM oauth_tokens WHERE refresh_hash=? AND revoked=0")
+            .get(hash(body.refresh_token ?? "")) as { resource: string } | null);
+    if (stored) {
+      const resource = "data" in stored ? JSON.parse(stored.data).resource : stored.resource;
+      if (resource !== body.resource)
+        throw new AppError("invalid_target", "This grant belongs to a different resource");
+    }
+    let id = body.client_id,
+      clientSecret = body.client_secret;
+    const basic = request.headers.get("authorization");
+    if (basic?.startsWith("Basic ")) {
+      const decoded = Buffer.from(basic.slice(6), "base64").toString();
+      const split = decoded.indexOf(":");
+      id = decodeURIComponent(decoded.slice(0, split));
+      clientSecret = decodeURIComponent(decoded.slice(split + 1));
+    }
+    const client = this.client(id);
+    if (
+      !client ||
+      (client.method !== "none" &&
+        (!clientSecret || !client.secret_hash || !equal(client.secret_hash, hash(clientSecret))))
+    )
+      throw new AppError("invalid_client", "Client authentication failed", 401);
+    if (client.method === "client_secret_basic" && !basic?.startsWith("Basic "))
+      throw new AppError("invalid_client", "HTTP Basic client authentication is required", 401);
+    if (client.method === "client_secret_post" && basic)
+      throw new AppError("invalid_client", "Use client_secret_post authentication", 401);
+    const response = new OAuth2Server.Response();
+    await this.oauth.token(
+      new OAuth2Server.Request({
+        method: "POST",
+        headers: {
+          ...Object.fromEntries(request.headers),
+          "content-type": "application/x-www-form-urlencoded",
+          "content-length": String(Buffer.byteLength(new URLSearchParams(body).toString())),
+        },
+        query: {},
+        body,
+      }),
+      response,
+    );
+    return response.body as Record<string, unknown>;
+  }
+  clients() {
+    return this.db
+      .query(
+        "SELECT id,name,redirects,method,created_at,revoked FROM oauth_clients ORDER BY created_at DESC",
+      )
+      .all() as Omit<ClientRow, "secret_hash">[];
+  }
+  revoke(id: string) {
+    this.db
+      .transaction(() => {
+        this.db.query("UPDATE oauth_clients SET revoked=1 WHERE id=?").run(id);
+        this.db.query("UPDATE oauth_tokens SET revoked=1 WHERE client_id=?").run(id);
+      })
+      .immediate();
+  }
+  revokeToken(value: string) {
+    this.db
+      .query("UPDATE oauth_tokens SET revoked=1 WHERE hash=? OR refresh_hash=?")
+      .run(hash(value), hash(value));
+  }
+  metadata() {
+    return {
+      issuer: this.baseUrl,
+      authorization_endpoint: `${this.baseUrl}/oauth/authorize`,
+      token_endpoint: `${this.baseUrl}/oauth/token`,
+      registration_endpoint: `${this.baseUrl}/oauth/register`,
+      revocation_endpoint: `${this.baseUrl}/oauth/revoke`,
+      response_types_supported: ["code"],
+      grant_types_supported: ["authorization_code", "refresh_token"],
+      code_challenge_methods_supported: ["S256"],
+      token_endpoint_auth_methods_supported: ["none", "client_secret_post", "client_secret_basic"],
+      scopes_supported: apiScopes,
+      authorization_response_iss_parameter_supported: true,
+    };
+  }
+  resourceMetadata() {
+    return {
+      resource: this.resource,
+      authorization_servers: [this.baseUrl],
+      scopes_supported: mcpScopes.filter((s) => s !== "offline_access"),
+      bearer_methods_supported: ["header"],
+    };
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "catalog_push": {
+    "jsonrpc": "2.0",
+    "id": "catalog:attempt-1",
+    "method": "catalog.push",
+    "params": {
+      "revision": 7,
+      "projects": [{ "id": "project-web", "name": "Web" }],
+      "repositories": [
+        {
+          "id": "repo-main",
+          "name": "Monorepo",
+          "project_ids": ["project-web"],
+          "upstream_url": "https://example.invalid/team/mono.git",
+          "url_aliases": ["git@example.invalid:team/mono.git"]
+        }
+      ]
+    }
+  },
+  "catalog_ack": { "jsonrpc": "2.0", "id": "catalog:attempt-1", "result": { "revision": 7 } },
+  "catalog_delta": {
+    "jsonrpc": "2.0",
+    "id": "catalog:attempt-2",
+    "method": "catalog.delta",
+    "params": {
+      "base_revision": 7,
+      "revision": 8,
+      "projects": { "upserts": [{ "id": "project-web", "name": "Web app" }], "removed": [] },
+      "repositories": { "upserts": [], "removed": [] }
+    }
+  },
+  "catalog_resync": { "jsonrpc": "2.0", "method": "catalog.resync", "params": {} },
+  "checkout_snapshot": {
+    "jsonrpc": "2.0",
+    "method": "checkout.snapshot",
+    "params": {
+      "seq": 0,
+      "full": true,
+      "records": [
+        {
+          "id": "checkout-web",
+          "repository_id": "repo-main",
+          "path": "/work/mono-web",
+          "system": "git",
+          "branch": "feature/web",
+          "head": "0123456789012345678901234567890123456789",
+          "dirty": true,
+          "conflicts": false,
+          "locked": false,
+          "prunable": false,
+          "available": true,
+          "tracking_ref": "origin/main",
+          "ahead": 1,
+          "behind": 0,
+          "observed_at": 1793750400000,
+          "revision": 1
+        }
+      ]
+    }
+  },
+  "checkout_ack": { "jsonrpc": "2.0", "method": "checkout.ack", "params": { "cursor": 0 } },
+  "checkout_delta": {
+    "jsonrpc": "2.0",
+    "method": "checkout.delta",
+    "params": { "seq": 1, "base_seq": 0, "upserts": [], "removed": ["checkout-web"] }
+  },
+  "checkout_resync": { "jsonrpc": "2.0", "method": "checkout.resync", "params": {} },
+  "status_with_checkout": {
+    "jsonrpc": "2.0",
+    "method": "state.push",
+    "params": {
+      "seq": 0,
+      "full": true,
+      "records": [
+        {
+          "id": "tower-web-session",
+          "harness": "codex",
+          "cwd": "/work/mono-web",
+          "checkout_id": "checkout-web"
+        }
+      ]
+    }
+  },
+  "status_checkout_null": {
+    "jsonrpc": "2.0",
+    "method": "state.delta",
+    "params": {
+      "seq": 1,
+      "base_seq": 0,
+      "upserts": [{ "id": "tower-web-session", "set": { "checkout_id": null }, "unset": [] }],
+      "removed": []
+    }
+  },
+  "status_checkout_unset": {
+    "jsonrpc": "2.0",
+    "method": "state.delta",
+    "params": {
+      "seq": 2,
+      "base_seq": 1,
+      "upserts": [{ "id": "tower-web-session", "set": {}, "unset": ["checkout_id"] }],
+      "removed": []
+    }
+  }
+}

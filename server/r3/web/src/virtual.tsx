@@ -1,0 +1,385 @@
+// Per-file row virtualization inside the one scroll pane. Row heights are NOT
+// measured — every row is one line height; a shorter/taller row drifts
+// scroll-to-line and desyncs split columns.
+//
+// The ArtifactView content pane wraps its children in <VirtualPaneProvider>, which
+// hands down the scroll element, a `layoutVersion` that bumps when the stacked
+// height changes (a fold/unfold/font change shifts every lower file's
+// scrollMargin), and a scroll-to-line registry so ArtifactView's locate/pin jumps
+// can bring a virtualized-away row on screen before highlighting it.
+
+import {
+  elementScroll,
+  observeElementOffset,
+  observeElementRect,
+  type Range,
+  Virtualizer,
+  type VirtualizerOptions,
+} from "@tanstack/virtual-core";
+import {
+  createContext,
+  Fragment,
+  type ReactNode,
+  type RefObject,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { SCROLL_RATIO, stickyBandPx } from "./pane.ts";
+import { useFontSize } from "./settings.ts";
+import type { DiffSide } from "./types.ts";
+
+// Files with fewer rows than this render in full — the mounted window of a
+// virtualized file is already ~viewport + 2·overscan rows (rounded out to whole
+// BLOCKs, below), so virtualizing a short file saves nothing and only adds
+// spacer machinery. Comfortably above the window so virtualization only kicks in
+// where it actually pays.
+const VIRTUALIZE_MIN = 150;
+const OVERSCAN = 24;
+
+// Rows mount in fixed BLOCKS. A virtualizer recomputes its window on every
+// scroll event, so an unquantized window slides by a row or two per frame — and
+// every shift mutates this pane's DOM, which repaints the whole root layer
+// (~9ms measured, the same cost whether the window moved 1 row or 15). Snapping
+// the window to BLOCK boundaries makes the mounted set — and the two spacer
+// heights — change only when the viewport crosses one: once per BLOCK rows per
+// edge (the two edges sit on different phases, so ~BLOCK/2 in practice) instead
+// of once per row scrolled.
+const BLOCK = 48;
+
+// The block-snapped [first, last] row window for a visible range. OVERSCAN is
+// folded INTO the block math rather than added as a spare block on each side:
+// the window then always reaches at least `overscan` rows past the viewport (at
+// most overscan + BLOCK - 1) — the guarantee that matters — while mounting less
+// than a whole extra block on each side would.
+function blockRange(
+  startIndex: number,
+  endIndex: number,
+  overscan: number,
+  count: number,
+): [first: number, last: number] {
+  if (count <= 0) return [0, -1];
+  const first = Math.max(0, Math.floor((startIndex - overscan) / BLOCK) * BLOCK);
+  const last = Math.min(count - 1, Math.ceil((endIndex + overscan + 1) / BLOCK) * BLOCK - 1);
+  return [first, Math.max(first, last)];
+}
+
+// Fed to the virtualizer as its rangeExtractor, so getVirtualItems() returns
+// EXACTLY the quantized set and the spacer math below (which reads the first and
+// last item, never the raw range) stays exact.
+function blockExtractor(range: Range): number[] {
+  const [first, last] = blockRange(range.startIndex, range.endIndex, range.overscan, range.count);
+  const out: number[] = [];
+  for (let i = first; i <= last; i++) out.push(i);
+  return out;
+}
+
+// virtual-core driven directly, because TanStack's React adapter hard-wires
+// `onChange -> flushSync(rerender)`: every scroll event that moves the visible
+// range by ONE row re-renders synchronously and mutates the DOM, which is the
+// repaint above (~20ms of main thread per frame on a 208-file review). This
+// mirrors the adapter's lifecycle — construct once, `_didMount`, `_willUpdate` +
+// `setOptions` per render — but re-renders only when the BLOCK window actually
+// moves, and never on a bare `isScrolling` flip. No flushSync: the window
+// already reaches `overscan` rows past the viewport, so landing a frame later
+// can't expose a gap.
+type BlockVirtualizerOptions = Omit<
+  VirtualizerOptions<HTMLElement, Element>,
+  "observeElementRect" | "observeElementOffset" | "rangeExtractor" | "onChange"
+>;
+
+function useBlockVirtualizer(options: BlockVirtualizerOptions): Virtualizer<HTMLElement, Element> {
+  const [, bump] = useState(0);
+  const windowRef = useRef<[number, number]>([0, -1]);
+  const resolved: VirtualizerOptions<HTMLElement, Element> = {
+    observeElementRect,
+    observeElementOffset,
+    rangeExtractor: blockExtractor,
+    ...options,
+    onChange: (v) => {
+      const r = v.range;
+      const next: [number, number] = r
+        ? blockRange(r.startIndex, r.endIndex, v.options.overscan, v.options.count)
+        : [0, -1];
+      if (next[0] === windowRef.current[0] && next[1] === windowRef.current[1]) return;
+      windowRef.current = next;
+      bump((n) => n + 1);
+    },
+  };
+  const [instance] = useState(() => new Virtualizer(resolved));
+  instance.setOptions(resolved);
+  useLayoutEffect(() => instance._didMount(), [instance]);
+  useLayoutEffect(() => {
+    instance._willUpdate();
+  });
+  return instance;
+}
+
+export interface ScrollToLineOpts {
+  align?: "start" | "center" | "end";
+}
+
+// How much pane height to leave ABOVE the scrolled-to row, per `align`.
+//
+// No align keeps the historical landing — SCROLL_RATIO (30%) down the pane, the
+// same constant the DOM-scroll path uses (pane.ts), so a virtualized jump and a
+// non-virtualized one feel identical. Every existing locate/pin jump is tuned to
+// that, so it stays the default.
+//
+// `start` has to clear the sticky header stack or the row lands *under* the
+// chrome; `center`/`end` sit well clear of it, so they're plain arithmetic.
+function leadFor(pane: HTMLElement, rowH: number, align: ScrollToLineOpts["align"]): number {
+  switch (align) {
+    case "start":
+      return stickyBandPx(pane);
+    case "center":
+      return (pane.clientHeight - rowH) / 2;
+    case "end":
+      return pane.clientHeight - rowH;
+    default:
+      return pane.clientHeight * SCROLL_RATIO;
+  }
+}
+// Bring `line` (on `side`, for diffs) into view within its file. Returns false
+// when the file isn't virtualized / the line isn't in this list, so the caller
+// can fall back to its DOM-based scroll.
+export type ScrollToLineFn = (
+  line: number,
+  side: DiffSide | null,
+  opts?: ScrollToLineOpts,
+) => boolean;
+
+export type ScrollToLine = (
+  key: string,
+  line: number,
+  side: DiffSide | null,
+  opts?: ScrollToLineOpts,
+) => boolean;
+
+interface VirtualPaneValue {
+  scrollRef: RefObject<HTMLElement | null>;
+  // Bumped whenever the stacked content height changes (fold, font size, file
+  // membership) — every file below the change has a new scrollMargin.
+  layoutVersion: number;
+  register: (key: string, fn: ScrollToLineFn | null) => void;
+}
+
+const VirtualPaneContext = createContext<VirtualPaneValue | null>(null);
+
+// A scroll-to-line registry the PANE OWNER holds (not the provider): the owner
+// (ArtifactView) renders the provider as a child, so its own locate/pin jumps run
+// above the provider and can't consume its context — instead it owns the
+// registry here and hands it to the provider. `scrollToLine(key, …)` reaches a
+// virtualized file's row that querySelector would otherwise miss (unmounted).
+export function useVirtualPaneController(): {
+  registry: RefObject<Map<string, ScrollToLineFn>>;
+  scrollToLine: ScrollToLine;
+} {
+  const registry = useRef(new Map<string, ScrollToLineFn>());
+  const scrollToLine = useCallback<ScrollToLine>(
+    (key, line, side, opts) => registry.current.get(key)?.(line, side, opts) ?? false,
+    [],
+  );
+  return { registry, scrollToLine };
+}
+
+// Wrap the scroll pane's children. `scrollRef` is the pane (the vertical scroll
+// container); `registry` is the owner's scroll-to-line map. This observes the
+// wrapped content's height so folds/resizes flow out as a layoutVersion bump.
+export function VirtualPaneProvider({
+  scrollRef,
+  registry,
+  children,
+}: {
+  scrollRef: RefObject<HTMLElement | null>;
+  registry: RefObject<Map<string, ScrollToLineFn>>;
+  children: ReactNode;
+}) {
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const [layoutVersion, setLayoutVersion] = useState(0);
+
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    // The wrapped content's box height = the stacked files' total height. It's
+    // invariant while scrolling (each file's container is a fixed totalSize), so
+    // this only fires on a real layout change — a fold, a font-size change, a
+    // membership edit — exactly when scrollMargins move.
+    const ro = new ResizeObserver(() => setLayoutVersion((v) => v + 1));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const register = useCallback(
+    (key: string, fn: ScrollToLineFn | null) => {
+      if (fn) registry.current.set(key, fn);
+      else registry.current.delete(key);
+    },
+    [registry],
+  );
+
+  const value = useMemo<VirtualPaneValue>(
+    () => ({ scrollRef, layoutVersion, register }),
+    [scrollRef, layoutVersion, register],
+  );
+  return (
+    <VirtualPaneContext.Provider value={value}>
+      <div ref={contentRef}>{children}</div>
+    </VirtualPaneContext.Provider>
+  );
+}
+
+// The registry key for a file's virtualizer: the round seq (diff rounds can
+// repeat a path) + the path. Kept in one place so the provider and callers agree.
+export function fileScrollKey(patchSeq: number | null | undefined, file: string): string {
+  return `${patchSeq ?? ""}:${file}`;
+}
+
+// Virtualize a file's rows. `renderRow(index)` renders the caller's own row
+// (LineRow / diff Row) unchanged; `itemKey` gives each a stable React key so the
+// sliding window reconciles cleanly. `resolveIndex(line, side)` maps a source
+// line to this list's row index for scroll-to-line (default: index === line-1,
+// the files-view case). Renders every row (no windowing) when there's no pane
+// (an isolated preview), the pane hasn't mounted, or the file is short.
+export function VirtualLines({
+  count,
+  itemKey,
+  renderRow,
+  className,
+  scrollKey,
+  resolveIndex,
+}: {
+  count: number;
+  itemKey: (index: number) => string | number;
+  renderRow: (index: number) => ReactNode;
+  className?: string;
+  scrollKey?: string;
+  resolveIndex?: (line: number, side: DiffSide | null) => number | null;
+}) {
+  const pane = useContext(VirtualPaneContext);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const fontSize = useFontSize();
+
+  // The scroll element only exists after the pane's first commit. Read it
+  // immediately for bodies mounted later (review-level progressive hydration),
+  // while the initial page render still takes the null→element effect path.
+  const [scrollEl, setScrollEl] = useState<HTMLElement | null>(
+    () => pane?.scrollRef.current ?? null,
+  );
+  useLayoutEffect(() => {
+    setScrollEl(pane?.scrollRef.current ?? null);
+  }, [pane]);
+
+  const enabled = !!pane && !!scrollEl && count >= VIRTUALIZE_MIN;
+
+  const [scrollMargin, setScrollMargin] = useState(0);
+  // Re-measure the file's offset within the pane whenever layout above it could
+  // have moved: a fold/resize (layoutVersion), a font-size change, or a change in
+  // this file's own row count. Cheap (two rects + scrollTop), never on scroll.
+  // layoutVersion/fontSize/count are intentional re-measure triggers, not read here.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: layout/font/count are re-measure triggers
+  useLayoutEffect(() => {
+    if (!enabled) return;
+    const c = containerRef.current;
+    const s = scrollEl;
+    if (!c || !s) return;
+    const m = c.getBoundingClientRect().top - s.getBoundingClientRect().top + s.scrollTop;
+    setScrollMargin((prev) => (Math.abs(prev - m) > 0.5 ? m : prev));
+  }, [enabled, scrollEl, pane?.layoutVersion, fontSize, count]);
+
+  const virtualizer = useBlockVirtualizer({
+    // Without this the virtualizer subscribes even for a file we render whole:
+    // one ResizeObserver plus scroll/touchstart/touchend listeners on the ONE
+    // shared pane, per file, and a range recompute per instance on every scroll
+    // event. A 120-file review paid 120 observers and 360 listeners for
+    // nothing.
+    enabled,
+    count,
+    getScrollElement: () => scrollEl,
+    // A body can hydrate while the shared pane is already thousands of pixels
+    // down. Seed from the live scrollTop so the first window isn't computed at
+    // offset 0 (empty items until the next scroll event). The handshake still
+    // tries to write that offset into the pane — suppress connection/public
+    // writes (no `adjustments`); r3 never uses scrollToIndex, and row jumps use
+    // the exact pane calculation below. Measurement adjustments keep elementScroll.
+    initialOffset: () => scrollEl?.scrollTop ?? 0,
+    scrollToFn: (offset, options, instance) => {
+      if (options.adjustments == null) return;
+      elementScroll(offset, options, instance);
+    },
+    // Every row is one mono line whose height is text-xs's 1rem line-height = the
+    // root font size, so a FIXED size is exact for all of them (callers keep their
+    // rows uniform — a diff's hunk separator is sized like a code row). Deliberately
+    // NO measureElement: measuring a row while its file is folded (clipped inside a
+    // 0-height Collapse) reports a bogus height and poisons scrollToIndex.
+    estimateSize: () => fontSize,
+    // Read back by blockExtractor/onChange (via `options.overscan`) — the block
+    // math is the only consumer; nothing here uses the default extractor.
+    overscan: OVERSCAN,
+    scrollMargin,
+    getItemKey: itemKey,
+  });
+
+  // Register scroll-to-line so ArtifactView can reach a virtualized-away row.
+  useEffect(() => {
+    if (!pane || !scrollKey) return;
+    if (!enabled) {
+      pane.register(scrollKey, null);
+      return;
+    }
+    const fn: ScrollToLineFn = (line, side, opts) => {
+      const idx = resolveIndex ? resolveIndex(line, side) : line - 1;
+      if (idx == null || idx < 0 || idx >= count) return false;
+      const c = containerRef.current;
+      const s = scrollEl;
+      if (!c || !s) return false;
+      // Compute the row's content offset from the container's LIVE position
+      // (getBoundingClientRect + scrollTop) plus idx·rowHeight, and scroll the
+      // pane there ourselves. Deliberately NOT virtualizer.scrollToIndex /
+      // getOffsetForIndex: those read the virtualizer's internal scrollMargin,
+      // which lags during a fold/unfold and sent the jump wildly off. The live
+      // rect is always right, so re-issuing this each frame (see ArtifactView)
+      // converges as an unfolding file settles. Where in the pane the line lands
+      // is `align`'s call (leadFor above); unset = ~30% down.
+      const rowTop = c.getBoundingClientRect().top - s.getBoundingClientRect().top + s.scrollTop;
+      const target = rowTop + idx * fontSize - leadFor(s, fontSize, opts?.align);
+      s.scrollTo({ top: Math.max(0, target) });
+      return true;
+    };
+    pane.register(scrollKey, fn);
+    return () => pane.register(scrollKey, null);
+  }, [pane, scrollKey, enabled, resolveIndex, count, scrollEl, fontSize]);
+
+  if (!enabled) {
+    return (
+      <div ref={containerRef} className={className}>
+        {Array.from({ length: count }, (_, i) => (
+          <Fragment key={itemKey(i)}>{renderRow(i)}</Fragment>
+        ))}
+      </div>
+    );
+  }
+
+  const items = virtualizer.getVirtualItems();
+  const total = virtualizer.getTotalSize();
+  // Spacer heights are LOCAL to this container (virtualItem.start/end are measured
+  // from the scroll origin and include scrollMargin, so subtract it back out).
+  const topPad = items.length ? items[0].start - scrollMargin : 0;
+  const bottomPad = items.length ? total - (items[items.length - 1].end - scrollMargin) : total;
+
+  return (
+    <div ref={containerRef} className={className}>
+      <div aria-hidden style={{ height: topPad }} />
+      {items.map((vi) => (
+        // Fixed-size rows, so no measure wrapper — the caller's row (already
+        // min-w-full) renders straight into the flow between the spacers.
+        <Fragment key={vi.key}>{renderRow(vi.index)}</Fragment>
+      ))}
+      <div aria-hidden style={{ height: bottomPad }} />
+    </div>
+  );
+}

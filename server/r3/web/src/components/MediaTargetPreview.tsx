@@ -1,0 +1,93 @@
+import { useEffect, useState } from "react";
+import type { MediaBox } from "../../../shared/artifacts.ts";
+import { useArtifactClient } from "../artifact-ui-context.tsx";
+import { useTranslation } from "../i18n.ts";
+import type { EditableImage } from "./MessageAttachments.tsx";
+import { imageBlob } from "./MessageAttachments.tsx";
+
+export function MediaBoxOverlay({ box }: { box: MediaBox }) {
+  return (
+    <div
+      aria-hidden="true"
+      data-media-box
+      className="pointer-events-none absolute border-2 border-primary-500 bg-primary-500/5"
+      style={{
+        left: `${box.x * 100}%`,
+        top: `${box.y * 100}%`,
+        width: `${box.width * 100}%`,
+        height: `${box.height * 100}%`,
+      }}
+    />
+  );
+}
+
+export function useMediaImage(image?: EditableImage) {
+  const artifactApi = useArtifactClient();
+  const [url, setUrl] = useState("");
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let alive = true;
+    let held = "";
+    setUrl("");
+    setError("");
+    if (image)
+      void imageBlob(image, artifactApi.attachment)
+        .then((blob) => {
+          if (!alive) return;
+          held = URL.createObjectURL(blob);
+          setUrl(held);
+        })
+        .catch((error) => {
+          if (alive) setError(error.message);
+        });
+    const clear = () => {
+      alive = false;
+      URL.revokeObjectURL(held);
+      setUrl("");
+    };
+    window.addEventListener("r3-images-cleared", clear);
+    return () => {
+      window.removeEventListener("r3-images-cleared", clear);
+      clear();
+    };
+  }, [image, artifactApi]);
+  return { url, error };
+}
+
+export function MediaTargetPreview({ image, box }: { image: EditableImage; box: MediaBox }) {
+  const { t } = useTranslation();
+  const { url, error } = useMediaImage(image);
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="px-3">
+      <div
+        className={expanded ? "w-full" : "w-32"}
+        style={{ aspectRatio: `${image.width} / ${image.height}` }}
+      >
+        {url ? (
+          <button
+            type="button"
+            className="relative block w-full"
+            title={t("common.viewSavedFrame")}
+            aria-label={t("common.viewSavedFrame")}
+            aria-expanded={expanded}
+            onClick={() => setExpanded(!expanded)}
+          >
+            <img
+              src={url}
+              alt={t("mediaTargetPreview.savedMediaTarget")}
+              width={image.width}
+              height={image.height}
+              className="block w-full"
+            />
+            <MediaBoxOverlay box={box} />
+          </button>
+        ) : (
+          <p role={error ? "alert" : "status"} className="text-xs text-neutral-500">
+            {error || t("mediaTargetPreview.loadingSavedFrame")}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}

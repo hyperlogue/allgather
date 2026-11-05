@@ -1,0 +1,33 @@
+// Persisted external store: one value mirrored to localStorage via useSyncExternalStore.
+
+import { useSyncExternalStore } from "react";
+import { readDisplayPreference, writeDisplayPreference } from "./display-storage.ts";
+
+export function persistedStore<T>(
+  key: string,
+  opts: {
+    load: (raw: string | null) => T; // parse the persisted string (null = unset)
+    save?: (value: T) => string | null; // serialize; return null to remove the key
+    onSet?: (value: T) => void; // side effect on set (e.g. a CSS var) — not on load
+  },
+) {
+  const save = opts.save ?? ((v: T) => String(v));
+  let value = opts.load(readDisplayPreference(key));
+  const listeners = new Set<() => void>();
+  const get = () => value;
+  const set = (next: T) => {
+    value = next;
+    const raw = save(value);
+    writeDisplayPreference(key, raw);
+    opts.onSet?.(value);
+    for (const l of listeners) l();
+  };
+  // Stable subscribe reference so consumers don't unsubscribe/resubscribe on
+  // every render (a fresh inline arrow would).
+  const subscribe = (cb: () => void) => {
+    listeners.add(cb);
+    return () => listeners.delete(cb);
+  };
+  const use = () => useSyncExternalStore(subscribe, get);
+  return { get, set, use };
+}

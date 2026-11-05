@@ -1,0 +1,200 @@
+import { type ReactNode, useCallback, useRef, useState } from "react";
+import { useTranslation } from "../i18n.ts";
+import type { DiscussionPanelMode } from "../settings.ts";
+import { cn, StrokeIcon, useResizableWidth } from "../ui.tsx";
+import { useDiscussionPanelMotion } from "../useDiscussionPanelMotion.ts";
+import { type PanelEdge, useFloatingPanel } from "../useFloatingPanel.ts";
+import { DiscussionPanelControls } from "./DiscussionPanelControls.tsx";
+
+const edges: [PanelEdge, string][] = [
+  ["n", "inset-x-2 -top-1 h-2 cursor-n-resize"],
+  ["s", "inset-x-2 -bottom-1 h-2 cursor-s-resize"],
+  ["w", "inset-y-2 -left-1 w-2 cursor-w-resize"],
+  ["e", "inset-y-2 -right-1 w-2 cursor-e-resize"],
+  ["nw", "-top-1 -left-1 size-3 cursor-nw-resize"],
+  ["ne", "-top-1 -right-1 size-3 cursor-ne-resize"],
+  ["sw", "-bottom-1 -left-1 size-3 cursor-sw-resize"],
+  ["se", "-bottom-1 -right-1 size-4 cursor-se-resize"],
+];
+
+// Desktop container only. The mobile sheet owns its geometry and gestures.
+export function ArtifactDiscussionPanel({
+  locked = false,
+  mode,
+  onModeChange,
+  children,
+}: {
+  locked?: boolean;
+  mode: DiscussionPanelMode;
+  onModeChange: (mode: DiscussionPanelMode) => void;
+  children: (controls: ReactNode) => ReactNode;
+}) {
+  const { t } = useTranslation();
+  const containerRef = useRef<HTMLElement | null>(null);
+  const dock = useResizableWidth("r3-feedback-width", {
+    min: 300,
+    max: 700,
+    defaultFraction: 0.382,
+    containerRef,
+  });
+  const [lastVisibleMode, setLastVisibleMode] = useState<Exclude<DiscussionPanelMode, "hidden">>(
+    mode === "hidden" ? "expanded" : mode,
+  );
+  if (mode !== "hidden" && mode !== lastVisibleMode) setLastVisibleMode(mode);
+  const presentation = mode === "hidden" ? lastVisibleMode : mode;
+  const floating = presentation === "floating";
+  const hidden = mode === "hidden";
+  const pane = useFloatingPanel(containerRef, mode === "floating", dock.width);
+  const motion = useDiscussionPanelMotion(mode, pane.rect, dock.width);
+  const motionRef = motion.ref;
+  const setPanel = useCallback(
+    (node: HTMLElement | null) => {
+      containerRef.current = node?.parentElement ?? null;
+      motionRef.current = node;
+    },
+    [motionRef],
+  );
+  const changeMode = (next: DiscussionPanelMode) => {
+    motion.capture();
+    onModeChange(next);
+  };
+  const controls = (
+    <>
+      {floating && (
+        <button
+          type="button"
+          aria-label={t("discussionPanel.moveDiscussion")}
+          title={t("discussionPanel.dragToMoveArrowKeysMoveShift")}
+          onKeyDown={(event) => {
+            motion.cancel();
+            pane.key(event);
+          }}
+          data-discussion-drag
+          className="flex size-6 shrink-0 touch-none cursor-grab items-center justify-center rounded text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
+        >
+          <StrokeIcon className="size-4">
+            <path
+              d="M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01"
+              strokeWidth="3"
+              strokeLinecap="round"
+            />
+          </StrokeIcon>
+        </button>
+      )}
+      <DiscussionPanelControls disabled={locked} mode={presentation} onChange={changeMode} />
+    </>
+  );
+  return (
+    <aside
+      ref={setPanel}
+      data-discussion-mode={mode}
+      inert={hidden}
+      className={cn(
+        "border-neutral-300 bg-white dark:border-neutral-700 dark:bg-neutral-950",
+        floating
+          ? "absolute z-20 rounded-lg border r3-floating [&_[data-discussion-header]]:cursor-grab [&_[data-discussion-header]]:touch-none"
+          : hidden
+            ? "absolute inset-y-0 right-0 pointer-events-none overflow-hidden"
+            : "relative shrink-0 border-l",
+        hidden && floating && "pointer-events-none opacity-0",
+        !floating &&
+          !dock.dragging &&
+          "transition-[width] duration-200 motion-reduce:transition-none",
+      )}
+      style={
+        floating && pane.rect
+          ? {
+              left: pane.rect.x,
+              top: pane.rect.y,
+              width: pane.rect.width,
+              height: pane.rect.height,
+            }
+          : { width: hidden ? 0 : dock.width }
+      }
+      onPointerDown={(event) => {
+        const target = event.target as Element;
+        if (
+          target.closest("[data-discussion-drag]") ||
+          (target.closest("[data-discussion-header]") &&
+            !target.closest("button, a, input, textarea, select, [role=tab]"))
+        ) {
+          motion.cancel();
+          pane.start(event);
+        }
+      }}
+    >
+      {mode === "expanded" && (
+        // biome-ignore lint/a11y/useSemanticElements: interactive adjustable separator, not a thematic break
+        <div
+          role="separator"
+          aria-label={t("discussionPanel.resizeDiscussion")}
+          aria-orientation="vertical"
+          aria-valuemin={300}
+          aria-valuemax={700}
+          aria-valuenow={Math.round(dock.width ?? 300)}
+          tabIndex={0}
+          onPointerDown={(event) => {
+            motion.cancel();
+            dock.onPointerDown(event);
+          }}
+          onDoubleClick={() => {
+            motion.cancel();
+            dock.onDoubleClick();
+          }}
+          onKeyDown={(event) => {
+            motion.cancel();
+            dock.onKeyDown(event);
+          }}
+          className="absolute inset-y-0 left-0 z-20 w-1 touch-none cursor-col-resize"
+        />
+      )}
+      <div
+        className={cn("h-full overflow-hidden", floating && "rounded-[inherit]")}
+        style={{
+          width: floating || !hidden ? undefined : dock.width,
+          visibility: hidden && !floating ? "hidden" : undefined,
+        }}
+      >
+        {children(controls)}
+      </div>
+      {floating &&
+        edges.map(([edge, placement]) => (
+          <button
+            key={edge}
+            type="button"
+            tabIndex={edge === "se" ? 0 : -1}
+            aria-label={t("discussionPanel.resizeDiscussion2", { edge: edge })}
+            title={
+              edge === "se"
+                ? t("discussionPanel.dragToResizeArrowKeysResizeShift")
+                : t("discussionPanel.dragToResizeDoubleClickToReset")
+            }
+            data-discussion-resize={edge}
+            onPointerDown={(event) => {
+              motion.cancel();
+              pane.start(event, edge);
+            }}
+            onKeyDown={(event) => {
+              motion.cancel();
+              pane.key(event, edge);
+            }}
+            onDoubleClick={() => {
+              motion.cancel();
+              pane.resetWidth();
+            }}
+            className={cn("absolute z-30 touch-none", placement)}
+          >
+            {edge === "se" && (
+              <svg
+                viewBox="0 0 16 16"
+                aria-hidden="true"
+                className="pointer-events-none size-3 text-neutral-400"
+              >
+                <path d="m6 12 6-6m-2 6 2-2" fill="none" stroke="currentColor" />
+              </svg>
+            )}
+          </button>
+        ))}
+    </aside>
+  );
+}

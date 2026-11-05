@@ -1,0 +1,262 @@
+{
+  "force_request": {
+    "jsonrpc": "2.0",
+    "id": "execute-force",
+    "method": "command.execute",
+    "params": {
+      "command_id": "force-command",
+      "session_id": "logical-session",
+      "runtime_id": "replacement",
+      "generation": "replacement-generation",
+      "kind": "resume",
+      "expires_at": "2099-01-01T00:00:00Z",
+      "payload": {
+        "protocol": "codex-app-server",
+        "harness": "codex",
+        "cwd": "/work/project",
+        "resume_session_id": "native-thread",
+        "force": true,
+        "cleanup": [
+          {
+            "runtime_id": "previous-a",
+            "generation": "generation-a"
+          },
+          {
+            "runtime_id": "previous-b",
+            "generation": "generation-b"
+          }
+        ]
+      }
+    }
+  },
+  "partial_cleanup_failure": [
+    {
+      "jsonrpc": "2.0",
+      "id": "execute-force",
+      "result": {
+        "command_id": "force-command",
+        "runtime_id": "replacement",
+        "generation": "replacement-generation",
+        "receipt_revision": 1,
+        "state": "accepted",
+        "acceptance": {
+          "level": "adapter",
+          "at": "2026-01-01T00:00:00Z"
+        },
+        "dispatch": {
+          "state": "not_started",
+          "transport_written": false
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": "loss-a-1",
+      "method": "runtime.lost",
+      "params": {
+        "runtime_id": "previous-a",
+        "generation": "generation-a",
+        "owner_id": "owner-a",
+        "loss_id": "loss_a",
+        "report_revision": 1,
+        "termination": "unknown",
+        "reason": "force_resume",
+        "observed_at": "2026-01-01T00:00:02Z"
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": "loss-b-1",
+      "method": "runtime.lost",
+      "params": {
+        "runtime_id": "previous-b",
+        "generation": "generation-b",
+        "owner_id": "owner-b",
+        "loss_id": "loss_b",
+        "report_revision": 1,
+        "termination": "unknown",
+        "reason": "force_resume",
+        "observed_at": "2026-01-01T00:00:02Z"
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": "loss-a-2",
+      "method": "runtime.lost",
+      "params": {
+        "runtime_id": "previous-a",
+        "generation": "generation-a",
+        "owner_id": "owner-a",
+        "loss_id": "loss_a",
+        "report_revision": 2,
+        "termination": "confirmed",
+        "reason": "force_resume",
+        "observed_at": "2026-01-01T00:00:02Z"
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": "receipt-2",
+      "method": "command.receipt",
+      "params": {
+        "command_id": "force-command",
+        "runtime_id": "replacement",
+        "generation": "replacement-generation",
+        "receipt_revision": 2,
+        "state": "accepted",
+        "acceptance": {
+          "level": "adapter",
+          "at": "2026-01-01T00:00:00Z"
+        },
+        "dispatch": {
+          "state": "finished",
+          "transport_written": false
+        },
+        "error": {
+          "code": "cleanup_unconfirmed",
+          "message": "Force resume did not complete; no replacement was dispatched",
+          "stage": "execution",
+          "may_have_effect": true
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": "replacement-loss-1",
+      "method": "runtime.lost",
+      "params": {
+        "runtime_id": "replacement",
+        "generation": "replacement-generation",
+        "owner_id": "replacement-owner",
+        "loss_id": "loss_replacement",
+        "report_revision": 1,
+        "termination": "confirmed",
+        "reason": "cleanup_unconfirmed",
+        "observed_at": "2026-01-01T00:00:02Z"
+      }
+    }
+  ],
+  "recovered_cleanup_uncertainty": {
+    "retained_receipt_while_waiting_for_authority": {
+      "command_id": "force-command",
+      "runtime_id": "replacement",
+      "generation": "replacement-generation",
+      "receipt_revision": 1,
+      "state": "accepted",
+      "acceptance": {
+        "level": "adapter",
+        "at": "2026-01-01T00:00:00Z"
+      },
+      "dispatch": {
+        "state": "not_started",
+        "transport_written": false
+      }
+    },
+    "on_unverifiable_cleanup": [
+      {
+        "jsonrpc": "2.0",
+        "id": "receipt-2",
+        "method": "command.receipt",
+        "params": {
+          "command_id": "force-command",
+          "runtime_id": "replacement",
+          "generation": "replacement-generation",
+          "receipt_revision": 2,
+          "state": "accepted",
+          "acceptance": {
+            "level": "adapter",
+            "at": "2026-01-01T00:00:00Z"
+          },
+          "dispatch": {
+            "state": "finished",
+            "transport_written": false
+          },
+          "error": {
+            "code": "cleanup_unconfirmed",
+            "message": "Force resume did not complete; no replacement was dispatched",
+            "stage": "execution",
+            "may_have_effect": true
+          }
+        }
+      },
+      {
+        "jsonrpc": "2.0",
+        "id": "replacement-loss-1",
+        "method": "runtime.lost",
+        "params": {
+          "runtime_id": "replacement",
+          "generation": "replacement-generation",
+          "owner_id": "replacement-owner",
+          "loss_id": "loss_replacement",
+          "report_revision": 1,
+          "termination": "confirmed",
+          "reason": "cleanup_unconfirmed",
+          "observed_at": "2026-01-01T00:00:02Z"
+        }
+      }
+    ],
+    "old_target_a": {
+      "runtime_id": "previous-a",
+      "generation": "generation-a",
+      "owner_id": "owner-a",
+      "loss_id": "loss_a",
+      "report_revision": 2,
+      "termination": "confirmed",
+      "reason": "force_resume",
+      "observed_at": "2026-01-01T00:00:02Z"
+    },
+    "old_target_b": {
+      "runtime_id": "previous-b",
+      "generation": "generation-b",
+      "owner_id": "owner-b",
+      "loss_id": "loss_b",
+      "report_revision": 1,
+      "termination": "unknown",
+      "reason": "force_resume",
+      "observed_at": "2026-01-01T00:00:02Z"
+    }
+  },
+  "after_replacement_dispatch_uncertainty": [
+    {
+      "jsonrpc": "2.0",
+      "id": "receipt-3",
+      "method": "command.receipt",
+      "params": {
+        "command_id": "force-command",
+        "runtime_id": "replacement",
+        "generation": "replacement-generation",
+        "receipt_revision": 3,
+        "state": "accepted",
+        "acceptance": {
+          "level": "adapter",
+          "at": "2026-01-01T00:00:00Z"
+        },
+        "dispatch": {
+          "state": "unknown",
+          "transport_written": false
+        },
+        "error": {
+          "code": "dispatch_unknown",
+          "message": "Runtime ownership was lost",
+          "stage": "recovery",
+          "may_have_effect": true
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": "replacement-loss-unknown",
+      "method": "runtime.lost",
+      "params": {
+        "runtime_id": "replacement",
+        "generation": "replacement-generation",
+        "owner_id": "replacement-owner",
+        "loss_id": "loss_replacement_unknown",
+        "report_revision": 1,
+        "termination": "unknown",
+        "reason": "dispatch_unknown",
+        "observed_at": "2026-01-01T00:00:02Z"
+      }
+    }
+  ]
+}

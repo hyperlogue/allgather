@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.allgather/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+.env
+.env.*
+coverage/
+.direnv/
+/result
+/result-*
+/workspace/

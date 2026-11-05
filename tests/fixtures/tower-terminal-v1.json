@@ -1,0 +1,25 @@
+{
+  "hello": {
+    "protocol_version": { "major": 1, "minor": 4 },
+    "tower_version": "terminal-fixture",
+    "host_id": "terminal-host",
+    "capabilities": [
+      "policy-sync.v1",
+      "session-status.v1",
+      "terminal-launch.v1",
+      "command-receipts.v1",
+      "session-stream.v1"
+    ],
+    "terminal_controls": {
+      "fixture": { "protocol": "terminal", "capabilities": [], "cancel_mode": "runtime" }
+    }
+  },
+  "launch": { "mode": "terminal", "harness": "fixture", "cwd": "/work/project" },
+  "payload": { "protocol": "terminal", "harness": "fixture", "cwd": "/work/project" },
+  "ready": {
+    "state": "running",
+    "owner_id": "terminal-owner",
+    "tower_session_id": "tower-terminal",
+    "controls": { "protocol": "terminal", "capabilities": [], "cancel_mode": "runtime" }
+  }
+}

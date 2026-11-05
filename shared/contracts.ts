@@ -377,6 +377,7 @@ export interface SessionEvent {
   command_id: string | null;
   kind: string;
   payload_version: number;
+  deleted_at?: string | null;
   payload: Record<string, unknown>;
   occurred_at: string | null;
   received_at: string;
@@ -681,6 +682,37 @@ export const operations = {
     z.object(sessionTarget),
     "sessions:read",
     "Read a session execution binding and queued commands.",
+  ),
+  transcript_retention_get: spec(
+    z.object({}),
+    "admin",
+    "Read owner transcript retention settings.",
+  ),
+  transcript_retention_update: spec(
+    z.object({
+      ...key,
+      expected_revision: z.number().int().positive(),
+      days: z.number().int().min(1).max(3650).nullable(),
+    }),
+    "admin",
+    "Owner browser only: configure captured transcript retention; null keeps history indefinitely.",
+    true,
+  ),
+  transcript_delete_preview: spec(
+    z.object(sessionTarget),
+    "admin",
+    "Preview the exact captured history boundary for owner deletion.",
+  ),
+  transcript_delete: spec(
+    z.object({
+      ...key,
+      ...sessionTarget,
+      through_sequence: z.number().int().nonnegative(),
+      through_asset_sequence: z.number().int().nonnegative(),
+    }),
+    "admin",
+    "Owner browser only: delete captured event bodies and unused assets through a preview boundary. Task, execution and audit records remain.",
+    true,
   ),
   session_transcript_sources: spec(
     z.object(sessionTarget),

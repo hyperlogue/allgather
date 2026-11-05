@@ -164,11 +164,13 @@ export async function startServer(overrides: Partial<Config> = {}) {
     }
     workspace.approvals.recover();
     upstream.start();
+    workspace.transcripts.start();
     let closing: Promise<void> | undefined;
     const stop = () =>
       (closing ??= (async () => {
         control?.beginShutdown();
         workspace.approvals.close();
+        await workspace.transcripts.stop();
         await upstream?.stop();
         tower?.stop();
         workspace.artifacts?.previews.close();

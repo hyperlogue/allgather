@@ -1,4 +1,5 @@
 // biome-ignore-all lint/suspicious/noArrayIndexKey: Content blocks keep their immutable source order within each keyed event.
+
 import { useEffect, useRef, useState } from "react";
 import type {
   AgentSession,
@@ -14,6 +15,7 @@ import type { CheckoutObservation } from "../shared/tower-catalog.ts";
 import { call, mutation, request } from "./api.ts";
 import { ContextLink } from "./context.tsx";
 import { TowerPairing } from "./tower-enrollment.tsx";
+import { TranscriptStorage } from "./transcript-storage.tsx";
 import { Dialog, ErrorText, useAction } from "./ui.tsx";
 
 type Data = Record<string, unknown>;
@@ -338,7 +340,9 @@ function SessionDetail({
     [assets, setAssets] = useState<Data[]>([]),
     [error, setError] = useState(""),
     { busy, error: actionError, run } = useAction(),
-    cursor = useRef(0);
+    cursor = useRef(0),
+    contentRevision = useRef(0);
+  const [lastDeletedAt, setLastDeletedAt] = useState<string | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: Refetch on server invalidation or requested pagination.
   useEffect(() => {
     let active = true;
@@ -349,22 +353,38 @@ function SessionDetail({
           target_session_id: session.id,
         },
       ),
-      call<{ items: SessionEvent[]; has_more: boolean; next_sequence: number }>(
-        "session_transcript_events",
-        { target_session_id: session.id, after: cursor.current, limit: 200 },
-      ),
+      call<{
+        items: SessionEvent[];
+        has_more: boolean;
+        next_sequence: number;
+        content_revision: number;
+        last_deleted_at: string | null;
+      }>("session_transcript_events", {
+        target_session_id: session.id,
+        after: cursor.current,
+        limit: 200,
+      }),
       call<Page<SessionCommand>>("session_commands", { target_session_id: session.id, limit: 100 }),
       call<OwnerRequest[]>("session_requests", { target_session_id: session.id }),
       call<Data[]>("session_transcript_sources", { target_session_id: session.id }),
     ])
-      .then(([r, e, c, q, s]) => {
+      .then(async ([r, e, c, q, s]) => {
+        const reset = e.content_revision !== contentRevision.current;
+        if (reset)
+          e = await call<typeof e>("session_transcript_events", {
+            target_session_id: session.id,
+            after: 0,
+            limit: 200,
+          });
         if (!active) return;
         setRuntime(r.runtime);
         setCheckout(r.checkout);
-        setEvents((old) => [
-          ...old,
-          ...e.items.filter((item) => !old.some((o) => o.id === item.id)),
-        ]);
+        contentRevision.current = e.content_revision;
+        setLastDeletedAt(e.last_deleted_at);
+        setEvents((previous) => {
+          const old = reset ? [] : previous;
+          return [...old, ...e.items.filter((item) => !old.some((o) => o.id === item.id))];
+        });
         cursor.current = e.next_sequence;
         setHasMore(e.has_more);
         setCommands(c.items);
@@ -386,7 +406,10 @@ function SessionDetail({
       )
       .map((e) => e.command_id),
   );
-  for (const command of commands.filter((c) => c.kind === "prompt" && !echoed.has(c.id)))
+  for (const command of commands.filter(
+    (c) =>
+      c.kind === "prompt" && !echoed.has(c.id) && (!lastDeletedAt || c.created_at > lastDeletedAt),
+  ))
     rendered.push({
       key: command.id,
       role: `You · ${command.state}`,
@@ -620,6 +643,7 @@ function SessionDetail({
             }}
           />
         ))}
+      <TranscriptStorage sessionId={session.id} changed={changed} />
       <section className="transcript" aria-label="Session transcript">
         {rendered.map((row) => (
           <article className="transcript-message" key={row.key}>
@@ -984,6 +1008,7 @@ export function SessionsView({
           <p>Read past work and run agents on your development machines.</p>
         </div>
         <div className="heading-actions">
+          <TranscriptStorage changed={changed} />
           <button type="button" onClick={() => setManage(true)}>
             Machines
           </button>

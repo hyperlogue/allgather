@@ -523,17 +523,29 @@ export class Executions {
         session.id,
       );
     if (name === "session_transcript_events") {
-      const rows = this.w.all<Stored<SessionEvent, "payload">>(
-          "SELECT * FROM session_events WHERE session_id=? AND sequence>? ORDER BY sequence LIMIT ?",
+      const rows = this.w.all<Stored<SessionEvent, "payload"> & { payload_hash: string }>(
+          "SELECT e.*,c.payload,c.deleted_at FROM session_events e JOIN session_event_content c ON c.id=e.id WHERE e.session_id=? AND e.sequence>? ORDER BY e.sequence LIMIT ?",
           session.id,
           Number(a.after),
           Number(a.limit) + 1,
         ),
         more = rows.length > Number(a.limit),
-        items = rows
-          .slice(0, Number(a.limit))
-          .map((r) => ({ ...r, payload: JSON.parse(r.payload) }));
-      return { items, has_more: more, next_sequence: items.at(-1)?.sequence ?? Number(a.after) };
+        items = rows.slice(0, Number(a.limit)).map(({ payload_hash: _hash, ...r }) => ({
+          ...r,
+          payload: r.payload
+            ? JSON.parse(r.payload)
+            : { deleted: true, message: "Captured content deleted" },
+        }));
+      const deletion = this.w.one<{ content_revision: number; last_deleted_at: string | null }>(
+        "SELECT COALESCE(MAX(sequence),0) content_revision,MAX(created_at) last_deleted_at FROM transcript_deletions WHERE session_id=?",
+        session.id,
+      )!;
+      return {
+        items,
+        has_more: more,
+        next_sequence: items.at(-1)?.sequence ?? Number(a.after),
+        ...deletion,
+      };
     }
     if (name === "session_requests")
       return this.w
@@ -561,7 +573,9 @@ export class Executions {
           )
           .map((r) => {
             const command = this.command(r.id);
-            return p.inlet === "mcp" ? this.commandStatus(command) : command;
+            return p.inlet === "mcp" || !can(p, "transcripts:read")
+              ? this.commandStatus(command)
+              : command;
           }),
         a,
       );
@@ -1039,18 +1053,18 @@ export class Executions {
         throw new AppError("event_too_large", "Session events must fit within 1 MiB");
       const existing = this.w.one<{
         kind: string;
-        payload: string;
+        payload_hash: string;
         command_id: string | null;
         occurred_at: string | null;
       }>(
-        "SELECT kind,payload,command_id,occurred_at FROM session_events WHERE source_id=? AND source_event_key=?",
+        "SELECT kind,payload_hash,command_id,occurred_at FROM session_events WHERE source_id=? AND source_event_key=?",
         sourceId,
         String(event.key),
       );
       if (existing) {
         if (
           existing.kind !== event.kind ||
-          existing.payload !== payload ||
+          existing.payload_hash !== digest(payload) ||
           existing.command_id !== (event.command_id ?? null) ||
           existing.occurred_at !== (event.at ?? null)
         )
@@ -1078,11 +1092,12 @@ export class Executions {
         source.runtime_id,
         (event.command_id as string) ?? null,
         String(event.kind),
-        payload,
+        digest(payload),
         (event.at as string) ?? null,
         this.w.now(),
         (event.source_sequence as number) ?? null,
       );
+      this.w.run("INSERT INTO session_event_content(id,payload) VALUES(?,?)", id, payload);
       added++;
       if (event.kind === "gap")
         this.w.run("UPDATE transcript_sources SET coverage='partial' WHERE id=?", sourceId);
@@ -1133,6 +1148,24 @@ export class Executions {
     this.w.run("UPDATE transcript_sources SET cursor=cursor+? WHERE id=?", added, sourceId);
     return { source_id: sourceId, added, last_sequence: sequence, cursor: source.cursor + added };
   }
+  assetIdentity(
+    session: string,
+    source: string | null,
+    hash: string,
+    media: string,
+    name: string | null,
+  ) {
+    const id = `asset-${digest(`${session}\0${source ?? ""}\0${hash}\0${media}\0${name ?? ""}`).slice(0, 32)}`;
+    if (
+      this.w.one("SELECT 1 FROM session_asset_identity WHERE id=? AND deleted_at IS NOT NULL", id)
+    )
+      throw new AppError(
+        "asset_deleted",
+        "This captured asset was deleted; an upload retry cannot restore it",
+        410,
+      );
+    return id;
+  }
   attachAsset(
     session: string,
     source: string | null,
@@ -1141,7 +1174,8 @@ export class Executions {
     name: string | null,
   ) {
     this.w.sessions.get(session);
-    const id = `asset-${digest(`${session}\0${source ?? ""}\0${blob.hash}\0${media}\0${name ?? ""}`).slice(0, 32)}`;
+    const id = this.assetIdentity(session, source, blob.hash, media, name);
+    this.w.run("INSERT OR IGNORE INTO session_asset_identity(id) VALUES(?)", id);
     this.w.run(
       "INSERT OR IGNORE INTO blobs VALUES(?,?,?)",
       blob.hash,

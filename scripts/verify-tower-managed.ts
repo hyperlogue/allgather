@@ -902,7 +902,7 @@ try {
         "SELECT command_id,state,error FROM artifact_notifications",
       ),
       events: running.workspace.all(
-        "SELECT kind,command_id,source_sequence,json_extract(payload,'$.stop_reason') stop_reason FROM session_events ORDER BY sequence DESC LIMIT 12",
+        "SELECT e.kind,e.command_id,e.source_sequence,json_extract(c.payload,'$.stop_reason') stop_reason FROM session_events e JOIN session_event_content c ON c.id=e.id ORDER BY e.sequence DESC LIMIT 12",
       ),
     }),
   );

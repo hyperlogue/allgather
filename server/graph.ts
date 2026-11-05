@@ -17,7 +17,17 @@ export class Graph {
   constructor(private w: Workspace) {}
   entity(id: string): Entity {
     const e = this.w.one<Entity>("SELECT * FROM entities WHERE id=?", id);
-    if (e) return e;
+    if (e) {
+      if (e.kind === "session_event") {
+        const body = this.w.one<{ deleted_at: string | null }>(
+          "SELECT deleted_at FROM session_event_content WHERE id=?",
+          id,
+        );
+        if (body?.deleted_at)
+          return { ...e, deleted_at: body.deleted_at, label: "Captured session event" };
+      }
+      return e;
+    }
     const ref = commitReference(id);
     if (
       ref &&

@@ -37,6 +37,7 @@ const observed = new Set([
   "transcript_sources",
   "session_commands",
   "session_events",
+  "session_event_content",
   "session_requests",
   "session_assets",
 ]);
@@ -74,8 +75,12 @@ export class Audit {
             !(table === "task_comments" && c === "body") &&
             !(table === "artifact_versions" && c === "patch_body") &&
             !(
-              ["session_commands", "session_events", "session_requests"].includes(table) &&
-              ["payload", "response"].includes(c)
+              [
+                "session_commands",
+                "session_events",
+                "session_requests",
+                "session_event_content",
+              ].includes(table) && ["payload", "response"].includes(c)
             ),
         )
         .flatMap((c) => [literal(c), `${row}.${quoted(c)}`])

@@ -6,6 +6,7 @@ import { machineScopes } from "../shared/tower-acp.ts";
 import { approvalWait } from "./approvals.ts";
 import { artifactApi } from "./artifact-api.ts";
 import type { Auth } from "./auth.ts";
+import { hashBytes } from "./blobs.ts";
 import { mcpResponse } from "./mcp.ts";
 import { isPublicRoute } from "./network.ts";
 import { RateLimits } from "./rate-limits.ts";
@@ -148,6 +149,19 @@ export function createApp(
     const bytes = Buffer.from(b.data, "base64");
     if (bytes.length > 20 * 1024 * 1024 || bytes.toString("base64") !== b.data)
       throw new AppError("invalid_asset", "Use canonical base64 for an asset up to 20 MiB");
+    const knownSource = workspace.one<{ id: string }>(
+      "SELECT id FROM transcript_sources WHERE session_id=? AND kind='acp_stream' AND source_key=?",
+      r.session_id,
+      b.generation,
+    );
+    if (knownSource)
+      workspace.executions.assetIdentity(
+        r.session_id,
+        knownSource.id,
+        hashBytes(bytes),
+        b.media_type,
+        b.name ?? null,
+      );
     const asset = await workspace.blobs.publishing(async () => {
       const blob = await workspace.blobs!.put(bytes);
       return workspace.db

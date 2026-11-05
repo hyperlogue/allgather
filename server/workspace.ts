@@ -16,12 +16,13 @@ import { Access } from "./access.ts";
 import { Approvals } from "./approvals.ts";
 import { Artifacts } from "./artifacts.ts";
 import { Audit } from "./audit.ts";
-import { BlobStore } from "./blobs.ts";
+import { BlobStore, hashBytes } from "./blobs.ts";
 import { Executions } from "./executions.ts";
 import { Graph } from "./graph.ts";
 import { History } from "./history.ts";
 import { Sessions } from "./sessions.ts";
 import { Tasks } from "./tasks.ts";
+import { Transcripts } from "./transcripts.ts";
 
 type Input = Record<string, unknown>;
 export const uid = (prefix: string) => `${prefix}-${randomUUID().replaceAll("-", "").slice(0, 16)}`;
@@ -36,6 +37,7 @@ export function canonical(value: unknown): string {
   return JSON.stringify(value);
 }
 export class Workspace {
+  readonly transcripts: Transcripts;
   readonly approvals: Approvals;
   readonly access: Access;
   readonly history: History;
@@ -69,6 +71,7 @@ export class Workspace {
     this.audit = new Audit(db);
     if (this.blobs) this.artifacts = new Artifacts(this, this.blobs);
     this.approvals = new Approvals(this);
+    this.transcripts = new Transcripts(this);
   }
   get managedSessions() {
     return this.options.managedSessions ?? true;
@@ -191,6 +194,12 @@ export class Workspace {
         throw new AppError("storage_unavailable", "Artifact storage is not configured", 503);
       return this.artifacts.run(name, input, principal);
     }
+    if (name.startsWith("transcript_")) {
+      const result = this.execute(name, input, principal);
+      if (name === "transcript_delete") await this.artifacts?.collectBlobs();
+      if (name === "transcript_retention_update") await this.transcripts.sweep();
+      return result;
+    }
     if (name !== "session_assets_add") return this.execute(name, input, principal);
     if (!can(principal, operations[name].scope))
       throw new AppError("forbidden", "Session write access is required", 403);
@@ -212,6 +221,13 @@ export class Workspace {
     const bytes = Buffer.from(a.data, "base64");
     if (bytes.length > 20 * 1024 * 1024 || bytes.toString("base64") !== a.data)
       throw new AppError("invalid_asset", "Use canonical base64 for an asset up to 20 MiB");
+    this.executions.assetIdentity(
+      a.target_session_id,
+      null,
+      hashBytes(bytes),
+      a.media_type,
+      a.name ?? null,
+    );
     return this.blobs.publishing(async () => {
       const blob = await this.blobs!.put(bytes);
       return this.execute(name, input, principal, () =>
@@ -243,6 +259,7 @@ export class Workspace {
       throw new AppError("invalid_input", "Invalid request", 400, parsed.error.flatten());
     const a = parsed.data as Input;
     this.access.inputs(name, a);
+    if (name.startsWith("transcript_")) this.transcripts.authorize(principal);
     if (this.approvals.requires(name, principal) && !this.approvals.permits(name, a, principal))
       throw new AppError(
         "needs_approval",
@@ -360,6 +377,7 @@ export class Workspace {
     };
   }
   private read(name: Operation, a: Input, principal: Principal): unknown {
+    if (name.startsWith("transcript_")) return this.transcripts.read(name, a);
     if (name === "requests_get") return this.approvals.get(String(a.request_id), principal);
     if (name === "requests_list") return this.approvals.list(a, principal);
     if (/^(machines_|checkouts_|session_)/.test(name))
@@ -378,6 +396,7 @@ export class Workspace {
     return this.tasks.read(name, a, principal);
   }
   private write(name: Operation, a: Input, principal: Principal): unknown {
+    if (name.startsWith("transcript_")) return this.transcripts.write(name, a);
     if (/^(machines_|checkouts_|session_)/.test(name))
       return this.executions.write(name, a, principal);
     if (name.startsWith("roles_") || name.startsWith("sessions_"))

@@ -16,3 +16,7 @@ CREATE TABLE artifact_comments(id TEXT PRIMARY KEY);
 CREATE TABLE artifact_versions(artifact_id TEXT,seq INTEGER);
 CREATE TRIGGER artifact_context_cleanup BEFORE DELETE ON artifacts BEGIN SELECT 1; END;
 CREATE TRIGGER artifact_thread_context_cleanup BEFORE DELETE ON threads BEGIN SELECT 1; END;
+CREATE TABLE session_events(id TEXT PRIMARY KEY,source_id TEXT,payload TEXT NOT NULL);
+CREATE TABLE session_assets(id TEXT PRIMARY KEY,created_at TEXT);
+CREATE TRIGGER session_events_immutable BEFORE UPDATE ON session_events BEGIN SELECT RAISE(ABORT,'Session events are append-only'); END;
+CREATE TABLE artifact_entities(entity_id TEXT PRIMARY KEY,artifact_id TEXT);

@@ -325,12 +325,12 @@ export class ArtifactNotifications {
         receipt?.state === "accepted" && (level === "adapter" || level === "harness")
           ? level
           : null;
-      const ended = this.w.one<{ payload: string }>(
-        "SELECT payload FROM session_events WHERE command_id=? AND kind='turn_end' ORDER BY sequence DESC LIMIT 1",
+      const ended = this.w.one<{ payload: string | null }>(
+        "SELECT c.payload FROM session_events e JOIN session_event_content c ON c.id=e.id WHERE e.command_id=? AND e.kind='turn_end' ORDER BY e.sequence DESC LIMIT 1",
         row.command_id,
       );
-      const reason = ended ? JSON.parse(ended.payload).stop_reason : null;
-      const turn_state = ended
+      const reason = ended?.payload ? JSON.parse(ended.payload).stop_reason : null;
+      const turn_state = ended?.payload
         ? reason === "cancelled"
           ? "cancelled"
           : reason === "error"

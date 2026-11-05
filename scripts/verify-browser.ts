@@ -557,6 +557,31 @@ try {
   await b.until(
     `document.querySelector('.transcript')?.textContent.includes('Hello from stored history')`,
   );
+  await b.evaluate(
+    `[...document.querySelectorAll('button')].filter(b=>b.textContent==='Transcript storage').at(-1).click()`,
+  );
+  await b.until(
+    `document.querySelector('dialog')?.textContent.includes("Delete this session's captured history")`,
+  );
+  if (
+    await b.evaluate<boolean>(`document.querySelector('[aria-label="Retention days"]').value!==''`)
+  )
+    throw new Error("Retention must default to forever");
+  await b.evaluate(`document.querySelector('dialog section input[type="checkbox"]').click()`);
+  await click("Delete captured history");
+  await b.until(
+    `!document.querySelector('dialog') && document.querySelector('.transcript')?.textContent.includes('Captured content deleted')`,
+  );
+  if (
+    await b.evaluate<boolean>(
+      `document.querySelector('.transcript')?.textContent.includes('Hello from stored history')`,
+    )
+  )
+    throw new Error("Deleted transcript remained cached in the open view");
+  await b.command("Page.reload");
+  await b.until(
+    `document.querySelector('.transcript')?.textContent.includes('Captured content deleted')`,
+  );
   await click("Sign out");
   await b.until(`!!document.querySelector('input[type="password"]')`);
   console.log(

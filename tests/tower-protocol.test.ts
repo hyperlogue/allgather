@@ -622,6 +622,32 @@ test("cursor reads and replay conflicts preserve committed history and exact own
       at: "2030-01-01T00:00:00Z",
     };
     c.send({ id: "event", method: "session.events", params: { ...base, events: [event] } });
+    const asset = f.w.executions.attachAsset(
+      r.session_id,
+      null,
+      { hash: "1".repeat(64), byteLength: 1 },
+      "text/plain",
+      "active.txt",
+    );
+    f.call("transcript_delete", {
+      target_session_id: r.session_id,
+      through_sequence: 1,
+      through_asset_sequence: 100,
+    });
+    expect(f.w.one("SELECT * FROM session_assets WHERE id=?", asset.id)).not.toBeNull();
+    expect(
+      f.w.one<{ payload: string | null }>("SELECT payload FROM session_event_content")?.payload,
+    ).toBeNull();
+    c.send({
+      id: "deleted-replay",
+      method: "session.events",
+      params: { ...base, events: [event] },
+    });
+    expect(c.frames.at(-1)).toMatchObject({ result: { cursor: 1 } });
+    expect(
+      f.w.one<{ payload: string | null }>("SELECT payload FROM session_event_content")?.payload,
+    ).toBeNull();
+
     c.send({
       id: "changed",
       method: "session.events",

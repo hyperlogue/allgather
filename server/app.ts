@@ -80,6 +80,7 @@ export function createApp(
       c.req.path.startsWith("/oauth/") ||
       c.req.path === "/api/login" ||
       c.req.path.startsWith("/api/tower/enrollments") ||
+      c.req.path.startsWith("/api/tower/invitations") ||
       (c.req.path === "/mcp" && !auth.principal(c.req.raw, true));
     return bodyLimit({
       maxSize: small ? 16 * 1024 : (publication ? 192 : 32) * 1024 * 1024,
@@ -175,7 +176,9 @@ export function createApp(
   });
   app.post("/api/tower/enrollments", async (c) => {
     rate(`enroll:${options.peer?.(c.req.raw) ?? "local"}`, 10);
-    return c.json(enrollment.create(await c.req.json()), 201);
+    const result = enrollment.create(await c.req.json());
+    workspace.onChange();
+    return c.json(result, 201);
   });
   const pollingToken = (r: Request) => {
     const authorization = r.headers.get("authorization");
@@ -184,9 +187,15 @@ export function createApp(
   app.post("/api/tower/enrollments/:id/poll", (c) =>
     c.json(enrollment.poll(c.req.param("id"), pollingToken(c.req.raw))),
   );
-  app.post("/api/tower/enrollments/:id/confirm", async (c) =>
-    c.json(enrollment.confirm(c.req.param("id"), pollingToken(c.req.raw), await c.req.json())),
-  );
+  app.post("/api/tower/enrollments/:id/confirm", async (c) => {
+    const result = enrollment.confirm(
+      c.req.param("id"),
+      pollingToken(c.req.raw),
+      await c.req.json(),
+    );
+    workspace.onChange();
+    return c.json(result);
+  });
   const browserOwner = (r: Request) => {
     const p = auth.principal(r);
     if (!p || p.inlet !== "browser" || p.kind !== "owner")
@@ -218,9 +227,15 @@ export function createApp(
     browserOwner(c.req.raw);
     return c.json(enrollment.info(c.req.param("id")));
   });
-  app.post("/api/tower/enrollments/:id/decision", async (c) => {
-    const p = browserOwner(c.req.raw);
-    const result = enrollment.decide(c.req.param("id"), await c.req.json(), p);
+  app.get("/api/tower/invitations", (c) => c.json(enrollment.invitations(browserOwner(c.req.raw))));
+  app.post("/api/tower/invitations", async (c) => {
+    const owner = browserOwner(c.req.raw),
+      result = enrollment.invite(await c.req.json(), owner);
+    workspace.onChange();
+    return c.json(result, 201);
+  });
+  app.post("/api/tower/invitations/:id/revoke", (c) => {
+    const result = enrollment.revokeInvitation(c.req.param("id"), browserOwner(c.req.raw));
     workspace.onChange();
     return c.json(result);
   });

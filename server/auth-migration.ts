@@ -60,3 +60,14 @@ export function migrateApprovals(db: Database) {
   `),
   ).immediate();
 }
+
+export function migrateTowerInvitations(db: Database) {
+  db.transaction(() =>
+    db.exec(`
+    CREATE TABLE tower_invitations(id TEXT PRIMARY KEY,code_hash TEXT NOT NULL UNIQUE,machine_id TEXT REFERENCES machines(id),node_label TEXT,scopes TEXT NOT NULL,owner TEXT NOT NULL,created_at TEXT NOT NULL,expires_at TEXT NOT NULL,revoked_at TEXT,enrollment_id TEXT UNIQUE REFERENCES tower_enrollments(id),request_fingerprint TEXT);
+    UPDATE tower_credentials SET revoked_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id IN (SELECT credential_id FROM tower_enrollments WHERE state!='confirmed');
+    UPDATE tower_enrollments SET state='denied' WHERE state!='confirmed';
+    PRAGMA user_version=26;
+  `),
+  ).immediate();
+}

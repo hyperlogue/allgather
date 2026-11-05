@@ -147,7 +147,19 @@ try {
     running.settings.managedSessions,
     "Managed sessions are disabled; this runner verifies the normal enabled path",
   );
-  login = Bun.spawn([binary, "--json", "login", origin], {
+  const signIn = await fetch(origin + "/api/login", {
+    method: "POST",
+    headers: { origin, "content-type": "application/json" },
+    body: JSON.stringify({ key: await fixtureLoginToken(join(root, "server")) }),
+  });
+  assert(signIn.ok, "Synthetic owner login failed");
+  await signIn.arrayBuffer();
+  cookie = signIn.headers.get("set-cookie")!.split(";")[0]!;
+  const invitation = await request("/api/tower/invitations", {
+    node_label: "Managed fixture",
+    scopes: ["read", "send", "acp:control"],
+  });
+  login = Bun.spawn([binary, "--json", "login", origin, invitation.pairing_code], {
     env,
     cwd: root,
     stdout: "pipe",
@@ -166,21 +178,8 @@ try {
           message.authorization_url.startsWith(origin + "/tower/enroll/"),
           "Wrong consent origin",
         );
-        const signIn = await fetch(origin + "/api/login", {
-          method: "POST",
-          headers: { origin, "content-type": "application/json" },
-          body: JSON.stringify({ key: await fixtureLoginToken(join(root, "server")) }),
-        });
-        assert(signIn.ok, "Synthetic owner login failed");
-        await signIn.arrayBuffer();
-        cookie = signIn.headers.get("set-cookie")!.split(";")[0]!;
         const info = await request(`/api/tower/enrollments/${message.id}`);
-        assert(info.requested_scopes.includes("acp:control"), "Control consent was not requested");
-        await request(`/api/tower/enrollments/${message.id}/decision`, {
-          decision: "authorize",
-          node_label: "Managed fixture",
-          scopes: ["read", "send", "acp:control"],
-        });
+        assert(info.scopes.includes("acp:control"), "Control consent was not granted");
       }
       if (message.state === "complete") complete = true;
     }

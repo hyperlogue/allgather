@@ -78,6 +78,7 @@ test("public listener only serves MCP/OAuth and completes consent through the pr
       "/api/backup",
       "/api/operations/projects_list",
       "/api/tower/enrollments",
+      "/api/tower/invitations",
       "/tower",
       "/oauth/authorize",
       "/oauth/register-cli",

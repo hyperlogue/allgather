@@ -1,156 +1,234 @@
 import { expect, test } from "bun:test";
 import { createApp, Updates } from "../server/app.ts";
-import { Auth, hash } from "../server/auth.ts";
+import { Auth, hash, secret } from "../server/auth.ts";
 import { openDatabase } from "../server/storage.ts";
 import { Workspace } from "../server/workspace.ts";
 
-test("browser enrollment separates consent and polling, retries one key, and confirms durable installation", async () => {
+function fixture() {
   const db = openDatabase(":memory:"),
     origin = "http://127.0.0.1:4390";
   let now = Date.now();
-  const w = new Workspace(db, () => new Date(now));
-  const auth = new Auth(db, origin),
-    app = createApp(w, auth, new Updates());
+  const w = new Workspace(db, () => new Date(now)),
+    auth = new Auth(db, origin);
+  const app = createApp(w, auth, new Updates());
   const cookie = auth.signIn(auth.createLoginToken("Test").token).split(";")[0]!;
+  const owner = { cookie, origin };
   const req = (path: string, body?: unknown, headers: Record<string, string> = {}) =>
-    app.request(`${origin}${path}`, {
+    app.request(origin + path, {
       method: body === undefined ? "GET" : "POST",
       headers: { "content-type": "application/json", ...headers },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-  const owner = { cookie, origin };
+  const invite = async (body: object = {}) => {
+    const r = await req("/api/tower/invitations", body, owner);
+    expect(r.status).toBe(201);
+    return r.json();
+  };
+  const body = (code: string, host = "host-fixture") => ({
+    pairing_code: code,
+    request_id: secret(),
+    host_id: host,
+    tower_version: "test",
+    requested_scopes: ["read", "send", "acp:control", "terminal:control"],
+  });
+  const start = async (input: object) => {
+    const r = await req("/api/tower/enrollments", input);
+    expect(r.status).toBe(201);
+    return r.json();
+  };
+  const poll = (e: { enrollment_id: string; polling_token: string }) =>
+    req(
+      `/api/tower/enrollments/${e.enrollment_id}/poll`,
+      {},
+      { authorization: `Bearer ${e.polling_token}` },
+    );
+  const confirm = (
+    e: { enrollment_id: string; polling_token: string },
+    key: { credential_id: string; access_key: string },
+  ) =>
+    req(
+      `/api/tower/enrollments/${e.enrollment_id}/confirm`,
+      { credential_id: key.credential_id, access_key_hash: hash(key.access_key) },
+      { authorization: `Bearer ${e.polling_token}` },
+    );
+  return {
+    db,
+    w,
+    auth,
+    owner,
+    req,
+    invite,
+    body,
+    start,
+    poll,
+    confirm,
+    advance: (ms: number) => {
+      now += ms;
+    },
+  };
+}
+
+test("only a live owner browser creates bounded pairing codes; anonymous attempts allocate nothing", async () => {
+  const f = fixture();
   try {
-    const started = await req("/api/tower/enrollments", {
-      host_id: "host-synthetic",
-      tower_version: "test",
-      requested_scopes: ["read", "send", "acp:control"],
-    });
-    expect(started.status).toBe(201);
-    const e = await started.json(),
-      path = `/api/tower/enrollments/${e.enrollment_id}`;
-    const polling = { authorization: `Bearer ${e.polling_token}` };
-    expect(e.authorization_url).not.toContain(e.polling_token);
-    expect((await req(path)).status).toBe(403);
-    expect((await req(`${path}/poll`, {}, { authorization: "Bearer wrong" })).status).toBe(401);
-    expect(await (await req(`${path}/poll`, {}, polling)).json()).toMatchObject({
-      state: "pending",
-    });
-    expect((await req(`${path}/poll`, {}, polling)).status).toBe(429);
-    expect((await req(`${path}/decision`, { decision: "authorize" }, { cookie })).status).toBe(403);
+    expect((await f.req("/api/tower/invitations", {})).status).toBe(403);
+    expect((await f.req("/api/tower/invitations", {}, { cookie: f.owner.cookie })).status).toBe(
+      403,
+    );
     expect(
-      (
-        await req(
-          `${path}/decision`,
-          { decision: "authorize" },
-          { ...owner, origin: "https://wrong.invalid" },
-        )
-      ).status,
+      (await f.req("/api/tower/invitations", {}, { ...f.owner, origin: "https://wrong.invalid" }))
+        .status,
     ).toBe(403);
-    const decision = await req(
-      `${path}/decision`,
-      { decision: "authorize", node_label: "Synthetic node", scopes: ["read", "acp:control"] },
-      owner,
-    );
-    expect(decision.status).toBe(200);
-    now += 5000;
-    const first = await (await req(`${path}/poll`, {}, polling)).json();
-    expect(first).toMatchObject({
-      state: "approved",
-      node_label: "Synthetic node",
-      scopes: ["read", "acp:control"],
-    });
-    now += 5000;
-    expect(await (await req(`${path}/poll`, {}, polling)).json()).toEqual(first);
-    expect(w.executions.authenticate(first.access_key)?.machine_id).toBe(first.machine_id);
     expect(
       (
-        await req(
-          "/api/operations/machines_list",
-          {},
-          { authorization: `Bearer ${first.access_key}` },
-        )
+        await f.req("/api/tower/enrollments", {
+          host_id: "host",
+          tower_version: "test",
+          requested_scopes: ["read"],
+        })
       ).status,
-    ).toBe(401);
-    const body = { credential_id: first.credential_id, access_key_hash: hash(first.access_key) };
-    expect(await (await req(`${path}/confirm`, body, polling)).json()).toMatchObject({
-      state: "confirmed",
-    });
-    expect(await (await req(`${path}/confirm`, body, polling)).json()).toMatchObject({
-      state: "confirmed",
-    });
-    now += 700000;
-    expect(await (await req(`${path}/poll`, {}, polling)).json()).toMatchObject({
-      state: "confirmed",
-    });
-    expect(w.executions.authenticate(first.access_key)).not.toBeNull();
-    const again = await (
-      await req("/api/tower/enrollments", {
-        host_id: "host-synthetic",
-        tower_version: "test",
-        requested_scopes: ["read"],
-      })
-    ).json();
-    await req(
-      `/api/tower/enrollments/${again.enrollment_id}/decision`,
-      { decision: "authorize" },
-      owner,
-    );
-    const second = await (
-      await req(
-        `/api/tower/enrollments/${again.enrollment_id}/poll`,
-        {},
-        { authorization: `Bearer ${again.polling_token}` },
-      )
-    ).json();
-    expect(second.machine_id).toBe(first.machine_id);
-    expect(second.access_key).not.toBe(first.access_key);
-    now += 600001;
-    expect(w.executions.authenticate(second.access_key)).toBeNull();
-    expect(w.executions.authenticate(first.access_key)).not.toBeNull();
-    const stored =
-      JSON.stringify(w.all("SELECT * FROM tower_enrollments")) +
-      JSON.stringify(w.all("SELECT * FROM tower_credentials"));
-    expect(stored).not.toContain(first.access_key);
-    expect(stored).not.toContain(e.polling_token);
+    ).toBe(400);
+    expect((await f.req("/api/tower/enrollments", f.body(secret()))).status).toBe(401);
+    expect(f.w.all("SELECT * FROM tower_enrollments")).toHaveLength(0);
+    expect(f.w.all("SELECT * FROM machines")).toHaveLength(0);
+    const i = await f.invite({ scopes: ["read"] });
+    expect(i.pairing_code).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(
+      JSON.stringify(await (await f.req("/api/tower/invitations", undefined, f.owner)).json()),
+    ).not.toContain(i.pairing_code);
   } finally {
-    db.close();
+    f.db.close();
   }
 });
 
-test("denied and expired enrollment cannot issue keys or escalate consent", async () => {
-  const db = openDatabase(":memory:");
-  let now = Date.now();
-  const w = new Workspace(db, () => new Date(now));
-  const { TowerEnrollment } = await import("../server/tower-enrollment.ts");
-  const enroll = new TowerEnrollment(w, "http://127.0.0.1:4390");
-  const principal = { id: "owner", kind: "owner", inlet: "browser", scopes: ["admin"] } as const;
+test("pairing binds exact request, intersects consent, retries one key and confirms durable installation", async () => {
+  const f = fixture();
   try {
-    const e = enroll.create({
-      host_id: "host-test",
-      tower_version: "test",
-      requested_scopes: ["read"],
+    const i = await f.invite({ node_label: "Owner node", scopes: ["read", "acp:control"] });
+    const input = { ...f.body(i.pairing_code), node_label: "Untrusted name" },
+      e = await f.start(input);
+    expect(await f.start(input)).toEqual(e);
+    for (const patch of [
+      { request_id: secret() },
+      { host_id: "other" },
+      { node_label: "other" },
+      { tower_version: "next" },
+      { requested_scopes: ["read"] },
+    ])
+      expect((await f.req("/api/tower/enrollments", { ...input, ...patch })).status).toBe(409);
+    const path = `/api/tower/enrollments/${e.enrollment_id}`;
+    expect(e.authorization_url).not.toContain(e.polling_token);
+    expect(e.authorization_url).not.toContain(i.pairing_code);
+    expect((await f.req(path)).status).toBe(403);
+    expect((await f.req(`${path}/poll`, {}, { authorization: "Bearer wrong" })).status).toBe(401);
+    expect((await f.req(`${path}/decision`, { decision: "authorize" }, f.owner)).status).toBe(404);
+    const key = await (await f.poll(e)).json();
+    expect(key).toMatchObject({
+      state: "approved",
+      node_label: "Owner node",
+      scopes: ["read", "acp:control"],
     });
-    expect(() =>
-      enroll.decide(
-        e.enrollment_id,
-        { decision: "authorize", scopes: ["read", "acp:control"] },
-        principal,
-      ),
-    ).toThrow("did not request");
-    enroll.decide(e.enrollment_id, { decision: "deny" }, principal);
-    expect(enroll.poll(e.enrollment_id, e.polling_token).state).toBe("denied");
-    const expired = enroll.create({
-      host_id: "host-test",
-      tower_version: "test",
-      requested_scopes: ["read"],
-    });
-    now += 600001;
-    expect(enroll.poll(expired.enrollment_id, expired.polling_token).state).toBe("expired");
-    expect(() =>
-      enroll.decide(expired.enrollment_id, { decision: "authorize" }, principal),
-    ).toThrow("expired");
-    expect(w.all("SELECT * FROM tower_credentials")).toHaveLength(0);
+    expect((await f.poll(e)).status).toBe(429);
+    f.advance(5000);
+    expect(await (await f.poll(e)).json()).toEqual(key);
+    expect(f.w.executions.authenticate(key.access_key)?.machine_id).toBe(key.machine_id);
+    expect(
+      (
+        await f.req(
+          "/api/operations/machines_list",
+          {},
+          { authorization: `Bearer ${key.access_key}` },
+        )
+      ).status,
+    ).toBe(401);
+    expect((await f.confirm(e, key)).status).toBe(200);
+    expect((await f.confirm(e, key)).status).toBe(200);
+    expect((await f.req("/api/tower/enrollments", input)).status).toBe(409);
+    expect(
+      (await f.req(`/api/tower/invitations/${i.invitation_id}/revoke`, {}, f.owner)).status,
+    ).toBe(409);
+    f.advance(700000);
+    expect(await (await f.poll(e)).json()).toMatchObject({ state: "confirmed" });
+    expect(f.w.executions.authenticate(key.access_key)).not.toBeNull();
+    const stored =
+      JSON.stringify(f.w.all("SELECT * FROM tower_invitations")) +
+      JSON.stringify(f.w.all("SELECT * FROM tower_enrollments")) +
+      JSON.stringify(f.w.all("SELECT * FROM tower_credentials"));
+    for (const value of [i.pairing_code, e.polling_token, key.access_key])
+      expect(stored).not.toContain(value);
   } finally {
-    db.close();
+    f.db.close();
+  }
+});
+
+test("re-pairing requires explicit same-host selection and replaces earlier keys only on confirmation", async () => {
+  const f = fixture();
+  try {
+    const first = await f.start(f.body((await f.invite()).pairing_code));
+    const old = await (await f.poll(first)).json();
+    await f.confirm(first, old);
+    const newNode = await f.invite();
+    expect((await f.req("/api/tower/enrollments", f.body(newNode.pairing_code))).status).toBe(409);
+    const i = await f.invite({ machine_id: old.machine_id, scopes: ["read"] });
+    expect(
+      (await f.req("/api/tower/enrollments", f.body(i.pairing_code, "wrong-host"))).status,
+    ).toBe(409);
+    const e = await f.start(f.body(i.pairing_code)),
+      key = await (await f.poll(e)).json();
+    expect(key.machine_id).toBe(old.machine_id);
+    expect(key.scopes).toEqual(["read"]);
+    expect(f.w.executions.authenticate(old.access_key)).not.toBeNull();
+    await f.confirm(e, key);
+    expect(f.w.executions.authenticate(old.access_key)).toBeNull();
+    expect(f.w.executions.authenticate(key.access_key)).not.toBeNull();
+    const later = f.w.executions.issueCredential(old.machine_id, "later", ["read"]);
+    await f.confirm(e, key);
+    expect(f.w.executions.authenticate(later.access_key)).not.toBeNull();
+    const expired = await f.start(
+      f.body((await f.invite({ machine_id: old.machine_id })).pairing_code),
+    );
+    const unconfirmed = await (await f.poll(expired)).json();
+    f.advance(600001);
+    expect(f.w.executions.authenticate(unconfirmed.access_key)).toBeNull();
+    expect((await f.confirm(expired, unconfirmed)).status).toBe(409);
+    expect(f.w.executions.authenticate(key.access_key)).not.toBeNull();
+  } finally {
+    f.db.close();
+  }
+});
+
+test("revoked and expired invitations cannot enroll or complete an unconfirmed credential", async () => {
+  const f = fixture();
+  try {
+    const i = await f.invite({ scopes: ["acp:control"] });
+    const input = { ...f.body(i.pairing_code), requested_scopes: ["read"] };
+    expect((await f.req("/api/tower/enrollments", input)).status).toBe(403);
+    expect(f.w.all("SELECT * FROM machines")).toHaveLength(0);
+    const e = await f.start(f.body(i.pairing_code)),
+      key = await (await f.poll(e)).json();
+    expect(
+      (await f.req(`/api/tower/invitations/${i.invitation_id}/revoke`, {}, f.owner)).status,
+    ).toBe(200);
+    expect(f.w.executions.authenticate(key.access_key)).toBeNull();
+    expect((await f.confirm(e, key)).status).toBe(409);
+    expect((await f.req("/api/tower/enrollments", f.body(i.pairing_code))).status).toBe(401);
+    const expired = await f.invite();
+    f.advance(600001);
+    expect((await f.req("/api/tower/enrollments", f.body(expired.pairing_code))).status).toBe(401);
+  } finally {
+    f.db.close();
+  }
+});
+
+test("credential reset retires unused pairing codes", async () => {
+  const f = fixture();
+  try {
+    const i = await f.invite();
+    const { revokeCredentials } = await import("../server/auth.ts");
+    revokeCredentials(f.db);
+    expect((await f.req("/api/tower/enrollments", f.body(i.pairing_code))).status).toBe(401);
+    expect((await f.req("/api/tower/invitations", {}, f.owner)).status).toBe(403);
+  } finally {
+    f.db.close();
   }
 });

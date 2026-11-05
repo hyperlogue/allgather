@@ -116,7 +116,13 @@ async function signIn() {
   cookie = response.headers.get("set-cookie")!.split(";")[0];
 }
 async function enroll(scopes: MachineScope[]) {
-  const child = Bun.spawn([bundle.cli, "--json", "login", origin], {
+  const machines = await operation<Machine[]>("machines_list");
+  const invitation = await request("/api/tower/invitations", {
+    machine_id: machines[0]?.id,
+    node_label: "Terminal fixture",
+    scopes,
+  });
+  const child = Bun.spawn([bundle.cli, "--json", "login", origin, invitation.pairing_code], {
     env,
     cwd: root,
     stdout: "pipe",
@@ -126,28 +132,6 @@ async function enroll(scopes: MachineScope[]) {
     errors = new Response(child.stderr).text();
   const timer = setTimeout(() => child.kill(), 30000);
   try {
-    let id = "";
-    await until(() => {
-      id =
-        running.workspace.one<{ id: string }>(
-          "SELECT id FROM tower_enrollments WHERE state='pending' ORDER BY created_at DESC LIMIT 1",
-        )?.id ?? "";
-      return !!id;
-    }, "terminal enrollment request");
-    const pending = await request(`/api/tower/enrollments/${id}`);
-    assert(
-      pending.requested_scopes.includes("terminal:control"),
-      "Tower did not request literal terminal control",
-    );
-    assert(
-      !pending.requested_scopes.includes("acp:control"),
-      "Terminal-only configuration gained ACP control",
-    );
-    await request(`/api/tower/enrollments/${id}/decision`, {
-      decision: "authorize",
-      node_label: "Terminal fixture",
-      scopes,
-    });
     const [out, err, code] = await Promise.all([output, errors, child.exited]);
     assert(
       code === 0 && /"state"\s*:\s*"complete"/.test(out),

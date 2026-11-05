@@ -699,6 +699,19 @@ export class Auth {
   }
 }
 
+export function isBrowserOwner(db: Database, p: Principal, now = new Date().toISOString()) {
+  return (
+    p.kind === "owner" &&
+    p.inlet === "browser" &&
+    p.auth_binding?.kind === "browser" &&
+    !!db
+      .query(
+        "SELECT 1 FROM sessions s JOIN login_tokens t ON t.id=s.token_id WHERE s.hash=? AND s.expires>? AND t.revoked_at IS NULL AND t.last_used_at>?",
+      )
+      .get(p.auth_binding.hash, now, new Date(Date.parse(now) - 14 * 86400000).toISOString())
+  );
+}
+
 export function revokeCredentials(db: Database) {
   db.transaction(() => {
     db.exec(`
@@ -711,6 +724,7 @@ export function revokeCredentials(db: Database) {
       UPDATE oauth_grants SET revoked=1;
       UPDATE tower_credentials SET revoked_at=strftime('%Y-%m-%dT%H:%M:%fZ','now');
       UPDATE tower_enrollments SET state='denied';
+      UPDATE tower_invitations SET revoked_at=strftime('%Y-%m-%dT%H:%M:%fZ','now');
       UPDATE machines SET connected=0,active_credential_id=NULL;
       UPDATE session_runtimes SET connected=0;
       UPDATE worker_registrations SET state='retired';

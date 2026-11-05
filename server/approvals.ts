@@ -8,6 +8,7 @@ import {
 } from "../shared/contracts.ts";
 import type { PermissionModes } from "../shared/permissions.ts";
 import { resourceGrantsSchema } from "../shared/resource-grants.ts";
+import { isBrowserOwner } from "./auth.ts";
 import { canonical, digest, uid, type Workspace } from "./workspace.ts";
 
 type Input = Record<string, unknown>;
@@ -292,17 +293,7 @@ export class Approvals {
       this.run(row.id);
   }
   decide(id: string, decision: "approve" | "deny", revision: number, owner: Principal) {
-    if (
-      owner.kind !== "owner" ||
-      owner.inlet !== "browser" ||
-      owner.auth_binding?.kind !== "browser" ||
-      !this.w.one(
-        "SELECT 1 FROM sessions s JOIN login_tokens t ON t.id=s.token_id WHERE s.hash=? AND s.expires>? AND t.revoked_at IS NULL AND t.last_used_at>?",
-        owner.auth_binding.hash,
-        this.w.now(),
-        new Date(Date.parse(this.w.now()) - 14 * 86400000).toISOString(),
-      )
-    )
+    if (!isBrowserOwner(this.w.db, owner, this.w.now()))
       throw new AppError("forbidden", "Owner browser approval required", 403);
     this.expire();
     const row = this.row(id);

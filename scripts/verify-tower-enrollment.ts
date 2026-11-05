@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { hash } from "../server/auth.ts";
+import { hash, secret } from "../server/auth.ts";
 import { startServer } from "../server/index.ts";
 import { browserSession } from "./browser.ts";
 import { fixtureLoginToken } from "./fixture-auth.ts";
@@ -27,13 +27,6 @@ try {
       },
       body: JSON.stringify(body),
     });
-  const enrollment = await (
-    await post("/api/tower/enrollments", {
-      host_id: "browser-fixture-host",
-      tower_version: "fixture",
-      requested_scopes: ["read", "send", "acp:control", "terminal:control"],
-    })
-  ).json();
   browser = await browserSession(executable);
   const b = browser;
   await b.command("Emulation.setDeviceMetricsOverride", {
@@ -42,48 +35,74 @@ try {
     deviceScaleFactor: 1,
     mobile: true,
   });
-  await b.command("Page.navigate", { url: enrollment.authorization_url });
+  await b.command("Page.navigate", { url: origin + "/?view=sessions" });
   await b.until(`!!document.querySelector('input[type="password"]')`);
   await b.evaluate(`document.querySelector('input[type="password"]').focus()`);
   await b.command("Input.insertText", { text: await fixtureLoginToken(root) });
   await b.evaluate(`document.querySelector('button[type="submit"]').click()`);
-  await b.until(`document.body.textContent.includes('browser-fixture-host')`);
-  if (
-    !(await b.evaluate<boolean>(
-      `document.body.textContent.includes('Start and control managed agent sessions') && document.body.textContent.includes('Launch named coding agents in terminals')`,
-    ))
-  )
-    throw new Error("Consent does not explain managed control");
-  await b.evaluate(`document.querySelector('input[maxlength="160"]').focus()`);
-  await b.evaluate(`document.querySelector('input[maxlength="160"]').select()`);
-  await b.command("Input.insertText", { text: "Browser fixture node" });
-  await b.evaluate(`document.querySelectorAll('input[type="checkbox"]')[2].click()`);
+  await b.until(`[...document.querySelectorAll('button')].some(b=>b.textContent==='Machines')`);
   await b.evaluate(
-    `[...document.querySelectorAll('button')].find(b=>b.textContent==='Authorize').click()`,
+    `[...document.querySelectorAll('button')].find(b=>b.textContent==='Machines').click()`,
   );
-  await b.until(`document.body.textContent.includes('Return to your terminal')`);
+  await b.until(`document.body.textContent.includes('Create pairing code')`);
+  if (
+    await b.evaluate<boolean>(
+      `[...document.querySelectorAll('.pairing input[type="checkbox"]')].slice(2).some(c=>c.checked)`,
+    )
+  )
+    throw new Error("Execution must require explicit owner consent");
+  await b.evaluate(`document.querySelector('.pairing input[maxlength="160"]').focus()`);
+  await b.command("Input.insertText", { text: "Browser fixture node" });
+  await b.evaluate(`document.querySelectorAll('.pairing input[type="checkbox"]')[3].click()`);
+  await b.evaluate(
+    `[...document.querySelectorAll('button')].find(b=>b.textContent==='Create pairing code').click()`,
+  );
+  await b.until(`!!document.querySelector('textarea[aria-label="Pairing code"]')`);
+  const code = await b.evaluate<string>(
+    `document.querySelector('textarea[aria-label="Pairing code"]').value`,
+  );
   if (await b.evaluate<boolean>(`document.documentElement.scrollWidth>innerWidth`))
-    throw new Error("Enrollment overflows the mobile viewport");
-  const path = `/api/tower/enrollments/${enrollment.enrollment_id}`;
-  const approved = await (await post(`${path}/poll`, {}, enrollment.polling_token)).json();
+    throw new Error("Pairing overflows mobile viewport");
+  const response = await post("/api/tower/enrollments", {
+    pairing_code: code,
+    request_id: secret(),
+    host_id: "browser-fixture-host",
+    tower_version: "fixture",
+    requested_scopes: ["read", "send", "acp:control", "terminal:control"],
+  });
+  if (!response.ok) throw new Error(`Pairing failed: ${response.status}`);
+  const e = await response.json(),
+    path = `/api/tower/enrollments/${e.enrollment_id}`;
+  const approved = await (await post(`${path}/poll`, {}, e.polling_token)).json();
   if (
     approved.node_label !== "Browser fixture node" ||
     approved.scopes.includes("acp:control") ||
     !approved.scopes.includes("terminal:control")
   )
-    throw new Error("Browser consent did not preserve the name/scope choice");
+    throw new Error("Owner consent was not enforced");
   if (
     !(
       await post(
         `${path}/confirm`,
         { credential_id: approved.credential_id, access_key_hash: hash(approved.access_key) },
-        enrollment.polling_token,
+        e.polling_token,
       )
     ).ok
   )
-    throw new Error("Enrollment confirmation failed");
+    throw new Error("Confirmation failed");
+  await b.until(`document.body.textContent.includes('Pairing confirmed')`);
+  if (await b.evaluate<boolean>(`!!document.querySelector('textarea[aria-label="Pairing code"]')`))
+    throw new Error("Consumed code remains visible");
+  await b.command("Page.navigate", { url: e.authorization_url });
+  await b.until(`document.body.textContent.includes('completed pairing')`);
+  if (
+    await b.evaluate<boolean>(
+      `[...document.querySelectorAll('button')].some(b=>b.textContent==='Authorize')`,
+    )
+  )
+    throw new Error("Obsolete open enrollment approval remains");
   console.log(
-    "Browser enrollment passed: nested login, owner consent, name, separate terminal consent, scope reduction, polling, confirmation, and mobile layout.",
+    "Browser pairing passed: owner-created code, control opt-in, scope intersection, name, private status, consumed code, durable confirmation and mobile layout. Synthetic device HTTP only.",
   );
 } finally {
   await browser?.close();

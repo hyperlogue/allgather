@@ -277,27 +277,24 @@ try {
     url_aliases: ["ssh://git@example.invalid/team/main.git"],
     sync_enabled: false,
   });
-  const login = processOutput([binary, "--json", "login", origin, "--read-only"]);
-  let enrollment = "";
-  await until(() => {
-    enrollment =
-      running!.workspace.one<{ id: string }>(
-        "SELECT id FROM tower_enrollments WHERE state='pending'",
-      )?.id ?? "";
-    return !!enrollment;
-  }, "browser enrollment request");
-  await request(`/api/tower/enrollments/${enrollment}/decision`, {
-    decision: "authorize",
+  const invitation = await request<{ pairing_code: string }>("/api/tower/invitations", {
     node_label: "Catalog fixture",
     scopes: ["read"],
   });
-  const loggedIn = await login;
+  const loggedIn = await processOutput([
+    binary,
+    "--json",
+    "login",
+    origin,
+    invitation.pairing_code,
+    "--read-only",
+  ]);
   assert(
     loggedIn.code === 0 && /"state"\s*:\s*"complete"/.test(loggedIn.out),
     `Tower enrollment failed: ${loggedIn.err}`,
   );
   assert(
-    loggedIn.out.includes(`${origin}/tower/enroll/${enrollment}`) &&
+    loggedIn.out.includes(`${origin}/tower/enroll/`) &&
       !/(polling_token|access_key)/.test(loggedIn.out),
     "Enrollment output leaked credentials or lost its browser URL",
   );

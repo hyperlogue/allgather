@@ -13,6 +13,7 @@ import { hasManagedProtocol, hasTerminalProtocol, intersectControls } from "../s
 import type { CheckoutObservation } from "../shared/tower-catalog.ts";
 import { call, mutation, request } from "./api.ts";
 import { ContextLink } from "./context.tsx";
+import { TowerPairing } from "./tower-enrollment.tsx";
 import { Dialog, ErrorText, useAction } from "./ui.tsx";
 
 type Data = Record<string, unknown>;
@@ -783,8 +784,9 @@ function MachineManager({
   close: () => void;
   changed: () => void;
 }) {
-  const [name, setName] = useState(""),
-    [credential, setCredential] = useState<{ access_key: string; machine_id: string } | null>(null),
+  const [credential, setCredential] = useState<{ access_key: string; machine_id: string } | null>(
+      null,
+    ),
     [keys, setKeys] = useState<
       { id: string; machine_id: string; label: string; revoked_at: string | null }[]
     >([]),
@@ -794,44 +796,8 @@ function MachineManager({
   }, [run]);
   return (
     <Dialog title="Development machines" close={close}>
-      <p>
-        On the development machine, run this command and open the printed link. Review the requested
-        access and authorize the node.
-      </p>
-      <pre>tower-cli login {location.origin}</pre>
-      <p className="muted small">
-        You can also issue a key below for status and messages. Managed execution needs explicit
-        local control permission and browser consent.
-      </p>
+      <TowerPairing machines={machines} changed={changed} />
       <ErrorText>{error}</ErrorText>
-      <form
-        className="inline-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void run(async () => {
-            const machine = await call<Machine>("machines_create", { name, ...mutation() });
-            const key = await request<{ access_key: string; machine_id: string }>(
-              "/api/tower/credentials",
-              { machine_id: machine.id, label: "Tower connection" },
-            );
-            setCredential(key);
-            setName("");
-            changed();
-            setKeys(await request("/api/tower/credentials"));
-          });
-        }}
-      >
-        <input
-          aria-label="Machine name"
-          required
-          placeholder="Machine name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <button type="submit" disabled={busy}>
-          Add machine
-        </button>
-      </form>
       {credential && (
         <div className="pairing">
           <strong>Connect Tower</strong>

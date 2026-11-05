@@ -1392,3 +1392,12 @@ textarea {
     flex-wrap: wrap;
   }
 }
+
+.pairing-command {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.pairing form {
+  display: grid;
+  gap: 1rem;
+}

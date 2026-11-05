@@ -1,3 +1,4 @@
+import { reviewableApproval } from "../shared/approval-content.ts";
 import {
   AppError,
   can,
@@ -48,6 +49,14 @@ export class Approvals {
   constructor(private w: Workspace) {}
   requires(name: Operation, p: Principal) {
     return p.kind === "client" && p.permission_modes?.[operations[name].scope] === "approval";
+  }
+  private reviewable(name: string, input: Input) {
+    if (!reviewableApproval(name, input))
+      throw new AppError(
+        "unsupported_approval_content",
+        "Approval prompts require only {type: text, text: string} parts, with no extra fields",
+        400,
+      );
   }
   private row(id: string) {
     const row = this.w.one<Approval>("SELECT * FROM approval_requests WHERE id=?", id);
@@ -203,6 +212,7 @@ export class Approvals {
     const row = this.w.one<Approval>("SELECT * FROM approval_requests WHERE id=?", p.approval_id);
     return (
       !!row &&
+      reviewableApproval(name, a) &&
       !!row.decided_at &&
       row.state === "executing" &&
       row.client_id === p.id &&
@@ -212,12 +222,13 @@ export class Approvals {
     );
   }
   commandApproved(id: string, commandId: string, grantId: string) {
-    return !!this.w.one(
-      "SELECT 1 FROM approval_requests r JOIN session_commands c ON c.id=? JOIN audit_operations a ON a.id=c.operation_id JOIN machines m ON m.id=json_extract(r.target,'$.machine_id') WHERE m.active_credential_id IS json_extract(r.target,'$.machine_credential_id') AND r.id=? AND r.grant_id=? AND r.state IN ('executing','succeeded') AND a.connection_id=r.client_id AND a.operation=r.operation AND a.operation_key=r.operation_key",
+    const row = this.w.one<{ operation: string; input: string }>(
+      "SELECT r.operation,r.input FROM approval_requests r JOIN session_commands c ON c.id=? JOIN audit_operations a ON a.id=c.operation_id JOIN machines m ON m.id=json_extract(r.target,'$.machine_id') WHERE m.active_credential_id IS json_extract(r.target,'$.machine_credential_id') AND r.id=? AND r.grant_id=? AND r.state IN ('executing','succeeded') AND a.connection_id=r.client_id AND a.operation=r.operation AND a.operation_key=r.operation_key",
       commandId,
       id,
       grantId,
     );
+    return !!row && reviewableApproval(row.operation, JSON.parse(row.input));
   }
   private finish(row: Approval, state: "succeeded" | "failed", value: unknown) {
     this.w.run(
@@ -245,6 +256,7 @@ export class Approvals {
         throw new AppError("approval_expired", "This request expired; submit a new request", 409);
       const principal = this.current(row),
         input = JSON.parse(row.input) as Input;
+      this.reviewable(row.operation, input);
       this.w.access.run(principal, () => {
         this.w.access.inputs(row.operation, input);
         const target = this.w.executions.approvalTarget(row.operation, input);
@@ -304,6 +316,13 @@ export class Approvals {
       return this.view(row, true);
     if (row.state !== "needs_approval" || row.revision !== revision)
       throw new AppError("revision_conflict", "This approval request changed; refresh it", 409);
+    if (decision === "approve" && !reviewableApproval(row.operation, JSON.parse(row.input))) {
+      this.finish(row, "failed", {
+        code: "unsupported_approval_content",
+        message: "This stored prompt cannot be reviewed safely. Submit a new text-only request.",
+      });
+      return this.ownerGet(row.id);
+    }
     this.w.run(
       "UPDATE approval_requests SET state=?,decided_at=?,decided_by=?,revision=revision+1 WHERE id=?",
       decision === "approve" ? "approved" : "denied",
@@ -355,6 +374,7 @@ export class Approvals {
     if (!parsed.success)
       throw new AppError("invalid_input", "Invalid request", 400, parsed.error.flatten());
     const a = parsed.data as Input;
+    this.reviewable(name, a);
     if (name === "session_resume" && a.force && p.inlet === "mcp")
       throw new AppError("forbidden", "Force resume is private", 403);
     this.w.access.inputs(name, a);

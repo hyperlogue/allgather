@@ -62,7 +62,7 @@ try {
     redirect_uri: owner + "/callback",
     response_type: "code",
     resource: publicUrl + "/mcp",
-    scope: "sessions:read sessions:launch",
+    scope: "sessions:read sessions:launch sessions:prompt",
     code_challenge_method: "S256",
     code_challenge: createHash("sha256").update(verifier).digest("base64url"),
   }).toString();
@@ -175,6 +175,72 @@ try {
   });
   if (JSON.parse(denied.result.content[0].text).state !== "denied")
     throw new Error("Denial was not persisted");
+  running.workspace.run(
+    "UPDATE session_runtimes SET state='idle',connected=1,acp_session_id='approval-browser-fixture' WHERE id=?",
+    state.result.runtime.id,
+  );
+  const parts = [
+    { type: "text", text: "First part: <script>plain text only</script>" },
+    { type: "text", text: "Second part: https://example.invalid/resource" },
+  ];
+  const promptArgs = {
+    target_session_id: state.result.session.id,
+    operation_key: "multipart-prompt",
+    content: parts,
+  };
+  const promptResponse = await mcp("tools/call", { name: "session_prompt", arguments: promptArgs });
+  const promptId = JSON.parse(promptResponse.result.content[0].text).error.details.request_id;
+  await b.command("Page.navigate", { url: owner + "/?view=approvals&request=" + promptId });
+  await b.until(`!!document.querySelector('[aria-label="Complete prompt"]')`);
+  const visible = await b.evaluate<string[]>(
+    `[...document.querySelectorAll('[aria-label="Complete prompt"] pre')].map(el=>el.textContent)`,
+  );
+  if (JSON.stringify(visible) !== JSON.stringify(parts.map((p) => p.text)))
+    throw new Error("Approval omitted or transformed a prompt part");
+  if (
+    await b.evaluate<boolean>(`!!document.querySelector('[aria-label="Complete prompt"] script')`)
+  )
+    throw new Error("Prompt text became executable markup");
+  await click("Approve this request");
+  await b.until(
+    `document.querySelector('.approval-detail')?.textContent.includes('Request admitted')`,
+  );
+  const hidden = await mcp("tools/call", {
+    name: "session_prompt",
+    arguments: {
+      ...promptArgs,
+      operation_key: "hidden-resource",
+      content: [{ type: "text", text: "Visible", uri: "https://example.invalid/hidden" }],
+    },
+  });
+  if (JSON.parse(hidden.result.content[0].text).error.code !== "unsupported_approval_content")
+    throw new Error("Hidden prompt fields entered the approval flow");
+  const legacyResponse = await mcp("tools/call", {
+    name: "session_prompt",
+    arguments: { ...promptArgs, operation_key: "legacy-prompt" },
+  });
+  const legacyId = JSON.parse(legacyResponse.result.content[0].text).error.details.request_id;
+  running.workspace.run(
+    "UPDATE approval_requests SET input=? WHERE id=?",
+    JSON.stringify({
+      ...promptArgs,
+      operation_key: "legacy-prompt",
+      content: [{ type: "resource_link", uri: "https://example.invalid/legacy" }],
+    }),
+    legacyId,
+  );
+  await b.command("Page.navigate", { url: owner + "/?view=approvals&request=" + legacyId });
+  await b.until(
+    `document.querySelector('.approval-detail')?.textContent.includes('cannot be approved')`,
+  );
+  if (
+    !(await b.evaluate<boolean>(
+      `[...document.querySelectorAll('button')].find(b=>b.textContent==='Approve this request').disabled`,
+    ))
+  )
+    throw new Error("Legacy unsupported prompt remained approvable");
+  await click("Deny request");
+  await b.until(`document.querySelector('.approval-detail')?.textContent.includes('denied')`);
   const cliToken = await fixtureApiToken(
     owner,
     await fixtureLogin(root, owner),

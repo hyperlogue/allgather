@@ -430,3 +430,104 @@ test("machine credential replacement invalidates review targets and undispatched
     f.close();
   }
 });
+
+test("approval prompts reject hidden fields and non-text input, including stored requests during decision and recovery", async () => {
+  const f = await fixture();
+  try {
+    const launch = f.w.execute(
+      "session_launch",
+      { ...f.launch, operation_key: "owner-text-launch" },
+      f.owner(),
+    ) as any;
+    f.w.run(
+      "UPDATE session_runtimes SET state='idle',connected=1,acp_session_id='fixture' WHERE id=?",
+      launch.runtime.id,
+    );
+    const base = { target_session_id: launch.session.id };
+    for (const content of [
+      [{ type: "resource_link", uri: "https://example.invalid/hidden" }],
+      [{ type: "text", text: "Visible", uri: "https://example.invalid/hidden" }],
+      [{ type: "text", text: "Visible", resource: { text: "Hidden" } }],
+      [{ type: "image", data: "secret", mimeType: "image/png" }],
+      [
+        { type: "text", text: "Visible" },
+        { type: "audio", data: "secret" },
+      ],
+    ]) {
+      const response = await f.send("/api/operations/session_prompt", {
+        ...base,
+        operation_key: crypto.randomUUID(),
+        content,
+      });
+      expect(response.status).toBe(400);
+      expect(((await response.json()) as any).error.code).toBe("unsupported_approval_content");
+    }
+    expect(f.w.all("SELECT id FROM approval_requests")).toHaveLength(0);
+    const make = async (key: string) => {
+      const input = {
+        ...base,
+        operation_key: key,
+        content: [
+          { type: "text", text: "Part one" },
+          { type: "text", text: "Part two" },
+        ],
+      };
+      const response = await f.send("/api/operations/session_prompt", input);
+      const body = (await response.json()) as any;
+      expect(body.error.code).toBe("needs_approval");
+      return { id: body.error.details.request_id, input };
+    };
+    for (const recover of [false, true]) {
+      const pending = await make(`old-${recover}`);
+      pending.input.content[0] = {
+        type: "resource_link",
+        uri: "https://example.invalid/hidden",
+      } as any;
+      f.w.run(
+        "UPDATE approval_requests SET input=?,state=? WHERE id=?",
+        JSON.stringify(pending.input),
+        recover ? "approved" : "needs_approval",
+        pending.id,
+      );
+      if (recover) f.restart();
+      else
+        await f.send(
+          `/api/approvals/${pending.id}/decision`,
+          { decision: "approve", expected_revision: 1 },
+          true,
+        );
+      expect(
+        f.w.one<{ state: string; error: string }>(
+          "SELECT state,error FROM approval_requests WHERE id=?",
+          pending.id,
+        ),
+      ).toMatchObject({
+        state: "failed",
+        error: expect.stringContaining("unsupported_approval_content"),
+      });
+      expect(f.w.all("SELECT id FROM session_commands WHERE kind='prompt'")).toHaveLength(0);
+    }
+    const valid = await make("valid-text");
+    const accepted = await f.send(
+      `/api/approvals/${valid.id}/decision`,
+      { decision: "approve", expected_revision: 1 },
+      true,
+    );
+    expect(((await accepted.json()) as any).state).toBe("succeeded");
+    const command = f.w.one<{ id: string }>("SELECT id FROM session_commands WHERE kind='prompt'")!;
+    expect(f.w.approvals.commandApproved(valid.id, command.id, f.principal().grant_id!)).toBe(true);
+    f.w.run(
+      "UPDATE approval_requests SET input=? WHERE id=?",
+      JSON.stringify({
+        ...valid.input,
+        content: [{ type: "text", text: "Visible", uri: "hidden" }],
+      }),
+      valid.id,
+    );
+    expect(f.w.approvals.commandApproved(valid.id, command.id, f.principal().grant_id!)).toBe(
+      false,
+    );
+  } finally {
+    f.close();
+  }
+});

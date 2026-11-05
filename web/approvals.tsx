@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { approvalTextParts, reviewableApproval } from "../shared/approval-content.ts";
 import { request } from "./api.ts";
 import { ErrorText, useAction } from "./ui.tsx";
 
@@ -79,6 +80,11 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
   const current = selected ? (rows.find((row) => row.id === selected) ?? linked) : null;
   const result = current?.result as { session?: { id: string }; session_id?: string } | null;
   const sessionId = result?.session?.id ?? result?.session_id;
+  const reviewable = !current || reviewableApproval(current.operation, current.input);
+  const textParts =
+    current?.operation === "session_prompt"
+      ? approvalTextParts.safeParse(current.input.content)
+      : null;
   const decide = (decision: "approve" | "deny") => {
     if (current) {
       setSelected(current.id);
@@ -156,12 +162,25 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
                 replacement.
               </p>
             )}
-            {Array.isArray(current.input.content) && (
-              <pre className="approval-payload">
-                {current.input.content
-                  .map((block: { text?: string }) => block.text ?? "[Non-text input]")
-                  .join("\n")}
-              </pre>
+            {!reviewable && (
+              <p className="notice">
+                This stored prompt contains unsupported input. It cannot be approved. Ask the client
+                to submit a text-only request.
+              </p>
+            )}
+            {textParts?.success && (
+              <section aria-label="Complete prompt">
+                <h3>Prompt · {textParts.data.length} parts</h3>
+                {textParts.data.map((block, index) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: ordered parts belong to this immutable request
+                  <div key={`${current.id}:${index}`}>
+                    <p>
+                      Part {index + 1} of {textParts.data.length} · Text
+                    </p>
+                    <pre className="approval-payload">{block.text || "[Empty text]"}</pre>
+                  </div>
+                ))}
+              </section>
             )}
             <details>
               <summary>Exact request and target</summary>
@@ -191,7 +210,7 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
                 <button
                   type="button"
                   className="primary"
-                  disabled={busy}
+                  disabled={busy || !reviewable}
                   onClick={() => decide("approve")}
                 >
                   Approve this request

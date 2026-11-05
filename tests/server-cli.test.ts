@@ -77,8 +77,20 @@ test("server lifecycle uses authenticated local ownership, retains settings, and
   const f = fixture();
   try {
     expect((await f.command("status")).state).toBe("stopped");
-    const started = await f.command("start", "--mcp-url", "http://127.0.0.1:0", "--mcp-port", "0");
+    const started = await f.command(
+      "start",
+      "--mcp-url",
+      "http://127.0.0.1:0",
+      "--mcp-port",
+      "0",
+      "--owner-trusted-proxies",
+      "192.0.2.1/32",
+      "--mcp-trusted-proxies",
+      "192.0.2.2/32",
+    );
     expect(started.settings!.mcpUrl).not.toBe(started.settings!.ownerUrl);
+    expect(started.settings!.ownerTrustedProxies).toEqual(["192.0.2.1/32"]);
+    expect(started.settings!.mcpTrustedProxies).toEqual(["192.0.2.2/32"]);
     expect((await fetch(started.settings!.mcpUrl + "/api/session")).status).toBe(404);
     expect(started.state).toBe("running");
     expect(started.pid).not.toBe(process.pid);

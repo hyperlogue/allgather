@@ -10,7 +10,8 @@ export interface Config {
   mcpUrl: string | null;
   mcpPort: number | null;
   mcpHostname: string;
-  trustedProxies: string[];
+  ownerTrustedProxies: string[];
+  mcpTrustedProxies: string[];
   privateNetworks: string[];
   gitSyncSeconds: number;
   managedSessions: boolean;
@@ -81,12 +82,26 @@ export function config(overrides: Partial<Config> = {}): Config {
     new URL(mcpUrl).protocol !== "https:"
   )
     throw new Error("Set ALLGATHER_MCP_URL to the public HTTPS origin before binding externally");
-  const trustedProxies =
-    overrides.trustedProxies ?? ranges(process.env.ALLGATHER_TRUSTED_PROXIES, []);
+  if (process.env.ALLGATHER_TRUSTED_PROXIES !== undefined || "trustedProxies" in overrides)
+    throw new Error(
+      "Replace ALLGATHER_TRUSTED_PROXIES with separate ALLGATHER_OWNER_TRUSTED_PROXIES and ALLGATHER_MCP_TRUSTED_PROXIES",
+    );
+  const ownerTrustedProxies =
+    overrides.ownerTrustedProxies ?? ranges(process.env.ALLGATHER_OWNER_TRUSTED_PROXIES, []);
+  const mcpTrustedProxies =
+    overrides.mcpTrustedProxies ?? ranges(process.env.ALLGATHER_MCP_TRUSTED_PROXIES, []);
+  if (
+    mcpUrl &&
+    (!["localhost", "127.0.0.1", "[::1]"].includes(new URL(mcpUrl).hostname) ||
+      !["localhost", "127.0.0.1", "::1"].includes(mcpHostname)) &&
+    !mcpTrustedProxies.length
+  )
+    throw new Error("Public MCP requires ALLGATHER_MCP_TRUSTED_PROXIES");
   const privateNetworks =
     overrides.privateNetworks ??
     ranges(process.env.ALLGATHER_PRIVATE_NETWORKS, defaultPrivateNetworks);
-  networks(trustedProxies);
+  networks(ownerTrustedProxies);
+  networks(mcpTrustedProxies);
   networks(privateNetworks);
   const gitSyncSeconds =
     overrides.gitSyncSeconds ?? Number(process.env.ALLGATHER_GIT_SYNC_SECONDS ?? 300);
@@ -109,7 +124,8 @@ export function config(overrides: Partial<Config> = {}): Config {
     mcpUrl,
     mcpPort,
     mcpHostname,
-    trustedProxies,
+    ownerTrustedProxies,
+    mcpTrustedProxies,
     privateNetworks,
   };
 }

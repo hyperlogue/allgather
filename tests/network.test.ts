@@ -22,7 +22,7 @@ test("network identity follows only configured proxy hops and private ranges", (
     expect(direct.allowsPrivate(ip)).toBe(true);
   for (const ip of [null, "198.51.100.2", "10.1.0.1", "100.128.0.1", "fd00::1"])
     expect(direct.allowsPrivate(ip)).toBe(false);
-  expect(() => config({ trustedProxies: ["hostname.example"] })).toThrow("Invalid network");
+  expect(() => config({ ownerTrustedProxies: ["hostname.example"] })).toThrow("Invalid network");
   expect(() => config({ privateNetworks: ["127.0.0.1/33"] })).toThrow("Invalid network");
   expect(() =>
     config({ mcpUrl: "https://owner.example", ownerUrl: "https://owner.example" }),
@@ -39,7 +39,8 @@ test("public listener only serves MCP/OAuth and completes consent through the pr
     mcpHostname: "127.0.0.1",
     mcpPort: 0,
     mcpUrl: "https://mcp.example",
-    trustedProxies: ["127.0.0.1/32"],
+    ownerTrustedProxies: ["127.0.0.1/32"],
+    mcpTrustedProxies: ["127.0.0.1/32"],
     gitSyncSeconds: 0,
   });
   const request = (
@@ -218,3 +219,51 @@ test("public listener only serves MCP/OAuth and completes consent through the pr
     rmSync(root, { recursive: true, force: true });
   }
 }, 15000);
+
+test("public proxy trust is required independently and cannot lock out an unproxied owner listener", async () => {
+  expect(() => config({ mcpUrl: "https://mcp.example", mcpTrustedProxies: [] })).toThrow(
+    "MCP_TRUSTED_PROXIES",
+  );
+  expect(() =>
+    config({
+      mcpUrl: "https://mcp.example",
+      ownerTrustedProxies: ["127.0.0.1"],
+      mcpTrustedProxies: [],
+    }),
+  ).toThrow("MCP_TRUSTED_PROXIES");
+  expect(() => config({ mcpUrl: "http://127.0.0.1:0", mcpTrustedProxies: [] })).not.toThrow();
+  expect(() =>
+    config({ mcpUrl: "https://127.0.0.1", mcpHostname: "0.0.0.0", mcpTrustedProxies: [] }),
+  ).toThrow("MCP_TRUSTED_PROXIES");
+  expect(() => config({ mcpTrustedProxies: ["invalid"] })).toThrow("Invalid network");
+  const root = mkdtempSync(join(tmpdir(), "allgather-separate-proxies-"));
+  const running = await startServer({
+    dataDir: root,
+    port: 0,
+    ownerUrl: "http://127.0.0.1:0",
+    mcpPort: 0,
+    mcpUrl: "https://mcp.example",
+    ownerTrustedProxies: [],
+    mcpTrustedProxies: ["127.0.0.1/32"],
+    gitSyncSeconds: 0,
+  });
+  try {
+    expect((await fetch(running.settings.ownerUrl + "/api/session")).status).toBe(200);
+    expect(
+      (
+        await fetch(running.settings.ownerUrl + "/api/session", {
+          headers: { "x-forwarded-for": "198.51.100.5" },
+        })
+      ).status,
+    ).toBe(200);
+    const url = `http://127.0.0.1:${running.settings.mcpPort}/.well-known/oauth-authorization-server`;
+    expect((await fetch(url, { headers: { host: "mcp.example" } })).status).toBe(403);
+    expect(
+      (await fetch(url, { headers: { host: "mcp.example", "x-forwarded-for": "198.51.100.5" } }))
+        .status,
+    ).toBe(200);
+  } finally {
+    await running.stop();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -25,7 +25,7 @@ export const HELP = `allgather-server — local Allgather server administration
 Use --data-dir DIR to select the local instance. Control results are JSON; run prints logs.
 Private server: --port PORT --bind HOST --owner-url URL.
 Public MCP (opt in): --mcp-url URL --mcp-port PORT --mcp-bind HOST.
-Network: --trusted-proxies CIDRS --private-networks CIDRS (comma separated).
+Network: --owner-trusted-proxies CIDRS --mcp-trusted-proxies CIDRS --private-networks CIDRS (comma separated).
 Execution: --managed-sessions true|false.
 Auth and backup require a running local server. Login codes expire after ten minutes and work once.
 Auth reset revokes all browser, connector and machine access. Restore also revokes prior credentials.
@@ -82,8 +82,10 @@ async function start(settings: Config): Promise<ServerStatus> {
     settings.hostname,
     "--owner-url",
     settings.ownerUrl,
-    "--trusted-proxies",
-    settings.trustedProxies.join(","),
+    "--owner-trusted-proxies",
+    settings.ownerTrustedProxies.join(","),
+    "--mcp-trusted-proxies",
+    settings.mcpTrustedProxies.join(","),
     "--private-networks",
     settings.privateNetworks.join(","),
     ...(settings.mcpUrl
@@ -152,7 +154,8 @@ export async function main(argv = process.argv.slice(2)) {
           "mcp-url",
           "mcp-port",
           "mcp-bind",
-          "trusted-proxies",
+          "owner-trusted-proxies",
+          "mcp-trusted-proxies",
           "private-networks",
           "managed-sessions",
         ]
@@ -179,7 +182,11 @@ export async function main(argv = process.argv.slice(2)) {
       mcpUrl: text("mcp-url"),
       mcpPort: text("mcp-port") === undefined ? undefined : Number(f["mcp-port"]),
       mcpHostname: text("mcp-bind"),
-      trustedProxies: text("trusted-proxies")
+      ownerTrustedProxies: text("owner-trusted-proxies")
+        ?.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+      mcpTrustedProxies: text("mcp-trusted-proxies")
         ?.split(",")
         .map((s) => s.trim())
         .filter(Boolean),

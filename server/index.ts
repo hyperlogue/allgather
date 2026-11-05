@@ -25,7 +25,8 @@ import { Workspace } from "./workspace.ts";
 
 export async function startServer(overrides: Partial<Config> = {}) {
   const settings = config(overrides);
-  const network = new NetworkBoundary(settings.trustedProxies, settings.privateNetworks);
+  const ownerNetwork = new NetworkBoundary(settings.ownerTrustedProxies, settings.privateNetworks);
+  const mcpNetwork = new NetworkBoundary(settings.mcpTrustedProxies, []);
   mkdirSync(settings.dataDir, { recursive: true, mode: 0o700 });
   const lock = join(settings.dataDir, "server.lock");
   if (existsSync(lock)) {
@@ -88,8 +89,8 @@ export async function startServer(overrides: Partial<Config> = {}) {
       fetch(request, server) {
         const rejected = listenerRejection(request, settings.ownerUrl, "private");
         if (rejected) return rejected;
-        const peer = network.client(server.requestIP(request)?.address ?? "", request.headers);
-        if (!network.allowsPrivate(peer))
+        const peer = ownerNetwork.client(server.requestIP(request)?.address ?? "", request.headers);
+        if (!ownerNetwork.allowsPrivate(peer))
           return new Response("Private network required", { status: 403 });
         peers.set(request, peer!);
         if (new URL(request.url).pathname.startsWith("/__r3_preview/"))
@@ -134,7 +135,10 @@ export async function startServer(overrides: Partial<Config> = {}) {
           fetch(request, server) {
             const rejected = listenerRejection(request, settings.mcpUrl!, "public");
             if (rejected) return rejected;
-            const peer = network.client(server.requestIP(request)?.address ?? "", request.headers);
+            const peer = mcpNetwork.client(
+              server.requestIP(request)?.address ?? "",
+              request.headers,
+            );
             if (!peer) return new Response("Invalid proxy chain", { status: 403 });
             peers.set(request, peer);
             return publicApp?.fetch(request) ?? new Response("Starting", { status: 503 });

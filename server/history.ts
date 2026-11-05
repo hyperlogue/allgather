@@ -20,6 +20,7 @@ export class History {
   repository(id: string): Repository {
     const r = this.w.one<Record<string, unknown>>("SELECT * FROM repositories WHERE id=?", id);
     if (!r) throw new AppError("not_found", "Repository not found", 404);
+    this.w.access.require(this.w.access.repository(id));
     const links = this.projects.list(id);
     // Earlier layouts remain migratable; they are not a second public model.
     for (const field of [
@@ -74,6 +75,7 @@ export class History {
         p,
         p,
       )
+      .filter(({ id }) => this.w.access.repository(id))
       .map(({ id }) => {
         const r = this.repository(id),
           scan = this.w.one<{
@@ -158,7 +160,7 @@ export class History {
   }
   private selection(a: Input) {
     const project = a.project_id ? this.w.project(String(a.project_id)).id : null;
-    const args: (string | null)[] = [
+    const args: (string | number | null)[] = [
       (a.repository_id as string) ?? null,
       (a.repository_id as string) ?? null,
     ];
@@ -180,6 +182,9 @@ export class History {
       match += " AND c.committed_at<=?";
       args.push(String(a.before));
     }
+    const access = this.w.access.repositorySql("c.repository_id");
+    match += ` AND (${access.sql})`;
+    args.push(...access.args);
     return {
       sql: `FROM commits c WHERE c.verified_upstream=1 AND (? IS NULL OR c.repository_id=?)${match}`,
       args,
@@ -245,12 +250,14 @@ export class History {
         metadata_available: !!row,
         provenance: row ? (row.verified_upstream ? "upstream" : "legacy_local") : "reference_only",
         tasks: can(p, "tasks:read")
-          ? this.w.all(
-              "SELECT DISTINCT t.id task_id,t.title FROM relations r JOIN tasks t ON t.id=CASE WHEN r.source_id=? THEN r.target_id ELSE r.source_id END WHERE r.source_id=? OR r.target_id=?",
-              id,
-              id,
-              id,
-            )
+          ? this.w
+              .all<{ task_id: string; title: string }>(
+                "SELECT DISTINCT t.id task_id,t.title FROM relations r JOIN tasks t ON t.id=CASE WHEN r.source_id=? THEN r.target_id ELSE r.source_id END WHERE r.source_id=? OR r.target_id=?",
+                id,
+                id,
+                id,
+              )
+              .filter((t) => this.w.access.task(t.task_id))
           : undefined,
       };
     }

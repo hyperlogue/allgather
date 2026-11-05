@@ -1159,6 +1159,7 @@ export function SessionsView({
               void run(async () => {
                 const result = await call<{ session: AgentSession }>("session_launch", {
                   machine_id: machine,
+                  project_id: project || undefined,
                   harness,
                   mode: launchMode,
                   cwd,

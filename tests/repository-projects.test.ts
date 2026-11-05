@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { fixtureResources } from "../scripts/fixture-auth.ts";
 import { OWNER } from "../server/auth.ts";
 import { openDatabase } from "../server/storage.ts";
 import { Workspace } from "../server/workspace.ts";
@@ -243,7 +244,7 @@ test("prefix configuration has independent revision, audit, retry, and scope gua
     f.call(
       "repositories_set_paths",
       { ...input, expected_revision: 2, operation_key: "readonly" },
-      { id: "reader", kind: "client", scopes: ["repositories:read"] },
+      { id: "reader", kind: "client", resources: fixtureResources, scopes: ["repositories:read"] },
     ),
   ).toThrow("repositories:write");
   expect(() => f.attach(f.a, ["other"])).toThrow("existing link");

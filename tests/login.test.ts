@@ -2,7 +2,12 @@ import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fixtureApiToken, fixtureLogin, fixtureLoginToken } from "../scripts/fixture-auth.ts";
+import {
+  fixtureApiToken,
+  fixtureLogin,
+  fixtureLoginToken,
+  fixtureResources,
+} from "../scripts/fixture-auth.ts";
 import { Auth, hash, secret } from "../server/auth.ts";
 import { controlRequest } from "../server/control.ts";
 import { startServer } from "../server/index.ts";
@@ -86,7 +91,10 @@ async function authorizeCli(
     const approved = await fetch(url + "/api/oauth/authorize", {
       method: "POST",
       headers: { "content-type": "application/json", origin: url, cookie },
-      body: JSON.stringify(Object.fromEntries(authorization.searchParams)),
+      body: JSON.stringify({
+        ...Object.fromEntries(authorization.searchParams),
+        resource_grants: JSON.stringify(fixtureResources),
+      }),
     });
     expect(approved.status).toBe(200);
     const redirect = (await approved.json()) as { redirect_uri: string };
@@ -302,7 +310,7 @@ test("legacy master keys retire on upgrade and local recovery resets credentials
   const oldCookie = priorAuth.signIn(priorAuth.createLoginToken("Old browser").token).split(";")[0];
   db.query("INSERT INTO settings VALUES('owner_key_hash',?)").run(hash(legacy));
   db.exec(
-    "ALTER TABLE oauth_clients DROP COLUMN audience; ALTER TABLE login_tokens DROP COLUMN expires_at; ALTER TABLE login_tokens DROP COLUMN consumed_at; PRAGMA user_version=20;",
+    "ALTER TABLE oauth_tokens DROP COLUMN grant_id; DROP TABLE oauth_grants; ALTER TABLE agent_sessions DROP COLUMN project_id; ALTER TABLE oauth_clients DROP COLUMN audience; ALTER TABLE login_tokens DROP COLUMN expires_at; ALTER TABLE login_tokens DROP COLUMN consumed_at; PRAGMA user_version=20;",
   );
   db.close();
   writeFileSync(join(dir, "owner-key"), legacy, { mode: 0o600 });

@@ -30,3 +30,16 @@ export function migrateGranularScopes(db: Database) {
     `);
   }).immediate();
 }
+
+export function migrateResourceGrants(db: Database) {
+  db.transaction(() => {
+    db.exec(`
+      CREATE TABLE oauth_grants(id TEXT PRIMARY KEY,client_id TEXT NOT NULL REFERENCES oauth_clients(id),resource TEXT NOT NULL,scopes TEXT NOT NULL,resources TEXT NOT NULL,created_at TEXT NOT NULL,revoked INTEGER NOT NULL DEFAULT 0);
+      ALTER TABLE oauth_tokens ADD COLUMN grant_id TEXT REFERENCES oauth_grants(id);
+      ALTER TABLE agent_sessions ADD COLUMN project_id TEXT REFERENCES projects(id);
+      UPDATE oauth_tokens SET revoked=1;
+      DELETE FROM oauth_codes;
+      PRAGMA user_version=24;
+    `);
+  }).immediate();
+}

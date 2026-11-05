@@ -393,6 +393,13 @@ try {
   })()`);
   if (!defaults) throw new Error("Consent defaults grant unexpected permissions");
   await b.evaluate(`(() => {
+    const choices = Array.from(document.querySelectorAll('.permission-choice'));
+    if (choices.find(e=>e.textContent.includes('Unassigned —'))?.querySelector('input')?.checked) throw new Error('Unassigned must default off');
+    const projects = choices.find(e=>e.textContent.includes('All projects, including new ones'))?.querySelector('input');
+    if (!projects || projects.checked) throw new Error('Projects must be chosen explicitly');
+    projects.click();
+  })()`);
+  await b.evaluate(`(() => {
     const group = document.querySelector('[aria-label="Grant all sessions permissions"]');
     if (!group.indeterminate) throw new Error('Session category should have a partial selection');
     group.click();
@@ -439,6 +446,16 @@ try {
     )?.operator_name !== "Approved browser agent"
   )
     throw new Error("Consent name was not preserved");
+  const resources = running.workspace.one<{ resources: string }>(
+    "SELECT resources FROM oauth_grants WHERE client_id=?",
+    client.client_id,
+  );
+  if (
+    !resources ||
+    JSON.stringify(JSON.parse(resources.resources)) !==
+      JSON.stringify({ project_ids: "*", machine_ids: [], unassigned: false })
+  )
+    throw new Error("Consent resource choices were not preserved");
   await b.command("Page.navigate", { url: running.settings.ownerUrl });
   await b.until(`!!document.querySelector('.app-header')`);
   const owner = { id: "owner", kind: "owner", inlet: "browser", scopes: ["admin"] } as const;

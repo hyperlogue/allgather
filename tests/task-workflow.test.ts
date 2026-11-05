@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { fixtureResources } from "../scripts/fixture-auth.ts";
 import { openDatabase } from "../server/storage.ts";
 import { Workspace } from "../server/workspace.ts";
 import {
@@ -17,6 +18,7 @@ const owner: Principal = { id: "owner", kind: "owner", scopes: ["admin"], inlet:
   agent: Principal = {
     id: "client",
     kind: "client",
+    resources: fixtureResources,
     scopes: ["tasks:read", "tasks:write"],
     inlet: "mcp",
   };

@@ -115,6 +115,7 @@ export class ArtifactConversations {
   private row(id: string): ThreadRow {
     const row = this.db.query<ThreadRow, [string]>("SELECT * FROM threads WHERE id = ?").get(id);
     if (!row) throw new ArtifactError("Thread not found", 404);
+    this.artifacts.get(row.artifact_id);
     return row;
   }
   private editable(author: ArtifactActor, original: AuthoredRow): void {
@@ -225,9 +226,10 @@ export class ArtifactConversations {
       const opening = this.openingThread(id);
       if (opening) return this.get(opening).comments[0]!;
       const standalone = artifactComment(this.db, id);
-      if (standalone) return standalone;
+      if (standalone) { this.artifacts.get(standalone.artifactId); return standalone; }
       throw new ArtifactError("Comment not found", 404);
     }
+    this.artifacts.get(this.row(row.thread_id).artifact_id);
     return {
       ...commentFromRow(row),
       target: this.withFrame(commentFromRow(row).target, { commentId: id }),

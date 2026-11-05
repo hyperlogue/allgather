@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import type { ServerWebSocket } from "bun";
+import { fixtureResources } from "../scripts/fixture-auth.ts";
 import { openDatabase } from "../server/storage.ts";
 import { Tower, type TowerSocketData } from "../server/tower.ts";
 import { Workspace } from "../server/workspace.ts";
@@ -1079,6 +1080,7 @@ test("force resume captures exact cleanup targets, fences controls, and preserve
         {
           id: "remote-agent",
           kind: "client",
+          resources: fixtureResources,
           inlet: "mcp",
           scopes: ["admin"],
         },

@@ -1,5 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import { controlRequest } from "../server/control.ts";
+import type { ResourceGrants } from "../shared/resource-grants.ts";
+
+export const fixtureResources = { project_ids: "*", machine_ids: "*", unassigned: true } as const;
 
 export async function fixtureLoginToken(directory: string) {
   const response = await controlRequest(directory, "auth/create-token", {
@@ -24,6 +27,7 @@ export async function fixtureApiToken(
   cookie: string,
   scopes: string[] = ["admin"],
   send: (request: Request) => Response | Promise<Response> = fetch,
+  resources: ResourceGrants = fixtureResources,
 ) {
   const request = async (path: string, body: unknown, owner = false) => {
     const response = await send(
@@ -49,6 +53,7 @@ export async function fixtureApiToken(
     response_type: "code",
     resource: origin + "/api",
     scope: scopes.join(" "),
+    resource_grants: JSON.stringify(resources),
     code_challenge_method: "S256",
     code_challenge: createHash("sha256").update(verifier).digest("base64url"),
   };

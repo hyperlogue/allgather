@@ -232,6 +232,7 @@ export function createApp(
     const p = auth.principal(c.req.raw);
     if (!p || !can(p, "admin"))
       throw new AppError("forbidden", "Administration access required", 403);
+    workspace.access.run(p, () => workspace.access.require(workspace.access.global()));
     return c.json(
       workspace.all(
         "SELECT id,machine_id,label,created_at,revoked_at FROM tower_credentials ORDER BY created_at DESC",
@@ -242,6 +243,7 @@ export function createApp(
     const p = auth.principal(c.req.raw);
     if (!p || !can(p, "admin"))
       throw new AppError("forbidden", "Administration access required", 403);
+    workspace.access.run(p, () => workspace.access.require(workspace.access.global()));
     const body = await c.req.json();
     if (
       typeof body.machine_id !== "string" ||
@@ -261,6 +263,7 @@ export function createApp(
     const p = auth.principal(c.req.raw);
     if (!p || !can(p, "admin"))
       throw new AppError("forbidden", "Administration access required", 403);
+    workspace.access.run(p, () => workspace.access.require(workspace.access.global()));
     workspace.executions.revokeCredential(c.req.param("id"));
     workspace.onChange();
     return c.json({ revoked: true });
@@ -282,6 +285,7 @@ export function createApp(
     return c.json({ revoked: true });
   });
   app.post("/api/logout", (c) => {
+    browserOwner(c.req.raw);
     auth.signOut(c.req.raw);
     workspace.artifacts?.previews.close();
     c.header("Set-Cookie", "allgather_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0");
@@ -316,11 +320,16 @@ export function createApp(
     const p = auth.principal(c.req.raw);
     if (!p || !can(p, "transcripts:read"))
       throw new AppError("forbidden", "Transcript read access required", 403);
-    const asset = workspace.one<{ blob_hash: string; media_type: string; name: string | null }>(
-      "SELECT * FROM session_assets WHERE id=?",
-      c.req.param("id"),
-    );
+    const asset = workspace.one<{
+      session_id: string;
+      blob_hash: string;
+      media_type: string;
+      name: string | null;
+    }>("SELECT * FROM session_assets WHERE id=?", c.req.param("id"));
     if (!asset || !workspace.blobs) throw new AppError("not_found", "Asset not found", 404);
+    workspace.access.run(p, () =>
+      workspace.access.require(workspace.access.session(asset.session_id)),
+    );
     const bytes = await workspace.blobs.read(asset.blob_hash);
     const inline =
       /^(image\/(png|jpeg|gif|webp)|audio\/(mpeg|wav|ogg|webm)|video\/(mp4|webm))$/.test(
@@ -373,7 +382,7 @@ export function createApp(
     return c.json(auth.register(await c.req.json(), "api"), 201);
   });
   app.get("/api/oauth/request", (c) => {
-    if (!auth.principal(c.req.raw)) throw new AppError("unauthorized", "Sign in first", 401);
+    browserOwner(c.req.raw);
     return c.json(auth.authorizeInfo(c.req.query()));
   });
   app.post("/api/oauth/authorize", async (c) => {
@@ -398,17 +407,20 @@ export function createApp(
   app.get("/api/clients", (c) => {
     const p = auth.principal(c.req.raw);
     if (!p || !can(p, "admin")) throw new AppError("forbidden", "Owner access required", 403);
+    workspace.access.run(p, () => workspace.access.require(workspace.access.global()));
     return c.json(auth.clients());
   });
   app.post("/api/clients/:id/revoke", (c) => {
     const p = auth.principal(c.req.raw);
     if (!p || !can(p, "admin")) throw new AppError("forbidden", "Owner access required", 403);
+    workspace.access.run(p, () => workspace.access.require(workspace.access.global()));
     auth.revoke(c.req.param("id"));
     return c.json({ ok: true });
   });
   app.get("/api/backup", async (c) => {
     const p = auth.principal(c.req.raw);
     if (!p || !can(p, "admin")) throw new AppError("forbidden", "Owner access required", 403);
+    workspace.access.run(p, () => workspace.access.require(workspace.access.global()));
     if (!options.backup) throw new AppError("unavailable", "Backup is unavailable", 503);
     return new Response(options.backup(), {
       headers: {

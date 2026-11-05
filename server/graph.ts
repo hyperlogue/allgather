@@ -46,23 +46,26 @@ export class Graph {
     return this.ensure(id, "commit");
   }
   canRead(e: Entity, p: Principal) {
-    return can(
-      p,
-      e.kind === "commit"
-        ? "commits:read"
-        : e.kind === "repository"
-          ? "repositories:read"
-          : e.kind === "project"
-            ? "projects:read"
-            : e.kind === "session" || e.kind === "runtime"
-              ? "sessions:read"
-              : ["artifact", "artifact_version", "artifact_thread", "artifact_comment"].includes(
-                    e.kind,
-                  )
-                ? "artifacts:read"
-                : e.kind === "session_event"
-                  ? "transcripts:read"
-                  : "tasks:read",
+    return (
+      this.w.access.entity(e.id) &&
+      can(
+        p,
+        e.kind === "commit"
+          ? "commits:read"
+          : e.kind === "repository"
+            ? "repositories:read"
+            : e.kind === "project"
+              ? "projects:read"
+              : e.kind === "session" || e.kind === "runtime"
+                ? "sessions:read"
+                : ["artifact", "artifact_version", "artifact_thread", "artifact_comment"].includes(
+                      e.kind,
+                    )
+                  ? "artifacts:read"
+                  : e.kind === "session_event"
+                    ? "transcripts:read"
+                    : "tasks:read",
+      )
     );
   }
   add(type: string, source: string, target: string, reason = "") {

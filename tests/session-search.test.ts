@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { fixtureResources } from "../scripts/fixture-auth.ts";
 import { openDatabase } from "../server/storage.ts";
 import { Workspace } from "../server/workspace.ts";
 import {
@@ -107,6 +108,7 @@ test("session discovery combines work evidence, machine history, roles and dates
     const taskOnly: Principal = {
       id: "task-client",
       kind: "client",
+      resources: fixtureResources,
       inlet: "mcp",
       scopes: ["tasks:read"],
     };

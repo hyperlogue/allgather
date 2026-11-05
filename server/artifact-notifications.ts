@@ -1,5 +1,6 @@
 import type { ArtifactDelivery, ArtifactNotificationSource } from "../shared/artifact-delivery.ts";
 import { AppError, can, type Principal, type SessionCommand } from "../shared/contracts.ts";
+import { resourceGrantsSchema } from "../shared/resource-grants.ts";
 import type { Artifacts } from "./artifacts.ts";
 import { artifactNudgeText } from "./r3/shared/artifact-prompt.ts";
 import type { ArtifactActor, ArtifactNudge, ArtifactWatcher } from "./r3/shared/artifacts.ts";
@@ -65,13 +66,26 @@ export class ArtifactNotifications {
     );
     return row ? this.artifacts.workers.get(row.id) : null;
   }
-  authorized(principal: string) {
-    return !!this.w.one(
-      "SELECT 1 FROM oauth_tokens t JOIN oauth_clients c ON c.id=t.client_id WHERE c.id=? AND c.revoked=0 AND t.revoked=0 AND (t.expires>? OR t.refresh_hash IS NOT NULL AND t.refresh_expires>?) AND (EXISTS(SELECT 1 FROM json_each(t.scopes) WHERE value='admin') OR (EXISTS(SELECT 1 FROM json_each(t.scopes) WHERE value='artifacts:read') AND EXISTS(SELECT 1 FROM json_each(t.scopes) WHERE value='artifacts:notify'))) LIMIT 1",
+  authorized(principal: string, artifactId: string, sessionId: string) {
+    const credentials = this.w.all<{ resources: string }>(
+      "SELECT g.resources FROM oauth_tokens t JOIN oauth_clients c ON c.id=t.client_id JOIN oauth_grants g ON g.id=t.grant_id AND g.client_id=t.client_id AND g.resource=t.resource WHERE c.id=? AND c.revoked=0 AND t.revoked=0 AND g.revoked=0 AND (t.expires>? OR t.refresh_hash IS NOT NULL AND t.refresh_expires>?) AND (EXISTS(SELECT 1 FROM json_each(t.scopes) WHERE value='admin') OR (EXISTS(SELECT 1 FROM json_each(t.scopes) WHERE value='artifacts:read') AND EXISTS(SELECT 1 FROM json_each(t.scopes) WHERE value='artifacts:notify')))",
       principal,
       this.w.now(),
       this.w.now(),
     );
+    return credentials.some((credential) => {
+      const resources = resourceGrantsSchema.safeParse(JSON.parse(credential.resources));
+      if (!resources.success) return false;
+      return this.w.access.run(
+        { id: principal, kind: "client", scopes: [], resources: resources.data },
+        () => {
+          if (!this.w.access.artifact(artifactId) || !this.w.access.session(sessionId))
+            return false;
+          const target = this.target(sessionId);
+          return !target || this.w.access.machine(target.machine_id);
+        },
+      );
+    });
   }
   target(sessionId: string) {
     const session = this.w.sessions.get(sessionId),
@@ -135,7 +149,14 @@ export class ArtifactNotifications {
     );
     if (!n) return "Notification no longer exists";
     const record = this.artifacts.workers.get(n.registration_id);
-    if (!record || !this.authorized(record.principal))
+    if (
+      !record ||
+      !this.authorized(
+        record.principal,
+        record.subscription.artifactId,
+        record.subscription.listenerId,
+      )
+    )
       return "Notification subscription access expired or was revoked";
     if (
       record.state === "retired" ||
@@ -249,7 +270,11 @@ export class ArtifactNotifications {
     const s = selected.subscription,
       sessionId = s.actor.sessionId;
     if (!sessionId) return [];
-    const allowed = this.authorized(selected.principal),
+    const allowed = this.authorized(
+        selected.principal,
+        selected.subscription.artifactId,
+        selected.subscription.listenerId,
+      ),
       target = allowed ? this.target(sessionId) : null,
       last = this.w.one<{ state: string; error: string | null }>(
         "SELECT state,error FROM artifact_notifications WHERE registration_id=? ORDER BY rowid DESC LIMIT 1",
@@ -471,7 +496,13 @@ export class ArtifactNotifications {
     const selected = this.selected(id);
     if (!selected || selected.subscription.actor.role !== "agent")
       return { state: "none" as const };
-    if (!this.authorized(selected.principal))
+    if (
+      !this.authorized(
+        selected.principal,
+        selected.subscription.artifactId,
+        selected.subscription.listenerId,
+      )
+    )
       throw new AppError(
         "notification_access",
         "The selected notification connection has expired or was revoked",

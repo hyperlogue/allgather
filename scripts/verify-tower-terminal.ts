@@ -12,7 +12,7 @@ import {
   type SessionRuntime,
 } from "../shared/contracts.ts";
 import type { MachineScope } from "../shared/tower-acp.ts";
-import { fixtureLoginToken } from "./fixture-auth.ts";
+import { fixtureLoginToken, fixtureResources } from "./fixture-auth.ts";
 import { stopFixturePool, towerFixture } from "./tower-fixture.ts";
 
 const bundle = towerFixture("allgather-terminal-integration-");
@@ -209,6 +209,7 @@ async function connectMcp() {
     client_id: registration.client_id,
     redirect_uri: "https://client.example/callback",
     response_type: "code",
+    resource_grants: JSON.stringify(fixtureResources),
     scope:
       "sessions:read sessions:launch sessions:prompt sessions:stop sessions:resume transcripts:read",
     resource: origin + "/mcp",

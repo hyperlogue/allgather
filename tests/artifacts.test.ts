@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fixtureResources } from "../scripts/fixture-auth.ts";
 import type {
   Artifact,
   ArtifactComment,
@@ -17,6 +18,7 @@ const owner: Principal = { id: "owner", kind: "owner", inlet: "browser", scopes:
   agent: Principal = {
     id: "agent-connection",
     kind: "client",
+    resources: fixtureResources,
     inlet: "mcp",
     scopes: ["artifacts:read", "artifacts:contribute"],
   };

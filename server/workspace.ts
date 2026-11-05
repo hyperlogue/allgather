@@ -12,6 +12,7 @@ import {
   type Task,
 } from "../shared/contracts.ts";
 import { mcpOperations } from "../shared/mcp-surface.ts";
+import { Access } from "./access.ts";
 import { Artifacts } from "./artifacts.ts";
 import { Audit } from "./audit.ts";
 import { BlobStore } from "./blobs.ts";
@@ -34,6 +35,7 @@ export function canonical(value: unknown): string {
   return JSON.stringify(value);
 }
 export class Workspace {
+  readonly access: Access;
   readonly history: History;
   readonly graph: Graph;
   readonly tasks: Tasks;
@@ -55,6 +57,7 @@ export class Workspace {
       managedSessions?: boolean;
     } = {},
   ) {
+    this.access = new Access(db);
     this.history = new History(this);
     this.graph = new Graph(this);
     this.tasks = new Tasks(this);
@@ -86,6 +89,7 @@ export class Workspace {
       id,
     );
     if (!project) throw new AppError("not_found", "Project not found", 404);
+    this.access.require(this.access.project(project.id));
     return project;
   }
   task(id: string): Task {
@@ -107,6 +111,8 @@ export class Workspace {
     const browser = principal.inlet === "browser",
       agent = !browser && (principal.inlet === "mcp" || a.operator_kind === "agent");
     const session = agent && a.session_id ? this.sessions.resolve(String(a.session_id)) : null;
+    if (session && this.one("SELECT 1 FROM agent_sessions WHERE id=?", session))
+      this.access.require(this.access.session(session));
     const known = session
       ? this.one<{ role_id: string | null; label: string | null; agent_type: string }>(
           "SELECT role_id,label,agent_type FROM agent_sessions WHERE id=?",
@@ -135,7 +141,7 @@ export class Workspace {
       role_name: role?.name ?? null,
     };
   }
-  ensureOperator(operator: OperatorContext) {
+  ensureOperator(operator: OperatorContext, projectId: string | null = null) {
     this.run(
       "INSERT OR IGNORE INTO operators VALUES(?,?,?,?,?)",
       operator.id,
@@ -149,6 +155,7 @@ export class Workspace {
       operator.session_id,
       operator.agent_type ?? "unknown",
       operator.name,
+      projectId,
     ).id;
   }
   participation(taskId: string) {
@@ -157,6 +164,13 @@ export class Workspace {
     if (run) this.graph.add("works_on", run, taskId);
   }
   async dispatch(name: Operation, input: unknown, principal: Principal): Promise<unknown> {
+    return this.access.run(principal, () => this.dispatchScoped(name, input, principal));
+  }
+  private async dispatchScoped(
+    name: Operation,
+    input: unknown,
+    principal: Principal,
+  ): Promise<unknown> {
     if (principal.inlet === "mcp" && !mcpOperations.has(name))
       throw new AppError("not_found", "Operation is not available through MCP", 404);
     if (/^artifacts?_/.test(name)) {
@@ -176,6 +190,7 @@ export class Workspace {
       data: string;
       name?: string;
     };
+    this.access.inputs(name, parsed.data);
     this.sessions.get(a.target_session_id);
     if (!this.blobs)
       throw new AppError("storage_unavailable", "Blob storage is not configured", 503);
@@ -197,6 +212,14 @@ export class Workspace {
     principal: Principal,
     prepared?: () => unknown,
   ): unknown {
+    return this.access.run(principal, () => this.executeScoped(name, input, principal, prepared));
+  }
+  private executeScoped(
+    name: Operation,
+    input: unknown,
+    principal: Principal,
+    prepared?: () => unknown,
+  ): unknown {
     const definition = operations[name];
     if (!can(principal, definition.scope))
       throw new AppError("forbidden", `Scope ${definition.scope} is required`, 403);
@@ -204,6 +227,7 @@ export class Workspace {
     if (!parsed.success)
       throw new AppError("invalid_input", "Invalid request", 400, parsed.error.flatten());
     const a = parsed.data as Input;
+    this.access.inputs(name, a);
     if (!definition.write) return this.read(name, a, principal);
     return this.recordWrite(name, a, principal, prepared ?? (() => this.write(name, a, principal)));
   }
@@ -267,7 +291,7 @@ export class Workspace {
             this.now(),
             details,
           );
-          this.ensureOperator(operator);
+          this.ensureOperator(operator, this.access.initialProject(a));
           const value = work();
           let final: unknown = value;
           if (
@@ -322,7 +346,7 @@ export class Workspace {
     if (name === "projects_list")
       return this.all<Project>(
         "SELECT id,name,body,revision,created_at FROM projects ORDER BY name,id",
-      );
+      ).filter((project) => this.access.project(project.id));
     if (name === "projects_get") return this.project(a.project_id as string);
     if (name.startsWith("roles_") || name.startsWith("sessions_"))
       return this.sessions.read(name, a, principal);

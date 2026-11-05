@@ -31,6 +31,22 @@ export function artifactApi(w: Workspace, auth: Auth) {
   const api = new Hono(),
     service = w.artifacts;
   if (!service) return api;
+  api.use("/api/*", async (c, next) => {
+    const p = auth.principal(c.req.raw);
+    if (!p) throw new AppError("unauthorized", "Sign in to Allgather", 401);
+    return w.access.run(p, async () => {
+      const artifact = /^\/api\/artifacts\/([^/]+)/.exec(c.req.path)?.[1];
+      if (artifact && artifact !== "archive")
+        w.access.require(w.access.artifact(decodeURIComponent(artifact)));
+      if (c.req.path === "/api/library-summary") w.access.require(w.access.global());
+      if (
+        (c.req.path.startsWith("/api/previews/") || c.req.path.endsWith("/previews")) &&
+        p.inlet !== "browser"
+      )
+        throw new AppError("forbidden", "Interactive previews require the owner browser", 403);
+      await next();
+    });
+  });
   const principal = (c: Context, write = false): Principal => {
     const p = auth.principal(c.req.raw);
     if (!p) throw new AppError("unauthorized", "Sign in to Allgather", 401);

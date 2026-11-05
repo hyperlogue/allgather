@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ResourceGrants } from "./resource-grants.ts";
 import type {
   HarnessControls,
   MachineScope,
@@ -13,6 +14,8 @@ export { type Scope, scopes } from "./permissions.ts";
 
 import type { Scope } from "./permissions.ts";
 export interface Principal {
+  grant_id?: string;
+  resources?: ResourceGrants;
   id: string;
   scopes: readonly Scope[];
   kind: "owner" | "client";
@@ -54,6 +57,7 @@ export interface Role {
   created_at: string;
 }
 export interface AgentSession {
+  project_id: string | null;
   id: string;
   agent_type: string;
   source_namespace: string | null;
@@ -695,6 +699,7 @@ export const operations = {
     z.object({
       ...key,
       machine_id: id,
+      project_id: id.optional(),
       harness: text,
       mode: z.enum(["managed", "terminal"]).optional(),
       cwd: z.string().min(1).max(4096),
@@ -993,6 +998,7 @@ export const operations = {
     z.object({
       ...key,
       target_session_id: id,
+      project_id: id.optional(),
       label: text.optional(),
       harness: text.default("unknown"),
       source_namespace: text.optional(),

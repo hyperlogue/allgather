@@ -3,6 +3,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import OAuth2Server from "@node-oauth/oauth2-server";
 import { AppError, type Principal, type Scope, scopes } from "../shared/contracts.ts";
 import { mcpOperationScopes } from "../shared/mcp-surface.ts";
+import { resourceGrantsSchema } from "../shared/resource-grants.ts";
 
 export const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 export const secret = () => randomBytes(32).toString("base64url");
@@ -22,6 +23,9 @@ interface ClientRow {
   revoked: number;
 }
 interface TokenRow {
+  grant_id: string;
+  resources: string;
+  granted_scopes: string;
   hash: string;
   refresh_hash: string;
   client_id: string;
@@ -87,11 +91,23 @@ export class Auth {
           user: OAuth2Server.User,
         ) => {
           const { authorizationCode, ...rest } = code;
-          db.query("INSERT INTO oauth_codes VALUES(?,?,?)").run(
-            hash(authorizationCode),
-            JSON.stringify({ ...rest, client, user, resource: user.resource }),
-            code.expiresAt.toISOString(),
-          );
+          db.transaction(() => {
+            db.query(
+              "INSERT INTO oauth_grants(id,client_id,resource,scopes,resources,created_at) VALUES(?,?,?,?,?,?)",
+            ).run(
+              String(user.grant_id),
+              client.id,
+              String(user.resource),
+              JSON.stringify(code.scope),
+              JSON.stringify(user.resources),
+              new Date().toISOString(),
+            );
+            db.query("INSERT INTO oauth_codes VALUES(?,?,?)").run(
+              hash(authorizationCode),
+              JSON.stringify({ ...rest, client, user, resource: user.resource }),
+              code.expiresAt.toISOString(),
+            );
+          }).immediate();
           return { ...code, client, user };
         },
         getAuthorizationCode: async (value: string) => {
@@ -111,13 +127,20 @@ export class Auth {
           client: OAuth2Server.Client,
           user: OAuth2Server.User,
         ) => {
-          if (!this.allowedResource(client.id, user.resource))
+          if (
+            !this.allowedResource(client.id, user.resource) ||
+            !db
+              .query(
+                "SELECT 1 FROM oauth_grants WHERE id=? AND client_id=? AND resource=? AND revoked=0",
+              )
+              .get(String(user.grant_id), client.id, String(user.resource))
+          )
             throw new AppError("revoked_client", "Client access was revoked", 401);
           if (!token.accessTokenExpiresAt || !token.refreshTokenExpiresAt || !token.refreshToken)
             throw new Error("OAuth library returned an incomplete token record");
           const offline = token.scope?.includes("offline_access");
           db.query(
-            "INSERT INTO oauth_tokens(hash,refresh_hash,client_id,scopes,expires,refresh_expires,resource,revoked,operator_name) VALUES(?,?,?,?,?,?,?,0,?)",
+            "INSERT INTO oauth_tokens(hash,refresh_hash,client_id,scopes,expires,refresh_expires,resource,revoked,operator_name,grant_id) VALUES(?,?,?,?,?,?,?,0,?,?)",
           ).run(
             hash(token.accessToken),
             offline ? hash(token.refreshToken) : null,
@@ -130,6 +153,7 @@ export class Auth {
               0,
               160,
             ),
+            String(user.grant_id),
           );
           return {
             ...token,
@@ -147,12 +171,19 @@ export class Auth {
             accessTokenExpiresAt: new Date(row.expires),
             scope: JSON.parse(row.scopes),
             client: { id: row.client_id, grants: ["authorization_code", "refresh_token"] },
-            user: { id: "owner", operator_name: row.operator_name, resource: row.resource },
+            user: {
+              id: "owner",
+              operator_name: row.operator_name,
+              resource: row.resource,
+              grant_id: row.grant_id,
+            },
           };
         },
         getRefreshToken: async (value: string) => {
           const row = db
-            .query("SELECT * FROM oauth_tokens WHERE refresh_hash=? AND revoked=0")
+            .query(
+              "SELECT t.*,g.resources,g.scopes granted_scopes FROM oauth_tokens t JOIN oauth_grants g ON g.id=t.grant_id AND g.revoked=0 WHERE t.refresh_hash=? AND t.revoked=0",
+            )
             .get(hash(value)) as TokenRow | null;
           if (!row || !this.allowedResource(row.client_id, row.resource)) return false;
           return {
@@ -160,7 +191,12 @@ export class Auth {
             refreshTokenExpiresAt: new Date(row.refresh_expires),
             scope: JSON.parse(row.scopes),
             client: { id: row.client_id, grants: ["authorization_code", "refresh_token"] },
-            user: { id: "owner", operator_name: row.operator_name, resource: row.resource },
+            user: {
+              id: "owner",
+              operator_name: row.operator_name,
+              resource: row.resource,
+              grant_id: row.grant_id,
+            },
           };
         },
         revokeToken: async (token: OAuth2Server.RefreshToken) =>
@@ -189,7 +225,9 @@ export class Auth {
   }
   private tokenRow(value: string) {
     const r = this.db
-      .query("SELECT * FROM oauth_tokens WHERE hash=? AND revoked=0")
+      .query(
+        "SELECT t.*,g.resources,g.scopes granted_scopes FROM oauth_tokens t JOIN oauth_grants g ON g.id=t.grant_id AND g.revoked=0 WHERE t.hash=? AND t.revoked=0",
+      )
       .get(hash(value)) as TokenRow | null;
     return r && this.allowedResource(r.client_id, r.resource) ? r : null;
   }
@@ -207,10 +245,12 @@ export class Auth {
         return {
           id: row.client_id,
           kind: "client",
+          grant_id: row.grant_id,
+          resources: resourceGrantsSchema.parse(JSON.parse(row.resources)),
           inlet: mcp ? "mcp" : "api",
           operator_name: row.operator_name ?? this.client(row.client_id)?.name ?? "MCP client",
           scopes: (JSON.parse(row.scopes) as string[]).filter(
-            (s) => s !== "offline_access",
+            (s) => s !== "offline_access" && JSON.parse(row.granted_scopes).includes(s),
           ) as Scope[],
           auth_binding: { kind: "oauth", hash: hash(token) },
         };
@@ -313,7 +353,8 @@ export class Auth {
     const now = new Date().toISOString();
     this.db.query("DELETE FROM oauth_codes WHERE expires<=?").run(now);
     const unused = `NOT EXISTS(SELECT 1 FROM oauth_tokens t WHERE t.client_id=oauth_clients.id)
-      AND NOT EXISTS(SELECT 1 FROM oauth_codes a WHERE json_extract(a.data,'$.client.id')=oauth_clients.id)`;
+      AND NOT EXISTS(SELECT 1 FROM oauth_codes a WHERE json_extract(a.data,'$.client.id')=oauth_clients.id)
+      AND NOT EXISTS(SELECT 1 FROM oauth_grants g WHERE g.client_id=oauth_clients.id)`;
     this.db
       .query(`DELETE FROM oauth_clients WHERE ${unused} AND (revoked=1 OR created_at<=?)`)
       .run(new Date(Date.now() - 15 * 60000).toISOString());
@@ -436,9 +477,13 @@ export class Auth {
       redirect_uri: params.redirect_uri,
       audience: c.audience,
       resource: params.resource,
+      projects: this.db.query("SELECT id,name FROM projects ORDER BY name,id").all(),
+      machines: this.db.query("SELECT id,name FROM machines ORDER BY name,id").all(),
     };
   }
   async authorize(request: Request, params: Record<string, string>) {
+    if (this.principal(request)?.inlet !== "browser")
+      throw new AppError("unauthorized", "Sign in before granting access", 401);
     const info = this.authorizeInfo(params);
     if (params.keep_access !== undefined && !["true", "false"].includes(params.keep_access))
       throw new AppError("invalid_request", "Choose whether to keep this connection signed in");
@@ -450,11 +495,27 @@ export class Auth {
         " ",
       ),
     };
+    const selectedResources = resourceGrantsSchema.safeParse(
+      params.resource_grants ? JSON.parse(params.resource_grants) : {},
+    );
+    if (!selectedResources.success)
+      throw new AppError("invalid_grant", "Choose project and machine access");
+    const resources = selectedResources.data;
+    for (const [table, ids] of [
+      ["projects", resources.project_ids],
+      ["machines", resources.machine_ids],
+    ] as const) {
+      if (
+        ids !== "*" &&
+        ids.some((id) => !this.db.query(`SELECT 1 FROM ${table} WHERE id=?`).get(id))
+      )
+        throw new AppError("invalid_grant", "A selected resource no longer exists");
+    }
+    const grantId = `grant-${secret()}`;
     const operatorName = params.operator_name?.trim() || info.name;
     if (operatorName.length > 160)
       throw new AppError("invalid_operator_name", "Operator name must have at most 160 characters");
-    if (this.principal(request)?.inlet !== "browser")
-      throw new AppError("unauthorized", "Sign in before granting access", 401);
+
     const response = new OAuth2Server.Response();
     await this.oauth.authorize(
       new OAuth2Server.Request({
@@ -466,7 +527,13 @@ export class Auth {
       response,
       {
         authenticateHandler: {
-          handle: () => ({ id: "owner", operator_name: operatorName, resource: params.resource }),
+          handle: () => ({
+            id: "owner",
+            operator_name: operatorName,
+            resource: params.resource,
+            grant_id: grantId,
+            resources,
+          }),
         },
         allowEmptyState: true,
       },
@@ -552,13 +619,25 @@ export class Auth {
       .transaction(() => {
         this.db.query("UPDATE oauth_clients SET revoked=1 WHERE id=?").run(id);
         this.db.query("UPDATE oauth_tokens SET revoked=1 WHERE client_id=?").run(id);
+        this.db.query("UPDATE oauth_grants SET revoked=1 WHERE client_id=?").run(id);
       })
       .immediate();
   }
   revokeToken(value: string) {
     this.db
-      .query("UPDATE oauth_tokens SET revoked=1 WHERE hash=? OR refresh_hash=?")
-      .run(hash(value), hash(value));
+      .transaction(() => {
+        this.db
+          .query(
+            "UPDATE oauth_grants SET revoked=1 WHERE id IN (SELECT grant_id FROM oauth_tokens WHERE hash=? OR refresh_hash=?)",
+          )
+          .run(hash(value), hash(value));
+        this.db
+          .query(
+            "UPDATE oauth_tokens SET revoked=1 WHERE grant_id IN (SELECT grant_id FROM oauth_tokens WHERE hash=? OR refresh_hash=?)",
+          )
+          .run(hash(value), hash(value));
+      })
+      .immediate();
   }
   metadata(surface: "private" | "public" = "private") {
     const issuer = surface === "public" ? this.mcpBaseUrl : this.baseUrl;
@@ -595,6 +674,7 @@ export function revokeCredentials(db: Database) {
       UPDATE login_tokens SET revoked_at=strftime('%Y-%m-%dT%H:%M:%fZ','now');
       UPDATE oauth_tokens SET revoked=1;
       UPDATE oauth_clients SET revoked=1;
+      UPDATE oauth_grants SET revoked=1;
       UPDATE tower_credentials SET revoked_at=strftime('%Y-%m-%dT%H:%M:%fZ','now');
       UPDATE tower_enrollments SET state='denied';
       UPDATE machines SET connected=0,active_credential_id=NULL;

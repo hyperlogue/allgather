@@ -65,7 +65,7 @@ export const HELP = `allgather — one work record for tasks, sessions, and evid
   machine key ID [--label NAME]
   machine keys ID | revoke-key KEY_ID
   checkout list [--machine ID] [--repository ID] [--include-removed]
-  session launch --machine ID --harness NAME --cwd PATH [--mode managed|terminal] [--label NAME] [--role ID] [--task ID]
+  session launch --machine ID --harness NAME --cwd PATH [--mode managed|terminal] [--project ID] [--label NAME] [--role ID] [--task ID]
   session prompt ID --body TEXT | cancel ID | runtime ID | commands ID | requests ID
   session reply --request ID --expected-revision N --response JSON
   session configure ID --config JSON | resume ID --machine ID --cwd PATH [--force]

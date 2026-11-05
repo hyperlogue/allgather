@@ -976,7 +976,14 @@ export class Tower {
         "SELECT id,session_id,registration_id,event FROM artifact_notifications WHERE state='queued' AND command_id IS NULL AND route='message' ORDER BY created_at,id LIMIT 32",
       )) {
         const record = this.w.artifacts?.workers.get(notification.registration_id);
-        if (!record || !this.w.artifacts?.notifications.authorized(record.principal)) {
+        if (
+          !record ||
+          !this.w.artifacts?.notifications.authorized(
+            record.principal,
+            record.subscription.artifactId,
+            record.subscription.listenerId,
+          )
+        ) {
           this.w.run(
             "UPDATE artifact_notifications SET state='failed',error='Notification authorization expired' WHERE id=?",
             notification.id,

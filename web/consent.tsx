@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { permissions, type Scope } from "../shared/permissions.ts";
+import { noResources, type ResourceGrants } from "../shared/resource-grants.ts";
 import { request } from "./api.ts";
 import { ErrorText, useAction } from "./ui.tsx";
 
@@ -9,6 +10,8 @@ interface ConsentInfo {
   redirect_uri: string;
   audience: "mcp" | "api";
   resource: string;
+  projects: { id: string; name: string }[];
+  machines: { id: string; name: string }[];
 }
 function Category({
   label,
@@ -55,12 +58,56 @@ function Category({
     </details>
   );
 }
+function ResourceCategory({
+  title,
+  items,
+  selected,
+  change,
+}: {
+  title: string;
+  items: { id: string; name: string }[];
+  selected: "*" | string[];
+  change: (value: "*" | string[]) => void;
+}) {
+  return (
+    <details className="permission-category">
+      <summary>
+        <span>{title}</span>
+        <small>{selected === "*" ? "All, including new" : `${selected.length} selected`}</small>
+      </summary>
+      <label className="permission-choice">
+        <input
+          type="checkbox"
+          checked={selected === "*"}
+          onChange={(event) => change(event.target.checked ? "*" : [])}
+        />
+        <span>All {title.toLowerCase()}, including new ones</span>
+      </label>
+      {items.map((item) => (
+        <label key={item.id} className="permission-choice">
+          <input
+            type="checkbox"
+            checked={selected === "*" || selected.includes(item.id)}
+            onChange={(event) => {
+              const ids = new Set(selected === "*" ? items.map((item) => item.id) : selected);
+              if (event.target.checked) ids.add(item.id);
+              else ids.delete(item.id);
+              change([...ids]);
+            }}
+          />
+          <span>{item.name}</span>
+        </label>
+      ))}
+    </details>
+  );
+}
 export function Consent() {
   const [info, setInfo] = useState<ConsentInfo | null>(null);
   const [loadError, setLoadError] = useState("");
   const [operatorName, setOperatorName] = useState("");
   const [selected, setSelected] = useState(new Set<Scope>());
   const [keepAccess, setKeepAccess] = useState(true);
+  const [resources, setResources] = useState<ResourceGrants>(noResources);
   const { busy, error, run } = useAction();
   useEffect(() => {
     void request<ConsentInfo>(`/api/oauth/request${location.search}`)
@@ -125,6 +172,37 @@ export function Consent() {
               />
             ))}
           </div>
+          <div className="permission-tree">
+            <p>
+              Project and machine access are separate. Both are required for a session on a machine.
+            </p>
+            <ResourceCategory
+              title="Projects"
+              items={info.projects}
+              selected={resources.project_ids}
+              change={(project_ids) => setResources((previous) => ({ ...previous, project_ids }))}
+            />
+            <ResourceCategory
+              title="Machines"
+              items={info.machines}
+              selected={resources.machine_ids}
+              change={(machine_ids) => setResources((previous) => ({ ...previous, machine_ids }))}
+            />
+            <label className="permission-choice">
+              <input
+                type="checkbox"
+                checked={resources.unassigned}
+                onChange={(event) =>
+                  setResources((previous) => ({ ...previous, unassigned: event.target.checked }))
+                }
+              />
+              <span>Unassigned — records with no project</span>
+            </label>
+            <p className="muted small">
+              Shared repositories require all linked projects. Links and path prefixes do not grant
+              access.
+            </p>
+          </div>
           {(selected.has("transcripts:read") ||
             selected.has("artifacts:read") ||
             selected.has("commits:read")) && (
@@ -173,6 +251,7 @@ export function Consent() {
                     scope: [...selected].join(" "),
                     operator_name: operatorName,
                     keep_access: String(keepAccess),
+                    resource_grants: JSON.stringify(resources),
                   });
                   location.assign(result.redirect_uri);
                 })

@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { fixtureResources } from "../scripts/fixture-auth.ts";
 import { openDatabase } from "../server/storage.ts";
 import { Workspace } from "../server/workspace.ts";
 import {
@@ -98,7 +99,13 @@ test("ready uses explicit assignment filters independent of the caller", () => {
   task("other", { assignee: { kind: "session", id: "other" } });
   task("role", { assignee: { kind: "role", id: role.id } });
   task("owner", { assignee: { kind: "owner", id: "owner" } });
-  const agent: Principal = { id: "reader", kind: "client", inlet: "mcp", scopes: ["tasks:read"] };
+  const agent: Principal = {
+    id: "reader",
+    kind: "client",
+    resources: fixtureResources,
+    inlet: "mcp",
+    scopes: ["tasks:read"],
+  };
   const titles = (principal: Principal, input = {}) =>
     call<{ items: Task[] }>("tasks_ready", input, principal)
       .items.map((t) => t.title)
@@ -126,6 +133,7 @@ test("claims distinguish sessions, expire without changing outcomes, and guard c
   const agent: Principal = {
     id: "agent-connection",
     kind: "client",
+    resources: fixtureResources,
     scopes: ["tasks:read", "tasks:write"],
     inlet: "mcp",
   };
@@ -170,7 +178,12 @@ test("mutations replay exact retries, reject stale edits, and roll back when aud
 test("scope checks apply to both context endpoints and the core interface", () => {
   const { call, task, w, project } = setup(),
     t = task("Work"),
-    reader: Principal = { id: "reader", kind: "client", scopes: ["tasks:read"] };
+    reader: Principal = {
+      id: "reader",
+      kind: "client",
+      resources: fixtureResources,
+      scopes: ["tasks:read"],
+    };
   expect(() =>
     w.execute(
       "tasks_create",

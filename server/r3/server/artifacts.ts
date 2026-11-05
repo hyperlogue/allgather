@@ -130,6 +130,7 @@ export class ArtifactStore {
     private readonly isWatching: (id: string) => boolean = () => false,
     private readonly workerRecords?: WorkerRecords,
     private readonly generateArtifactId: () => string = () => `artifact_${nanoid()}`,
+    private readonly access?: { artifact(id:string):boolean; project(id:string|null):boolean; session(id:string):boolean },
   ) {
     this.attachments = new ArtifactAttachments(db, blobs, clock);
     this.projectStore = new ArtifactProjects(db);
@@ -139,11 +140,11 @@ export class ArtifactStore {
     const query = this.db.query<{ label: string | null }, [string]>(
       "SELECT label FROM agent_sessions WHERE id = ?",
     );
-    return Object.fromEntries(ids.map((id) => [id, query.get(id)?.label ?? null]));
+    return Object.fromEntries(ids.map((id) => [id, !this.access || this.access.session(id) ? query.get(id)?.label ?? null : null]));
   }
 
   projects(): ArtifactProject[] {
-    return this.projectStore.list();
+    return this.projectStore.list().filter(project=>!this.access || this.access.project(project.id));
   }
 
   viewed(id: string): string[] {
@@ -221,6 +222,7 @@ export class ArtifactStore {
   }
 
   get(id: string): Artifact {
+    if (this.access && !this.access.artifact(id)) throw new ArtifactError("Artifact access is not granted",403);
     const row = this.db
       .query<ArtifactRow, [string, string]>(`SELECT a.*, EXISTS (
       SELECT 1 FROM threads f JOIN thread_claims c ON c.thread_id = f.id
@@ -318,6 +320,7 @@ export class ArtifactStore {
         `SELECT id FROM artifacts ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""} ORDER BY updated_at DESC, id`,
       )
       .all(...args)
+      .filter(({id})=>!this.access || this.access.artifact(id))
       .map(({ id }) => this.get(id));
   }
 

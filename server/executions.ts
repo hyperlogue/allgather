@@ -52,6 +52,7 @@ export class Executions {
       > & { active_credential_id: string | null }
     >("SELECT * FROM machines WHERE id=?", id);
     if (!row) throw new AppError("not_found", "Machine not found", 404);
+    this.w.access.require(this.w.access.machine(id));
     const report = this.w.one<{ requested_revision: number; observed_at: string; body: string }>(
       "SELECT requested_revision,observed_at,body FROM machine_policy_reports WHERE machine_id=?",
       id,
@@ -419,6 +420,7 @@ export class Executions {
     if (name === "machines_list")
       return this.w
         .all<{ id: string }>("SELECT id FROM machines ORDER BY name,id")
+        .filter((row) => this.w.access.machine(row.id))
         .map((r) => this.machine(r.id));
     if (name === "machines_get") {
       const m = this.machine(String(a.machine_id));
@@ -429,7 +431,8 @@ export class Executions {
             "SELECT record,observed_at FROM tower_records WHERE machine_id=? ORDER BY tower_id",
             m.id,
           )
-          .map((r) => ({ ...JSON.parse(r.record), observed_at: r.observed_at })),
+          .map((r) => ({ ...JSON.parse(r.record), observed_at: r.observed_at }))
+          .filter((record) => this.w.access.towerRecord(m.id, record)),
       };
     }
     if (name === "checkouts_list") return checkoutObservations(this.w, a);
@@ -615,7 +618,13 @@ export class Executions {
           409,
         );
       const session =
-        prior ?? this.w.sessions.ensure(uid("session"), harness, a.label as string | undefined);
+        prior ??
+        this.w.sessions.ensure(
+          uid("session"),
+          harness,
+          a.label as string | undefined,
+          this.w.access.initialProject(a),
+        );
       if (a.role_id)
         this.w.sessions.write("sessions_bind_role", {
           target_session_id: session.id,
@@ -625,7 +634,9 @@ export class Executions {
       if (a.task_id) {
         if (!can(p, "tasks:read"))
           throw new AppError("forbidden", "Task links require tasks:read", 403);
-        this.w.task(String(a.task_id));
+        const task = this.w.task(String(a.task_id));
+        if (task.project_id !== session.project_id)
+          throw new AppError("project_conflict", "Session and task projects must match");
         this.w.graph.add("works_on", session.id, String(a.task_id));
       }
       for (const old of unresolved) {

@@ -24,6 +24,7 @@ export class Tasks {
   raw(id: string) {
     const t = this.w.one<StoredTask>("SELECT * FROM tasks WHERE id=?", id);
     if (!t) throw new AppError("not_found", "Task not found", 404);
+    this.w.access.require(this.w.access.project(t.project_id));
     return t;
   }
   dependencies(id: string) {
@@ -46,11 +47,13 @@ export class Tasks {
           id,
         )
         .map((t) => ({
-          id: `dependency:${t.id}`,
+          id: this.w.access.task(t.id) ? `dependency:${t.id}` : "restricted-prerequisite",
           task_id: id,
           waiting_on: "task" as const,
-          body: `Complete prerequisite: ${t.title}`,
-          dependency_id: t.id,
+          body: this.w.access.task(t.id)
+            ? `Complete prerequisite: ${t.title}`
+            : "Waiting for a restricted prerequisite",
+          dependency_id: this.w.access.task(t.id) ? t.id : undefined,
           created_at: t.created_at,
           resolved_at: null,
         })),
@@ -70,7 +73,7 @@ export class Tasks {
       ),
       blocked: t.status === "open" && blockers.length > 0,
       needs_owner: t.status === "open" && blockers.some((b) => b.waiting_on === "owner"),
-      dependencies: this.dependencies(id),
+      dependencies: this.dependencies(id).filter((id) => this.w.access.task(id)),
       child_count: this.w.one<{ n: number }>("SELECT COUNT(*) n FROM tasks WHERE parent_id=?", id)!
         .n,
     };
@@ -261,6 +264,7 @@ export class Tasks {
           "SELECT task_id FROM task_prerequisites WHERE prerequisite_id=?",
           id,
         )
+        .filter((r) => this.w.access.task(r.task_id))
         .map((r) => this.get(r.task_id)),
       children: this.w
         .all<{ id: string }>("SELECT id FROM tasks WHERE parent_id=? ORDER BY created_at,id", id)
@@ -297,6 +301,7 @@ export class Tasks {
           project,
           project,
         )
+        .filter((r) => this.w.access.task(r.id))
         .map((r) => this.get(r.id))
         .filter((t) => {
           if (a.status && t.status !== a.status) return false;
@@ -353,10 +358,12 @@ export class Tasks {
     if (name === "task_comments_list") return this.comments(String(a.task_id), a);
     if (name === "tasks_labels") {
       const prj = a.project_id ? this.w.project(String(a.project_id)).id : null;
+      const access = this.w.access.projectSql("t.project_id");
       return this.w.all(
-        "SELECT j.value name,COUNT(*) count FROM tasks t,json_each(t.labels) j WHERE (? IS NULL OR t.project_id=?) GROUP BY j.value ORDER BY j.value",
+        `SELECT j.value name,COUNT(*) count FROM tasks t,json_each(t.labels) j WHERE (? IS NULL OR t.project_id=?) AND ${access.sql} GROUP BY j.value ORDER BY j.value`,
         prj,
         prj,
+        ...access.args,
       );
     }
     if (name === "tasks_progress") {
@@ -368,6 +375,7 @@ export class Tasks {
           prj,
           prj,
         )
+        .filter((r) => this.w.access.task(r.id))
         .map((r) => this.progress(r.id));
     }
     if (["tasks_search", "tasks_ready"].includes(name)) return this.search(a, name);

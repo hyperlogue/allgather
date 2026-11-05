@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import { AppError, type Principal, type SessionRuntime } from "../shared/contracts.ts";
+import { resourceGrantsSchema } from "../shared/resource-grants.ts";
 import {
   type CommandReceipt,
   cursorSchema,
@@ -591,12 +592,31 @@ export class ManagedControl {
       commandId,
     );
     const scope = command?.kind === "cancel" ? "sessions:stop" : `sessions:${command?.kind}`;
-    return this.w.one(
-      "SELECT 1 FROM oauth_tokens t JOIN oauth_clients c ON c.id=t.client_id WHERE t.hash=? AND t.expires>? AND t.revoked=0 AND c.revoked=0 AND (EXISTS (SELECT 1 FROM json_each(t.scopes) WHERE value=?) OR EXISTS (SELECT 1 FROM json_each(t.scopes) WHERE value='admin'))",
+    const access = this.w.one<{ scopes: string; granted_scopes: string; resources: string }>(
+      "SELECT t.scopes,g.scopes granted_scopes,g.resources FROM oauth_tokens t JOIN oauth_clients c ON c.id=t.client_id JOIN oauth_grants g ON g.id=t.grant_id AND g.client_id=t.client_id AND g.resource=t.resource WHERE t.hash=? AND t.client_id=? AND t.grant_id=? AND c.revoked=0 AND g.revoked=0 AND EXISTS(SELECT 1 FROM oauth_tokens live WHERE live.grant_id=t.grant_id AND live.revoked=0 AND (live.expires>? OR live.refresh_hash IS NOT NULL AND live.refresh_expires>?))",
       binding.hash,
+      p.id,
+      p.grant_id ?? "",
       this.w.now(),
-      scope,
+      this.w.now(),
+    );
+    if (!access) return null;
+    const tokenScopes = JSON.parse(access.scopes) as string[],
+      grantScopes = JSON.parse(access.granted_scopes) as string[];
+    if (
+      ![scope, "admin"].some((scope) => tokenScopes.includes(scope) && grantScopes.includes(scope))
     )
+      return null;
+    const resources = resourceGrantsSchema.safeParse(JSON.parse(access.resources));
+    if (!resources.success) return null;
+    const target = this.w.one<{ session_id: string }>(
+      "SELECT session_id FROM session_commands WHERE id=?",
+      commandId,
+    );
+    return target &&
+      this.w.access.run({ ...p, resources: resources.data }, () =>
+        this.w.access.session(target.session_id),
+      )
       ? row.expires_at
       : null;
   }

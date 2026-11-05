@@ -396,7 +396,9 @@ export function checkoutObservations(
       connected: !!row.connected && !!row.checkouts_current,
     };
   });
-  if (filter.checkout_id !== undefined) return observations;
+  const permitted = (row: CheckoutObservation) =>
+    w.access.machine(row.machine_id) && w.access.repository(row.repository_id);
+  if (filter.checkout_id !== undefined) return observations.filter(permitted);
   // Legacy reports have no Tower-issued identity. Do not invent one from a path
   // or expose the old database surrogate; a stable full snapshot supersedes them.
   const legacy = w.all<{
@@ -436,10 +438,12 @@ export function checkoutObservations(
       connected: false,
     });
   }
-  return observations.sort(
-    (a, b) =>
-      a.machine_id.localeCompare(b.machine_id) ||
-      a.path.localeCompare(b.path) ||
-      String(a.checkout_id).localeCompare(String(b.checkout_id)),
-  );
+  return observations
+    .filter(permitted)
+    .sort(
+      (a, b) =>
+        a.machine_id.localeCompare(b.machine_id) ||
+        a.path.localeCompare(b.path) ||
+        String(a.checkout_id).localeCompare(String(b.checkout_id)),
+    );
 }

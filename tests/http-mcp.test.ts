@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { fixtureApiToken } from "../scripts/fixture-auth.ts";
+import { fixtureApiToken, fixtureResources } from "../scripts/fixture-auth.ts";
 import { createApp, Updates } from "../server/app.ts";
 import { Auth, OWNER, secret } from "../server/auth.ts";
 import { openDatabase } from "../server/storage.ts";
@@ -62,6 +62,7 @@ async function authorize(
     client_id: client.client_id,
     redirect_uri: "https://client.example/callback",
     response_type: "code",
+    resource_grants: JSON.stringify(fixtureResources),
     scope,
     keep_access: String(keepAccess),
     resource: `${base}/mcp`,
@@ -194,6 +195,7 @@ test("public MCP exposes work tools and rejects private operations before dispat
     const broadMcp: Principal = {
       id: "old-broad-grant",
       kind: "client",
+      resources: fixtureResources,
       inlet: "mcp",
       scopes: ["admin"],
     };

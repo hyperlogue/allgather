@@ -68,7 +68,9 @@ test("upgrading unknown client registrations revokes grants instead of inferring
     db.query(
       "INSERT INTO oauth_tokens(hash,client_id,scopes,expires,refresh_expires,resource) VALUES('old',?,'[\"admin\"]','2099-01-01','2099-01-01',?)",
     ).run(old.client_id, auth.apiResource);
-    db.exec("ALTER TABLE oauth_clients DROP COLUMN audience; PRAGMA user_version=21");
+    db.exec(
+      "ALTER TABLE oauth_tokens DROP COLUMN grant_id; DROP TABLE oauth_grants; ALTER TABLE agent_sessions DROP COLUMN project_id; ALTER TABLE oauth_clients DROP COLUMN audience; PRAGMA user_version=21",
+    );
     db.close();
     db = openDatabase(path);
     expect(new Auth(db, auth.baseUrl).client(old.client_id)).toBeNull();

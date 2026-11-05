@@ -153,7 +153,7 @@ test("version 16 checkout observations retain legacy evidence and catalog revisi
       .all())
       db.exec(`DROP TRIGGER "${row.name}"`);
     db.exec(
-      "DROP TABLE tower_checkouts; DROP TABLE machine_catalog_sync; DROP TABLE repository_catalog_clock; ALTER TABLE machines DROP COLUMN active_credential_id; ALTER TABLE machines DROP COLUMN terminal_controls; ALTER TABLE session_runtimes ADD COLUMN takeover_at TEXT; ALTER TABLE session_runtimes ADD COLUMN protocol_version TEXT; ALTER TABLE session_runtimes ADD COLUMN capabilities TEXT NOT NULL DEFAULT '[]'; CREATE TABLE runtime_takeovers(id TEXT); ALTER TABLE oauth_clients DROP COLUMN audience; ALTER TABLE login_tokens DROP COLUMN expires_at; ALTER TABLE login_tokens DROP COLUMN consumed_at; PRAGMA user_version=16;",
+      "DROP TABLE tower_checkouts; DROP TABLE machine_catalog_sync; DROP TABLE repository_catalog_clock; ALTER TABLE machines DROP COLUMN active_credential_id; ALTER TABLE machines DROP COLUMN terminal_controls; ALTER TABLE session_runtimes ADD COLUMN takeover_at TEXT; ALTER TABLE session_runtimes ADD COLUMN protocol_version TEXT; ALTER TABLE session_runtimes ADD COLUMN capabilities TEXT NOT NULL DEFAULT '[]'; CREATE TABLE runtime_takeovers(id TEXT); ALTER TABLE oauth_tokens DROP COLUMN grant_id; DROP TABLE oauth_grants; ALTER TABLE agent_sessions DROP COLUMN project_id; ALTER TABLE oauth_clients DROP COLUMN audience; ALTER TABLE login_tokens DROP COLUMN expires_at; ALTER TABLE login_tokens DROP COLUMN consumed_at; PRAGMA user_version=16;",
     );
     db.close();
     db = openDatabase(path);
@@ -295,6 +295,8 @@ test("version 18 retires only undispatched takeover replacements and preserves e
   let db = new Database(path);
   try {
     db.exec(`
+      CREATE TABLE projects(id TEXT PRIMARY KEY);
+      CREATE TABLE agent_sessions(id TEXT PRIMARY KEY);
       CREATE TABLE session_runtimes(id TEXT PRIMARY KEY,state TEXT,fenced INTEGER,connected INTEGER,termination TEXT,takeover_at TEXT,protocol_version TEXT,capabilities TEXT NOT NULL DEFAULT '[]');
       CREATE TABLE session_commands(id TEXT PRIMARY KEY,runtime_id TEXT REFERENCES session_runtimes(id),state TEXT,payload TEXT,result TEXT,updated_at TEXT);
       CREATE TABLE runtime_takeovers(id TEXT PRIMARY KEY,runtime_id TEXT REFERENCES session_runtimes(id));
@@ -414,7 +416,7 @@ test("version 19 removes unused runtime metadata while retaining controls, ident
     db.exec(`ALTER TABLE session_runtimes ADD COLUMN protocol_version TEXT;
       ALTER TABLE session_runtimes ADD COLUMN capabilities TEXT NOT NULL DEFAULT '[]';
       UPDATE session_runtimes SET protocol_version='obsolete',capabilities='["obsolete"]';
-      ALTER TABLE oauth_clients DROP COLUMN audience; ALTER TABLE login_tokens DROP COLUMN expires_at;
+      ALTER TABLE oauth_tokens DROP COLUMN grant_id; DROP TABLE oauth_grants; ALTER TABLE agent_sessions DROP COLUMN project_id; ALTER TABLE oauth_clients DROP COLUMN audience; ALTER TABLE login_tokens DROP COLUMN expires_at;
       ALTER TABLE login_tokens DROP COLUMN consumed_at;
       PRAGMA user_version=19;`);
     db.close();

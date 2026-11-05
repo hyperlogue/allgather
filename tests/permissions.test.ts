@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { fixtureResources } from "../scripts/fixture-auth.ts";
 import { openDatabase } from "../server/storage.ts";
 import { Workspace } from "../server/workspace.ts";
 import type { Operation, Principal } from "../shared/contracts.ts";
@@ -11,6 +12,7 @@ test("a launch grant cannot prompt, stop, resume or answer native agent permissi
   const principal: Principal = {
     id: "launch-only",
     kind: "client",
+    resources: fixtureResources,
     inlet: "api",
     scopes: ["sessions:launch"],
   };
@@ -37,6 +39,7 @@ test("artifact contribution, project writes and repository settings do not share
   const principal: Principal = {
     id: "contributor",
     kind: "client",
+    resources: fixtureResources,
     inlet: "api",
     scopes: ["artifacts:contribute", "tasks:write", "commits:read"],
   };

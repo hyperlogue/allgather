@@ -23,6 +23,7 @@ export class Sessions {
       this.resolve(id),
     );
     if (!row) throw new AppError("not_found", "Session not found", 404);
+    this.w.access.require(this.w.access.session(row.id));
     return row;
   }
   role(id: string) {
@@ -30,18 +31,23 @@ export class Sessions {
     if (!r) throw new AppError("not_found", "Role not found", 404);
     return r;
   }
-  ensure(id: string, harness = "unknown", label?: string) {
+  ensure(id: string, harness = "unknown", label?: string, projectId: string | null = null) {
     id = this.resolve(id);
     const existing = this.w.one<AgentSession>("SELECT * FROM agent_sessions WHERE id=?", id);
-    if (existing) return existing;
-    this.w.graph.ensure(id, "session");
+    if (existing) {
+      this.w.access.require(this.w.access.session(existing.id));
+      return existing;
+    }
+    this.w.access.require(this.w.access.project(projectId));
+    this.w.graph.ensure(id, "session", projectId);
     this.w.run(
-      "INSERT INTO agent_sessions(id,agent_type,label,created_at,updated_at) VALUES(?,?,?,?,?)",
+      "INSERT INTO agent_sessions(id,agent_type,label,created_at,updated_at,project_id) VALUES(?,?,?,?,?,?)",
       id,
       harness,
       label ?? null,
       this.w.now(),
       this.w.now(),
+      projectId,
     );
     return this.get(id);
   }
@@ -64,7 +70,10 @@ export class Sessions {
     return this.get(s.id);
   }
   read(name: Operation, a: Input, p: Principal) {
-    if (name === "roles_list") return this.w.all<Role>("SELECT * FROM roles ORDER BY name,id");
+    if (name === "roles_list")
+      return this.w.access.project(null)
+        ? this.w.all<Role>("SELECT * FROM roles ORDER BY name,id")
+        : [];
     if (name === "sessions_get") return this.get(String(a.target_session_id));
     if ((a.project_id || a.task_id) && !can(p, "tasks:read"))
       throw new AppError("forbidden", "Work filters require tasks:read", 403);
@@ -94,7 +103,8 @@ export class Sessions {
     if (a.until) filter("s.created_at<=?", String(a.until));
     if (project)
       filter(
-        `(EXISTS(SELECT 1 FROM relations r JOIN entities e ON e.id=CASE WHEN r.source_id=s.id THEN r.target_id ELSE r.source_id END WHERE (r.source_id=s.id OR r.target_id=s.id) AND e.project_id=?) OR EXISTS(SELECT 1 FROM audit_operations o JOIN audit_changes c ON c.operation_id=o.id WHERE o.session_id=s.id AND c.project_id=?))`,
+        `(s.project_id=? OR EXISTS(SELECT 1 FROM relations r JOIN entities e ON e.id=CASE WHEN r.source_id=s.id THEN r.target_id ELSE r.source_id END WHERE (r.source_id=s.id OR r.target_id=s.id) AND e.project_id=?) OR EXISTS(SELECT 1 FROM audit_operations o JOIN audit_changes c ON c.operation_id=o.id WHERE o.session_id=s.id AND c.project_id=?))`,
+        project,
         project,
         project,
       );
@@ -106,6 +116,8 @@ export class Sessions {
         task,
         task,
       );
+    const access = this.w.access.sessionSql("s");
+    filter(access.sql, ...access.args);
     const sql = `FROM agent_sessions s WHERE ${where.join(" AND ")}`,
       total = this.w.one<{ n: number }>(`SELECT COUNT(*) n ${sql}`, ...args)!.n,
       cursor = Number(a.cursor ?? 0),
@@ -186,7 +198,18 @@ export class Sessions {
         "Tower-launched sessions take identity and metadata from launch; declare is for external sessions",
         409,
       );
-    const s = this.ensure(id, String(a.harness), a.label as string | undefined);
+    const s = this.ensure(
+      id,
+      String(a.harness),
+      a.label as string | undefined,
+      this.w.access.initialProject(a),
+    );
+    if (a.project_id !== undefined && s.project_id !== this.w.access.initialProject(a))
+      throw new AppError(
+        "session_project_conflict",
+        "An existing session's project cannot be replaced",
+        409,
+      );
     if (a.source_namespace || a.native_session_id) {
       if (!a.source_namespace || !a.native_session_id)
         throw new AppError(

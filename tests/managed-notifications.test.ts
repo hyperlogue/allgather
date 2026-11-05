@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ServerWebSocket } from "bun";
+import { fixtureResources } from "../scripts/fixture-auth.ts";
 import { openDatabase } from "../server/storage.ts";
 import { Tower, type TowerSocketData } from "../server/tower.ts";
 import { Workspace } from "../server/workspace.ts";
@@ -254,7 +255,13 @@ test("managed notification needs caller control, machine consent, and a current 
       f.artifactCall(
         "artifacts_submit",
         { artifact_id: artifact },
-        { id: "writer", kind: "client", inlet: "api", scopes: ["artifacts:contribute"] },
+        {
+          id: "writer",
+          kind: "client",
+          resources: fixtureResources,
+          inlet: "api",
+          scopes: ["artifacts:contribute"],
+        },
       ),
     ).rejects.toThrow("session prompt");
     expect(f.w.all("SELECT * FROM artifact_notifications")).toHaveLength(0);

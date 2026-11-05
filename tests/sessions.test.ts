@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fixtureResources } from "../scripts/fixture-auth.ts";
 import { startServer } from "../server/index.ts";
 import {
   type Machine,
@@ -327,6 +328,7 @@ test("Tower authentication, durable command receipts, transcript replay, and liv
     const reader: Principal = {
       id: "task-bot",
       kind: "client",
+      resources: fixtureResources,
       scopes: ["tasks:read", "tasks:write"],
       inlet: "mcp",
     };

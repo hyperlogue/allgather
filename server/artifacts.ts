@@ -45,6 +45,12 @@ export class Artifacts {
       clock,
       (id) => !!this.notifications?.selected(id),
       this.workers,
+      undefined,
+      {
+        artifact: (id) => !w.access.restricted || w.access.artifact(id),
+        project: (id) => w.access.project(id),
+        session: (id) => w.access.session(id),
+      },
     );
     this.conversations = new ArtifactConversations(db, this.store, clock);
     this.lifecycle = new ArtifactLifecycle(db, this.store, clock, this.workers);
@@ -89,6 +95,11 @@ export class Artifacts {
       const root = this.store.get(artifact);
       this.w.graph.ensure(root.id, "artifact", root.projectId);
       this.w.run("INSERT OR IGNORE INTO artifact_entities VALUES(?,?)", root.id, root.id);
+      this.w.run(
+        "UPDATE entities SET project_id=? WHERE id IN (SELECT entity_id FROM artifact_entities WHERE artifact_id=?)",
+        root.projectId,
+        root.id,
+      );
       const id =
         "seq" in v && "publishedAt" in v
           ? `${artifact}@${v.seq}`
@@ -131,6 +142,7 @@ export class Artifacts {
     if (!parsed.success)
       throw new AppError("invalid_input", "Invalid artifact request", 400, parsed.error.flatten());
     const a = parsed.data as Input;
+    this.w.access.inputs(name, a);
     try {
       if (!definition.write) return await this.read(name, a);
       const actor = this.actor(p, a);
@@ -250,7 +262,10 @@ export class Artifacts {
       return this.conversations.snapshot(id, a.threads as string[] | undefined);
     if (name === "artifacts_watchers") return this.notifications.watchers(id);
     if (name === "artifacts_viewed") return this.store.viewed(id);
-    if (name === "artifacts_usage") return this.usage.stat(a.window as "daily" | "weekly");
+    if (name === "artifacts_usage") {
+      this.w.access.require(this.w.access.global());
+      return this.usage.stat(a.window as "daily" | "weekly");
+    }
     if (name === "artifacts_search")
       return this.search.search({
         q: String(a.query),
@@ -325,11 +340,7 @@ export class Artifacts {
           title: a.title,
           meta: a.meta,
           actor,
-          ...(a.project_id === undefined
-            ? {}
-            : {
-                projectId: a.project_id === null ? null : this.w.project(String(a.project_id)).id,
-              }),
+          projectId: this.w.access.initialProject(a),
           remoteUrl: a.remote_url,
         });
       case "artifacts_edit":

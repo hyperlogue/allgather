@@ -254,9 +254,9 @@ test("managed notification needs caller control, machine consent, and a current 
       f.artifactCall(
         "artifacts_submit",
         { artifact_id: artifact },
-        { id: "writer", kind: "client", inlet: "api", scopes: ["artifacts:write"] },
+        { id: "writer", kind: "client", inlet: "api", scopes: ["artifacts:contribute"] },
       ),
-    ).rejects.toThrow("session control");
+    ).rejects.toThrow("session prompt");
     expect(f.w.all("SELECT * FROM artifact_notifications")).toHaveLength(0);
     f.reconnect(["read", "send"]);
     const noConsent = await f.artifactCall<{ notification: { command_id: string } }>(

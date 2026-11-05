@@ -20,3 +20,13 @@ export function migrateClientAudiences(db: Database) {
     `);
   }).immediate();
 }
+
+export function migrateGranularScopes(db: Database) {
+  db.transaction(() => {
+    db.exec(`
+      UPDATE oauth_tokens SET revoked=1;
+      DELETE FROM oauth_codes;
+      PRAGMA user_version=23;
+    `);
+  }).immediate();
+}

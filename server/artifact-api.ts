@@ -34,7 +34,11 @@ export function artifactApi(w: Workspace, auth: Auth) {
   const principal = (c: Context, write = false): Principal => {
     const p = auth.principal(c.req.raw);
     if (!p) throw new AppError("unauthorized", "Sign in to Allgather", 401);
-    if (!can(p, write ? "artifacts:write" : "artifacts:read"))
+    if (
+      !(write
+        ? can(p, "artifacts:contribute") || can(p, "artifacts:manage")
+        : can(p, "artifacts:read"))
+    )
       throw new AppError("forbidden", "Artifact access is not granted", 403);
     return p;
   };

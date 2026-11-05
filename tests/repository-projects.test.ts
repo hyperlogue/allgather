@@ -243,9 +243,9 @@ test("prefix configuration has independent revision, audit, retry, and scope gua
     f.call(
       "repositories_set_paths",
       { ...input, expected_revision: 2, operation_key: "readonly" },
-      { id: "reader", kind: "client", scopes: ["history:read"] },
+      { id: "reader", kind: "client", scopes: ["repositories:read"] },
     ),
-  ).toThrow("history:write");
+  ).toThrow("repositories:write");
   expect(() => f.attach(f.a, ["other"])).toThrow("existing link");
   expect(
     f.w.all("SELECT * FROM audit_operations WHERE operation='repositories_set_paths'"),

@@ -48,13 +48,21 @@ export class Graph {
   canRead(e: Entity, p: Principal) {
     return can(
       p,
-      ["commit", "repository"].includes(e.kind)
-        ? "history:read"
-        : ["artifact", "artifact_version", "artifact_thread", "artifact_comment"].includes(e.kind)
-          ? "artifacts:read"
-          : e.kind === "session_event"
-            ? "transcripts:read"
-            : "tasks:read",
+      e.kind === "commit"
+        ? "commits:read"
+        : e.kind === "repository"
+          ? "repositories:read"
+          : e.kind === "project"
+            ? "projects:read"
+            : e.kind === "session" || e.kind === "runtime"
+              ? "sessions:read"
+              : ["artifact", "artifact_version", "artifact_thread", "artifact_comment"].includes(
+                    e.kind,
+                  )
+                ? "artifacts:read"
+                : e.kind === "session_event"
+                  ? "transcripts:read"
+                  : "tasks:read",
     );
   }
   add(type: string, source: string, target: string, reason = "") {

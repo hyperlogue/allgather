@@ -71,7 +71,7 @@ export function createApp(
       (/^\/api\/artifacts\/[^/]+\/versions$/.test(c.req.path) && c.req.method === "POST");
     if (publication) {
       const p = auth.principal(c.req.raw);
-      if (!p || !can(p, "artifacts:write"))
+      if (!p || !can(p, "artifacts:contribute"))
         throw new AppError("forbidden", "Artifact write access required", 403);
     }
     const small =

@@ -376,7 +376,8 @@ try {
     client_id: client.client_id,
     redirect_uri: `${running.settings.ownerUrl}/callback`,
     response_type: "code",
-    scope: "tasks:read",
+    scope:
+      "tasks:read tasks:write sessions:read sessions:launch sessions:prompt transcripts:read artifacts:read commits:read",
     resource: `${running.settings.ownerUrl}/mcp`,
     code_challenge_method: "S256",
     code_challenge: createHash("sha256").update(verifier).digest("base64url"),
@@ -386,6 +387,26 @@ try {
     `document.querySelector('h1')?.textContent==='Connect an agent' && document.body.textContent.includes('Browser verification')`,
   );
   await field("Agent name", "Approved browser agent");
+  const defaults = await b.evaluate(`(() => {
+    const selected = text => Array.from(document.querySelectorAll('.permission-choice')).find(e => e.textContent.includes(text))?.querySelector('input')?.checked;
+    return selected('Read machines') && selected('Read retained') && selected('Read artifacts') && !selected('Launch a coding') && !selected('Send work');
+  })()`);
+  if (!defaults) throw new Error("Consent defaults grant unexpected permissions");
+  await b.evaluate(`(() => {
+    const group = document.querySelector('[aria-label="Grant all sessions permissions"]');
+    if (!group.indeterminate) throw new Error('Session category should have a partial selection');
+    group.click();
+  })()`);
+  await b.until(`document.querySelector('[aria-label="Grant all sessions permissions"]').checked`);
+  await b.evaluate(
+    `document.querySelector('[aria-label="Grant all sessions permissions"]').click()`,
+  );
+  await b.until(`!document.querySelector('[aria-label="Grant all sessions permissions"]').checked`);
+  await b.evaluate(`(() => {
+    for (const item of document.querySelectorAll('.permission-choice')) {
+      if (item.textContent.includes('Read machines') || item.textContent.includes('Create and update tasks')) item.querySelector('input').click();
+    }
+  })()`);
   await click("Allow access");
   await b.until(
     `location.pathname==='/callback' && new URLSearchParams(location.search).has('code')`,
@@ -403,7 +424,14 @@ try {
       resource: `${running.settings.ownerUrl}/mcp`,
     }),
   });
-  await tokenResponse.arrayBuffer();
+  const consentToken = (await tokenResponse.json()) as { scope: string; refresh_token?: string };
+  if (
+    !consentToken.refresh_token ||
+    consentToken.scope.includes("sessions:launch") ||
+    consentToken.scope.includes("sessions:prompt") ||
+    consentToken.scope.includes("tasks:write")
+  )
+    throw new Error("Consent did not narrow scopes or persist access by default");
   if (
     !tokenResponse.ok ||
     running.workspace.one<{ operator_name: string }>(

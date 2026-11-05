@@ -153,7 +153,7 @@ export class Artifacts {
             p.inlet !== "mcp" &&
             a.listen !== false &&
             actor.role === "agent" &&
-            can(p, "sessions:control") &&
+            can(p, "artifacts:notify") &&
             can(p, "artifacts:read")
           )
             this.notifications.subscribe(

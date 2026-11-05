@@ -111,7 +111,9 @@ test("session discovery combines work evidence, machine history, roles and dates
       scopes: ["tasks:read"],
     };
     expect(() => search({}, taskOnly)).toThrow("Scope sessions:read");
-    expect(call<Page<AgentSession>>("sessions_list", {}, taskOnly).total).toBe(4);
+    expect(() => call<Page<AgentSession>>("sessions_list", {}, taskOnly)).toThrow(
+      "Scope sessions:read",
+    );
     const sessionsOnly: Principal = { ...taskOnly, scopes: ["sessions:read"] };
     expect(search({ machine_id: machines[0].id }, sessionsOnly).total).toBe(2);
     expect(() => search({ project_id: a.id }, sessionsOnly)).toThrow("tasks:read");

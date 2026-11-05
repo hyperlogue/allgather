@@ -210,7 +210,7 @@ export class Workspace {
   // Internal notification admission has its own audit receipt before an archive commits.
   // It is deliberately not an HTTP/MCP operation or an alternate session-control grant.
   recordNotification(input: Input, principal: Principal, work: () => unknown) {
-    if (!can(principal, "artifacts:write"))
+    if (!can(principal, "artifacts:contribute") && !can(principal, "artifacts:manage"))
       throw new AppError("forbidden", "Artifact write access is required", 403);
     return this.recordWrite("artifact_notification_queue", input, principal, work);
   }

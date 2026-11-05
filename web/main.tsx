@@ -4,6 +4,7 @@ import type { Project } from "../shared/contracts.ts";
 import { Activity } from "./activity.tsx";
 import { call, mutation, request } from "./api.ts";
 import { ArtifactsView } from "./artifacts.tsx";
+import { Consent } from "./consent.tsx";
 import { HistoryView, type Repo } from "./history.tsx";
 import { SessionsView } from "./sessions.tsx";
 import { TasksView } from "./tasks.tsx";
@@ -57,109 +58,6 @@ function Login({ done }: { done: () => void }) {
         Create a code locally with allgather-server auth create-token. Codes expire after ten
         minutes.
       </p>
-    </main>
-  );
-}
-function Consent() {
-  const [info, setInfo] = useState<{
-      name: string;
-      scopes: string[];
-      redirect_uri: string;
-      audience: "mcp" | "api";
-      resource: string;
-    } | null>(null),
-    [loadError, setLoadError] = useState(""),
-    [operatorName, setOperatorName] = useState("");
-  const { busy, error, run } = useAction();
-  useEffect(() => {
-    void request<typeof info>(`/api/oauth/request${location.search}`)
-      .then((value) => {
-        setInfo(value);
-        setOperatorName(value?.name ?? "");
-      })
-      .catch((e) => setLoadError(e.message));
-  }, []);
-  const params = Object.fromEntries(new URLSearchParams(location.search));
-  return (
-    <main className="login">
-      <Brand />
-      <h1>Connect an agent</h1>
-      <ErrorText>{loadError || error}</ErrorText>
-      {info ? (
-        <>
-          <p>
-            <strong>{info.name}</strong> requests access to your allgather data.
-          </p>
-          <p>
-            {info.audience === "mcp" ? "MCP connector access" : "Private API and CLI access"}:{" "}
-            {info.resource}
-          </p>
-          <p className="notice">
-            The application supplied this name. Allgather has not verified its identity. Approve
-            only a connection you started.
-          </p>
-          {info.scopes.includes("admin") && (
-            <p className="notice">
-              Administrative API access includes machine credentials, policy changes and backups.
-            </p>
-          )}
-          <label>
-            Agent name
-            <input
-              maxLength={160}
-              value={operatorName}
-              onChange={(e) => setOperatorName(e.target.value)}
-            />
-          </label>
-          <ul className="scope-list">
-            {info.scopes.map((s) => (
-              <li key={s}>
-                {{
-                  "tasks:read": "Read tasks and projects",
-                  "tasks:write": "Create and change tasks",
-                  "history:read": "Read Git history",
-                  offline_access: "Keep access until you revoke it",
-                }[s] ?? s}
-              </li>
-            ))}
-          </ul>
-          <p className="muted small">
-            Return to {new URL(info.redirect_uri).host}. You can revoke access from Connections.
-          </p>
-          <div className="actions">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                const url = new URL(info.redirect_uri);
-                url.searchParams.set("error", "access_denied");
-                if (params.state) url.searchParams.set("state", params.state);
-                location.assign(url.toString());
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="primary"
-              disabled={busy}
-              onClick={() =>
-                void run(async () => {
-                  const result = await request<{ redirect_uri: string }>("/api/oauth/authorize", {
-                    ...params,
-                    operator_name: operatorName,
-                  });
-                  location.assign(result.redirect_uri);
-                })
-              }
-            >
-              Allow access
-            </button>
-          </div>
-        </>
-      ) : (
-        !loadError && <p>Reading the access request…</p>
-      )}
     </main>
   );
 }
@@ -276,8 +174,8 @@ function Connections({ mcp }: { mcp: string }) {
       <div className="history-section">
         <h2>Access rules</h2>
         <p>
-          Connections can read tasks, change tasks, and read Git history according to their granted
-          scopes. They cannot run shell commands or change Git repositories.
+          Each connection has its own granted permissions. Session launch and prompts can run coding
+          agents on machines. Grant these controls only when you intend to allow execution.
         </p>
         <p className="muted small">
           Revocation stops the client's current tokens and future refresh attempts. Your browser and

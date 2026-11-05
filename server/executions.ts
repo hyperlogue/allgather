@@ -334,8 +334,8 @@ export class Executions {
     return runtime;
   }
   queueNotification(runtime: SessionRuntime, body: string, source: ArtifactNotificationSource) {
-    if (!can(this.w.principal, "sessions:control"))
-      throw new AppError("forbidden", "Managed notifications require session control access", 403);
+    if (!can(this.w.principal, "sessions:prompt"))
+      throw new AppError("forbidden", "Managed notifications require session prompt access", 403);
     const current = this.bound(runtime.session_id);
     if (current.id !== runtime.id || current.generation !== runtime.generation)
       throw new AppError("runtime_conflict", "Notification execution changed", 409);

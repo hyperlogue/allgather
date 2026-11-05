@@ -45,8 +45,9 @@ async function setup(dataDir?: string) {
 }
 async function authorize(
   s: Awaited<ReturnType<typeof setup>>,
-  scope = "tasks:read tasks:write history:read transcripts:read offline_access",
+  scope = "tasks:read tasks:write projects:read repositories:read commits:read transcripts:read offline_access",
   operatorName = "Approved test agent",
+  keepAccess = true,
 ) {
   const client = (await (
     await s.req("/oauth/register", {
@@ -62,6 +63,7 @@ async function authorize(
     redirect_uri: "https://client.example/callback",
     response_type: "code",
     scope,
+    keep_access: String(keepAccess),
     resource: `${base}/mcp`,
     state: randomUUID(),
     code_challenge: challenge,
@@ -107,9 +109,9 @@ test("public MCP exposes work tools and rejects private operations before dispat
   const subscribe = spyOn(s.w.artifacts!.notifications, "subscribe");
   try {
     const supported = s.auth.resourceMetadata().scopes_supported;
-    expect(supported).not.toContain("sessions:write");
+    expect(supported).not.toContain("sessions:identity");
     expect(supported).not.toContain("admin");
-    expect(supported).not.toContain("history:write");
+    expect(supported).not.toContain("repositories:write");
     const grant = await authorize(s, [...supported, "offline_access"].join(" "));
     const response = await exchange(s, {
       grant_type: "authorization_code",
@@ -179,7 +181,7 @@ test("public MCP exposes work tools and rejects private operations before dispat
       "artifacts_viewed",
       "artifacts_mark_viewed",
       ...(Object.keys(operations).filter((name) =>
-        ["admin", "history:write"].includes(operations[name as Operation].scope),
+        ["admin", "repositories:write"].includes(operations[name as Operation].scope),
       ) as Operation[]),
     ];
     for (const name of removed) {
@@ -208,7 +210,7 @@ test("public MCP exposes work tools and rejects private operations before dispat
     expect(apiAttempt.status).toBe(401);
     const unsupportedScope = await s.req(
       "/api/oauth/authorize",
-      { ...grant.params, scope: "sessions:write" },
+      { ...grant.params, scope: "sessions:identity" },
       {
         cookie: grant.cookie,
         origin: base,
@@ -308,7 +310,10 @@ test("MCP terminal admission uses machine consent and rejects unsupported contro
   const s = await setup();
   let client: McpClient | undefined;
   try {
-    const grant = await authorize(s, "sessions:read sessions:control transcripts:read");
+    const grant = await authorize(
+      s,
+      "sessions:read sessions:launch sessions:prompt sessions:stop sessions:resume transcripts:read",
+    );
     const headers = { cookie: grant.cookie, origin: base };
     const created = await s.req(
       "/api/operations/machines_create",
@@ -834,10 +839,10 @@ test("PKCE failure consumes the code; redirect, resource, origin and grant check
   }
 });
 
-test("read-only consent has no refresh token and is bound to the MCP resource", async () => {
+test("owner can opt out of persistent access and read-only consent stays resource-bound", async () => {
   const s = await setup();
   try {
-    const grant = await authorize(s, "tasks:read");
+    const grant = await authorize(s, "tasks:read", undefined, false);
     const result = await exchange(s, {
       grant_type: "authorization_code",
       client_id: grant.client.client_id,

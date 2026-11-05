@@ -432,7 +432,7 @@ export class Auth {
     return {
       client_id: c.id,
       name: c.name,
-      scopes: selected,
+      scopes: selected.filter((scope) => scope !== "offline_access"),
       redirect_uri: params.redirect_uri,
       audience: c.audience,
       resource: params.resource,
@@ -440,6 +440,16 @@ export class Auth {
   }
   async authorize(request: Request, params: Record<string, string>) {
     const info = this.authorizeInfo(params);
+    if (params.keep_access !== undefined && !["true", "false"].includes(params.keep_access))
+      throw new AppError("invalid_request", "Choose whether to keep this connection signed in");
+    if (info.scopes.length === 0)
+      throw new AppError("invalid_scope", "Select at least one permission");
+    params = {
+      ...params,
+      scope: [...info.scopes, ...(params.keep_access === "false" ? [] : ["offline_access"])].join(
+        " ",
+      ),
+    };
     const operatorName = params.operator_name?.trim() || info.name;
     if (operatorName.length > 160)
       throw new AppError("invalid_operator_name", "Operator name must have at most 160 characters");

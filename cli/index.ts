@@ -76,7 +76,7 @@ export const HELP = `allgather — one work record for tasks, sessions, and evid
 Use --json for compact output. Mutations accept --key and --expected-revision.
 Default login scopes: ${defaultLoginScopes.join(" ")}
 Administrative scopes are opt-in: login HOST --scope "admin offline_access".
-Repository configuration only: login HOST --scope "history:read history:write offline_access".
+Repository configuration only: login HOST --scope "repositories:read repositories:write offline_access".
 An explicit --scope replaces the defaults. Login always requires browser consent.
 Local lifecycle, browser login tokens, and backups use the allgather-server executable.
 Task fields: --label NAME (repeatable), --add-label NAME, --remove-label NAME,
@@ -112,7 +112,7 @@ export async function main(argv = process.argv.slice(2)) {
       workflow: "ready → context → claim → comment/update → finish",
       guidance: [
         "Log in with allgather login <hostname-or-url>.",
-        "Default login excludes admin and history:write. Administrative access needs explicit login scopes and browser consent.",
+        "Default login excludes admin and repositories:write. Administrative access needs explicit login scopes and browser consent.",
         "Use task ready --project PROJECT --unassigned, or filter with --assignee session:ID / role:ID / owner. Read task context TASK before claiming.",
         "Claim work with task claim TASK --session SESSION. Keep work and evidence current.",
         "Use task finish only when the requested work is complete.",

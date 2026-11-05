@@ -19,7 +19,7 @@ export class ArtifactNotifications {
   ) {
     if (actor.role !== "agent")
       throw new AppError("agent_required", "Notification subscriptions require an agent session");
-    if (!can(p, "sessions:control") || !can(p, "artifacts:read"))
+    if (!can(p, "artifacts:notify") || !can(p, "artifacts:read"))
       throw new AppError(
         "forbidden",
         "Subscriptions need artifact read and session control access",
@@ -67,7 +67,7 @@ export class ArtifactNotifications {
   }
   authorized(principal: string) {
     return !!this.w.one(
-      "SELECT 1 FROM oauth_tokens t JOIN oauth_clients c ON c.id=t.client_id WHERE c.id=? AND c.revoked=0 AND t.revoked=0 AND (t.expires>? OR t.refresh_hash IS NOT NULL AND t.refresh_expires>?) AND (EXISTS(SELECT 1 FROM json_each(t.scopes) WHERE value='admin') OR (EXISTS(SELECT 1 FROM json_each(t.scopes) WHERE value='artifacts:read') AND EXISTS(SELECT 1 FROM json_each(t.scopes) WHERE value='sessions:control'))) LIMIT 1",
+      "SELECT 1 FROM oauth_tokens t JOIN oauth_clients c ON c.id=t.client_id WHERE c.id=? AND c.revoked=0 AND t.revoked=0 AND (t.expires>? OR t.refresh_hash IS NOT NULL AND t.refresh_expires>?) AND (EXISTS(SELECT 1 FROM json_each(t.scopes) WHERE value='admin') OR (EXISTS(SELECT 1 FROM json_each(t.scopes) WHERE value='artifacts:read') AND EXISTS(SELECT 1 FROM json_each(t.scopes) WHERE value='artifacts:notify'))) LIMIT 1",
       principal,
       this.w.now(),
       this.w.now(),

@@ -209,7 +209,8 @@ async function connectMcp() {
     client_id: registration.client_id,
     redirect_uri: "https://client.example/callback",
     response_type: "code",
-    scope: "sessions:read sessions:control transcripts:read",
+    scope:
+      "sessions:read sessions:launch sessions:prompt sessions:stop sessions:resume transcripts:read",
     resource: origin + "/mcp",
     state: randomUUID(),
     code_challenge: createHash("sha256").update(verifier).digest("base64url"),

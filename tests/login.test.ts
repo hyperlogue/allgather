@@ -211,7 +211,7 @@ test("CLI administrative access requires explicit login scopes and default re-lo
   try {
     const requested = await authorizeCli(running, env);
     expect(requested).not.toContain("admin");
-    expect(requested).not.toContain("history:write");
+    expect(requested).not.toContain("repositories:write");
     expect(requested).toContain("offline_access");
     const project = await invoke("project", "create", "--name", "Scoped project");
     expect(project.code).toBe(0);
@@ -268,11 +268,9 @@ test("CLI administrative access requires explicit login scopes and default re-lo
     expect((await invoke("machine", "create", "--name", "Explicit admin machine")).code).toBe(0);
     expect((await invoke("storage", "get")).code).toBe(0);
 
-    expect(await authorizeCli(running, env, "history:read history:write offline_access")).toEqual([
-      "history:read",
-      "history:write",
-      "offline_access",
-    ]);
+    expect(
+      await authorizeCli(running, env, "repositories:read repositories:write offline_access"),
+    ).toEqual(["repositories:read", "repositories:write", "offline_access"]);
     expect((await invoke(...repository)).code).toBe(0);
     expect((await invoke("storage", "get")).error.code).toBe("forbidden");
     expect((await invoke("project", "list")).error.code).toBe("forbidden");

@@ -461,8 +461,8 @@ export class Tasks {
         if (this.descendants(id).some((c) => this.raw(c).status === "open"))
           throw new AppError("unfinished_children", "Finish or cancel descendant work first", 409);
         if (a.commit_id) {
-          if (!can(p, "history:read"))
-            throw new AppError("forbidden", "Commit references require history:read", 403);
+          if (!can(p, "commits:read"))
+            throw new AppError("forbidden", "Commit references require commits:read", 403);
           this.w.graph.add(
             "produces",
             id,
@@ -490,8 +490,8 @@ export class Tasks {
         this.dependency(id, String(a.depends_on), !!a.remove);
         break;
       case "tasks_link_commit":
-        if (!can(p, "history:read"))
-          throw new AppError("forbidden", "Commit references require history:read", 403);
+        if (!can(p, "commits:read"))
+          throw new AppError("forbidden", "Commit references require commits:read", 403);
         this.w.graph.add(
           "relates_to",
           id,

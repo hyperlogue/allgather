@@ -343,7 +343,11 @@ try {
     kind: "html",
     title: "Managed review fixture",
   });
-  const agentToken = await fixtureApiToken(origin, cookie, ["artifacts:read", "sessions:control"]);
+  const agentToken = await fixtureApiToken(origin, cookie, [
+    "artifacts:read",
+    "artifacts:notify",
+    "sessions:prompt",
+  ]);
   await operation(
     "artifacts_listen",
     { artifact_id: artifact.id, session_id: runtime().session_id, operator_kind: "agent" },

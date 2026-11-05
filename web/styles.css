@@ -1310,3 +1310,45 @@ textarea {
     height: calc(100dvh - 132px);
   }
 }
+
+.consent {
+  max-width: 42rem;
+}
+.permission-tree {
+  margin: 1.5rem 0;
+}
+.permission-category {
+  border-bottom: 1px solid var(--line);
+  padding: 0.7rem 0;
+}
+.permission-category summary {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  cursor: pointer;
+}
+.permission-category summary::before {
+  content: "▸";
+}
+.permission-category[open] summary::before {
+  content: "▾";
+}
+.permission-category summary small {
+  margin-left: auto;
+  color: var(--muted);
+}
+.permission-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.6rem 0;
+}
+.permission-category .permission-choice {
+  padding-left: 2rem;
+}
+.permission-choice input,
+.permission-category input {
+  width: auto;
+  margin: 0.2rem 0 0;
+  flex-shrink: 0;
+}

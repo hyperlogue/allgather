@@ -18,7 +18,7 @@ const owner: Principal = { id: "owner", kind: "owner", inlet: "browser", scopes:
     id: "agent-connection",
     kind: "client",
     inlet: "mcp",
-    scopes: ["artifacts:read", "artifacts:write"],
+    scopes: ["artifacts:read", "artifacts:contribute"],
   };
 test("multiple agents publish shared artifacts and reply across human and agent threads", async () => {
   const root = mkdtempSync(join(tmpdir(), "allgather-artifact-agents-")),

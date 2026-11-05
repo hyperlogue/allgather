@@ -586,10 +586,16 @@ export class ManagedControl {
         ? row.expires_at
         : null;
     if (binding.kind !== "oauth") return null;
+    const command = this.w.one<{ kind: string }>(
+      "SELECT kind FROM session_commands WHERE id=?",
+      commandId,
+    );
+    const scope = command?.kind === "cancel" ? "sessions:stop" : `sessions:${command?.kind}`;
     return this.w.one(
-      "SELECT 1 FROM oauth_tokens t JOIN oauth_clients c ON c.id=t.client_id WHERE t.hash=? AND t.expires>? AND t.revoked=0 AND c.revoked=0 AND (EXISTS (SELECT 1 FROM json_each(t.scopes) WHERE value='sessions:control') OR EXISTS (SELECT 1 FROM json_each(t.scopes) WHERE value='admin'))",
+      "SELECT 1 FROM oauth_tokens t JOIN oauth_clients c ON c.id=t.client_id WHERE t.hash=? AND t.expires>? AND t.revoked=0 AND c.revoked=0 AND (EXISTS (SELECT 1 FROM json_each(t.scopes) WHERE value=?) OR EXISTS (SELECT 1 FROM json_each(t.scopes) WHERE value='admin'))",
       binding.hash,
       this.w.now(),
+      scope,
     )
       ? row.expires_at
       : null;

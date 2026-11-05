@@ -173,8 +173,15 @@ export class Auth {
   client(id: unknown) {
     if (typeof id !== "string" || !id) return null;
     return this.db
-      .query("SELECT * FROM oauth_clients WHERE id=? AND revoked=0")
-      .get(id) as ClientRow | null;
+      .query(`SELECT * FROM oauth_clients c WHERE id=? AND revoked=0 AND (
+        created_at>? OR EXISTS(SELECT 1 FROM oauth_tokens t WHERE t.client_id=c.id)
+        OR EXISTS(SELECT 1 FROM oauth_codes a WHERE json_extract(a.data,'$.client.id')=c.id AND a.expires>?)
+      )`)
+      .get(
+        id,
+        new Date(Date.now() - 15 * 60000).toISOString(),
+        new Date().toISOString(),
+      ) as ClientRow | null;
   }
   private allowedResource(clientId: string, resource: unknown) {
     const client = this.client(clientId);
@@ -302,18 +309,31 @@ export class Auth {
     const c = /(?:^|;\s*)allgather_session=([^;]+)/.exec(request.headers.get("cookie") ?? "")?.[1];
     if (c) this.db.query("DELETE FROM sessions WHERE hash=?").run(hash(c));
   }
+  private pruneRegistrations() {
+    const now = new Date().toISOString();
+    this.db.query("DELETE FROM oauth_codes WHERE expires<=?").run(now);
+    const unused = `NOT EXISTS(SELECT 1 FROM oauth_tokens t WHERE t.client_id=oauth_clients.id)
+      AND NOT EXISTS(SELECT 1 FROM oauth_codes a WHERE json_extract(a.data,'$.client.id')=oauth_clients.id)`;
+    this.db
+      .query(`DELETE FROM oauth_clients WHERE ${unused} AND (revoked=1 OR created_at<=?)`)
+      .run(new Date(Date.now() - 15 * 60000).toISOString());
+    const approved = this.db
+      .query(
+        "SELECT COUNT(*) n FROM oauth_clients c WHERE revoked=0 AND EXISTS(SELECT 1 FROM oauth_tokens t WHERE t.client_id=c.id)",
+      )
+      .get() as { n: number };
+    if (approved.n >= 100)
+      throw new AppError("client_limit", "Revoke an unused connection before adding another", 429);
+    const pending = this.db
+      .query(`SELECT id FROM oauth_clients WHERE ${unused} ORDER BY created_at,id`)
+      .all() as { id: string }[];
+    for (const row of pending.slice(0, Math.max(0, pending.length - 255)))
+      this.db.query("DELETE FROM oauth_clients WHERE id=?").run(row.id);
+  }
   register(body: Record<string, unknown>, audience: "mcp" | "api" = "mcp") {
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       throw new AppError("invalid_client_metadata", "Provide a client metadata object");
     }
-    if (
-      (
-        this.db.query("SELECT COUNT(*) AS n FROM oauth_clients WHERE revoked=0").get() as {
-          n: number;
-        }
-      ).n >= 100
-    )
-      throw new AppError("client_limit", "Remove old clients before registering another", 429);
     const redirects = body.redirect_uris;
     if (
       !Array.isArray(redirects) ||
@@ -341,6 +361,7 @@ export class Auth {
       );
     if (body.response_types && JSON.stringify(body.response_types) !== '["code"]')
       throw new AppError("invalid_client_metadata", "Only code responses are available");
+    this.pruneRegistrations();
     const id = `client-${secret()}`,
       clientSecret = method === "none" ? undefined : secret();
     const name =
@@ -372,6 +393,7 @@ export class Auth {
   }
   private validRedirect(value: string) {
     try {
+      if (value.length > 2048) return false;
       const u = new URL(value);
       return (
         !u.username &&

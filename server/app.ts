@@ -7,6 +7,7 @@ import { artifactApi } from "./artifact-api.ts";
 import type { Auth } from "./auth.ts";
 import { mcpResponse } from "./mcp.ts";
 import { isPublicRoute } from "./network.ts";
+import { RateLimits } from "./rate-limits.ts";
 import { TowerEnrollment } from "./tower-enrollment.ts";
 import type { Workspace } from "./workspace.ts";
 
@@ -39,7 +40,7 @@ export function createApp(
   const surface = options.surface ?? "private";
   const originUrl = surface === "public" ? auth.mcpBaseUrl : auth.baseUrl;
   const allowedHosts = new Set([new URL(originUrl).host, options.hostname].filter(Boolean));
-  const rates = new Map<string, { count: number; until: number }>();
+  const rates = new RateLimits();
   app.use("*", async (c, next) => {
     if (surface === "public" && !isPublicRoute(c.req.raw)) return c.text("Not found", 404);
     const host = c.req.header("host") ?? new URL(c.req.url).host;
@@ -73,29 +74,23 @@ export function createApp(
       if (!p || !can(p, "artifacts:write"))
         throw new AppError("forbidden", "Artifact write access required", 403);
     }
+    const small =
+      c.req.path.startsWith("/oauth/") ||
+      c.req.path === "/api/login" ||
+      c.req.path.startsWith("/api/tower/enrollments") ||
+      (c.req.path === "/mcp" && !auth.principal(c.req.raw, true));
     return bodyLimit({
-      maxSize: (publication ? 192 : 32) * 1024 * 1024,
+      maxSize: small ? 16 * 1024 : (publication ? 192 : 32) * 1024 * 1024,
       onError: (c) =>
         c.json({ error: { code: "too_large", message: "Request exceeds the upload limit" } }, 413),
     })(c, next);
   });
-  const rate = (key: string, maximum: number) => {
-    const now = Date.now();
-    if (rates.size > 10000) {
-      for (const [k, v] of rates) if (v.until < now) rates.delete(k);
-      if (rates.size > 10000) throw new AppError("rate_limited", "Try again later", 429);
-    }
-    const item = rates.get(key);
-    if (!item || item.until < now) {
-      rates.set(key, { count: 1, until: now + 60_000 });
-      return;
-    }
-    if (++item.count > maximum)
-      throw new AppError("rate_limited", "Too many requests. Try again in a minute.", 429);
-  };
+  const rate = (key: string, maximum: number) => rates.take(key, maximum);
   app.onError((error, c) => {
     if (error instanceof AppError) {
       if (error.code === "slow_down") c.header("Retry-After", "5");
+      if (error.code === "rate_limited")
+        c.header("Retry-After", String((error.details as { retry_after: number }).retry_after));
       return c.json(
         { error: { code: error.code, message: error.message, details: error.details } },
         error.status as 400,

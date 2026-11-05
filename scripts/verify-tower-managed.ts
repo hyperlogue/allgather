@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { startServer } from "../server/index.ts";
 import type { Machine, SessionCommand, SessionRuntime } from "../shared/contracts.ts";
 import { receiptSchema } from "../shared/tower-acp.ts";
-import { fixtureApiToken, fixtureLoginToken } from "./fixture-auth.ts";
+import { fixtureApiToken, fixtureLoginToken, fixtureResources } from "./fixture-auth.ts";
 import { stopFixturePool, towerFixture } from "./tower-fixture.ts";
 
 // Real Tower/Allgather transport and runtime owner, with a synthetic shared Codex host.
@@ -211,9 +211,55 @@ try {
     return machine.connected && machine.policy_status === "applied";
   }, "handshake and applied policy");
   assert(!!machine.harness_controls.codex, "Tower did not advertise Codex managed controls.");
-  const launch = await operation<{ runtime: SessionRuntime; command: SessionCommand }>(
-    "session_launch",
-    { machine_id: machine.id, harness: "codex", cwd: root, label: "Native protocol fixture" },
+  const approvalToken = await fixtureApiToken(
+    origin,
+    cookie,
+    ["sessions:read", "sessions:launch"],
+    fetch,
+    fixtureResources,
+    { "sessions:launch": "approval" },
+  );
+  const launchInput = {
+    operation_key: randomUUID(),
+    machine_id: machine.id,
+    harness: "codex",
+    cwd: root,
+    label: "Native protocol fixture",
+  };
+  const held = await fetch(origin + "/api/operations/session_launch", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${approvalToken}`,
+      "content-type": "application/json",
+      prefer: "wait=0",
+    },
+    body: JSON.stringify(launchInput),
+  });
+  const heldBody = await held.json();
+  assert(heldBody.error?.code === "needs_approval", "Connector launch bypassed approval");
+  assert(
+    running.workspace.all("SELECT id FROM session_commands").length === 0,
+    "An unapproved request queued native work",
+  );
+  const approved = await request(`/api/approvals/${heldBody.error.details.request_id}/decision`, {
+    decision: "approve",
+    expected_revision: 1,
+  });
+  assert(approved.state === "succeeded", "Owner approval did not admit the request");
+  const launch = approved.result as { runtime: SessionRuntime; command: SessionCommand };
+  const retrieved = await request(
+    "/api/operations/requests_get",
+    { request_id: heldBody.error.details.request_id },
+    approvalToken,
+  );
+  assert(
+    retrieved.result.result.command.id === launch.command.id,
+    "Request result did not preserve command identity",
+  );
+  const repeated = await request("/api/operations/session_launch", launchInput, approvalToken);
+  assert(
+    repeated.result.command.id === launch.command.id,
+    "Approval retry created another command",
   );
   const runtime = () => running.workspace.executions.runtime(launch.runtime.session_id)!;
   await waitFor(

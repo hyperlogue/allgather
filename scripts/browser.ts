@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 export async function browserSession(executable: string) {
   const profile = await mkdtemp(join(tmpdir(), "allgather-browser-"));
-  const process = Bun.spawn(
+  const child = Bun.spawn(
     [
       executable,
       "--headless",
@@ -15,8 +15,19 @@ export async function browserSession(executable: string) {
       `--user-data-dir=${profile}`,
       "about:blank",
     ],
-    { stdout: "ignore", stderr: "ignore" },
+    {
+      stdout: "ignore",
+      stderr: "pipe",
+      env: {
+        ...process.env,
+        HOME: profile,
+        XDG_CONFIG_HOME: join(profile, "config"),
+        XDG_CACHE_HOME: join(profile, "cache"),
+        XDG_STATE_HOME: join(profile, "state"),
+      },
+    },
   );
+  const errors = new Response(child.stderr).text();
   let socket: WebSocket | undefined;
   let sequence = 0;
   const pending = new Map<
@@ -29,8 +40,9 @@ export async function browserSession(executable: string) {
   >();
   const close = async () => {
     socket?.close();
-    process.kill();
-    await process.exited;
+    if (child.exitCode === null) child.kill();
+    await child.exited;
+    await errors;
     for (const item of pending.values()) {
       clearTimeout(item.timer);
       item.reject(new Error("Browser closed"));
@@ -40,7 +52,9 @@ export async function browserSession(executable: string) {
   };
   try {
     let port = "";
-    for (let n = 0; n < 100; n++) {
+    for (let n = 0; n < 300; n++) {
+      if (child.exitCode !== null)
+        throw new Error(`Chromium exited: ${(await errors).slice(0, 2000)}`);
       try {
         port = (await readFile(join(profile, "DevToolsActivePort"), "utf8")).split("\n")[0];
         break;

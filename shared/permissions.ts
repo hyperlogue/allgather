@@ -1,7 +1,8 @@
-const permission = (category: string, label: string, defaultAllowed = false) => ({
+const permission = (category: string, label: string, defaultAllowed = false, approval = false) => ({
   category,
   label,
   defaultAllowed,
+  approval,
 });
 
 export const permissions = {
@@ -26,10 +27,10 @@ export const permissions = {
     true,
   ),
   "sessions:identity": permission("Sessions", "Declare local agent identities and assign roles"),
-  "sessions:launch": permission("Sessions", "Launch a coding agent on a machine"),
-  "sessions:prompt": permission("Sessions", "Send work to a running coding agent"),
-  "sessions:stop": permission("Sessions", "Stop an agent turn or execution"),
-  "sessions:resume": permission("Sessions", "Resume an earlier managed conversation"),
+  "sessions:launch": permission("Sessions", "Launch a coding agent on a machine", false, true),
+  "sessions:prompt": permission("Sessions", "Send work to a running coding agent", false, true),
+  "sessions:stop": permission("Sessions", "Stop an agent turn or execution", false, true),
+  "sessions:resume": permission("Sessions", "Resume an earlier managed conversation", false, true),
   "sessions:configure": permission("Sessions", "Change a managed agent's configuration"),
   "sessions:reply": permission("Sessions", "Answer native agent questions and permission requests"),
   "sessions:reconcile": permission("Sessions", "Reconcile uncertain command outcomes"),
@@ -47,7 +48,10 @@ export const permissions = {
     "Archive, restore or permanently delete artifacts and threads",
   ),
   "artifacts:notify": permission("Artifacts", "Manage local agent notification subscriptions"),
-  admin: permission("Administration", "Manage machine credentials, policy, storage and backups"),
+  admin: permission("Administration", "Administrative API access, including execution and backups"),
 } as const;
 export type Scope = keyof typeof permissions;
 export const scopes = Object.keys(permissions) as Scope[];
+
+export type PermissionMode = "allow" | "approval";
+export type PermissionModes = Partial<Record<Scope, PermissionMode>>;

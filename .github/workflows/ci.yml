@@ -63,6 +63,7 @@ jobs:
           bun --no-env-file scripts/verify-artifacts.ts
           bun --no-env-file scripts/verify-tower-enrollment.ts
           bun --no-env-file scripts/verify-session-controls.ts
+          bun --no-env-file scripts/verify-approvals.ts
 
   # Verify the Nix distribution independently of the npm-installed toolchain.
   # The package smoke test runs from an isolated directory with fresh state.

@@ -1352,3 +1352,43 @@ textarea {
   margin: 0.2rem 0 0;
   flex-shrink: 0;
 }
+
+.permission-category summary select {
+  width: auto;
+  max-width: 14rem;
+  font-size: 0.85rem;
+}
+.permission-choice select {
+  margin-left: auto;
+  width: auto;
+  max-width: 13rem;
+}
+.approval-notice {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.7rem 1.4rem;
+  background: #fff6da;
+  color: #725b23;
+}
+.approval-detail {
+  min-width: 0;
+  padding: 1rem;
+}
+.approval-payload {
+  padding: 1rem;
+  background: var(--surface);
+  overflow: auto;
+  max-height: 55vh;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .permission-category summary {
+    flex-wrap: wrap;
+  }
+  .permission-choice {
+    flex-wrap: wrap;
+  }
+}

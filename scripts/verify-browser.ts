@@ -389,7 +389,7 @@ try {
   await field("Agent name", "Approved browser agent");
   const defaults = await b.evaluate(`(() => {
     const selected = text => Array.from(document.querySelectorAll('.permission-choice')).find(e => e.textContent.includes(text))?.querySelector('input')?.checked;
-    return selected('Read machines') && selected('Read retained') && selected('Read artifacts') && !selected('Launch a coding') && !selected('Send work');
+    return selected('Read machines') && selected('Read retained') && selected('Read artifacts') && document.querySelector('[aria-label="Launch a coding agent on a machine"]')?.value==='approval' && document.querySelector('[aria-label="Send work to a running coding agent"]')?.value==='approval';
   })()`);
   if (!defaults) throw new Error("Consent defaults grant unexpected permissions");
   await b.evaluate(`(() => {
@@ -400,15 +400,19 @@ try {
     projects.click();
   })()`);
   await b.evaluate(`(() => {
-    const group = document.querySelector('[aria-label="Grant all sessions permissions"]');
-    if (!group.indeterminate) throw new Error('Session category should have a partial selection');
-    group.click();
+    const group = document.querySelector('[aria-label="Sessions access"]');
+    if(group.value!=='approval')throw new Error('Session controls should default to approval');
+    group.value='allow';group.dispatchEvent(new Event('change',{bubbles:true}));
   })()`);
-  await b.until(`document.querySelector('[aria-label="Grant all sessions permissions"]').checked`);
-  await b.evaluate(
-    `document.querySelector('[aria-label="Grant all sessions permissions"]').click()`,
+  await b.until(
+    `document.querySelector('[aria-label="Launch a coding agent on a machine"]').value==='allow'`,
   );
-  await b.until(`!document.querySelector('[aria-label="Grant all sessions permissions"]').checked`);
+  await b.evaluate(
+    `(() => {const group=document.querySelector('[aria-label="Sessions access"]');group.value='deny';group.dispatchEvent(new Event('change',{bubbles:true}));})()`,
+  );
+  await b.until(
+    `document.querySelector('[aria-label="Launch a coding agent on a machine"]').value==='deny'`,
+  );
   await b.evaluate(`(() => {
     for (const item of document.querySelectorAll('.permission-choice')) {
       if (item.textContent.includes('Read machines') || item.textContent.includes('Create and update tasks')) item.querySelector('input').click();

@@ -335,6 +335,12 @@ export class Executions {
     return runtime;
   }
   queueNotification(runtime: SessionRuntime, body: string, source: ArtifactNotificationSource) {
+    if (this.w.principal.permission_modes?.["sessions:prompt"] === "approval")
+      throw new AppError(
+        "needs_approval",
+        "Use an explicit session_prompt request for approval; notifications cannot grant execution",
+        403,
+      );
     if (!can(this.w.principal, "sessions:prompt"))
       throw new AppError("forbidden", "Managed notifications require session prompt access", 403);
     const current = this.bound(runtime.session_id);
@@ -415,6 +421,64 @@ export class Executions {
         409,
       );
     return controls;
+  }
+  approvalTarget(name: Operation, a: Input) {
+    const credential = (machine: string) =>
+      this.w.one<{ active_credential_id: string | null }>(
+        "SELECT active_credential_id FROM machines WHERE id=?",
+        machine,
+      )?.active_credential_id ?? null;
+    if (name === "session_launch") {
+      const machine = this.machine(String(a.machine_id));
+      this.supports(machine, String(a.harness), false, a.mode === "terminal");
+      return {
+        project_id: this.w.access.initialProject(a),
+        machine_id: machine.id,
+        machine_credential_id: credential(machine.id),
+      };
+    }
+    const session = this.w.sessions.get(String(a.target_session_id)),
+      runtime = this.runtime(session.id);
+    if (!runtime) throw new AppError("session_not_live", "This session has no execution", 409);
+    if (name === "session_resume") {
+      const machine = this.machine(String(a.machine_id));
+      if (runtime.protocol === "terminal")
+        throw new AppError("unsupported_control", "Remote terminal resume is not supported", 409);
+      this.supports(machine, session.agent_type, true);
+      return {
+        project_id: session.project_id,
+        machine_id: machine.id,
+        machine_credential_id: credential(machine.id),
+        session_id: session.id,
+        runtime_id: runtime.id,
+        generation: runtime.generation,
+        cleanup: this.unresolved(session.id).map((r) => ({
+          runtime_id: r.id,
+          generation: r.generation,
+          machine_id: r.machine_id,
+        })),
+      };
+    }
+    this.bound(session.id);
+    const kind = name === "session_cancel" ? "cancel" : "prompt";
+    if (runtime.state !== "starting" || kind !== "cancel")
+      this.requireCommand(runtime, kind, kind === "prompt" ? { content: a.content } : {});
+    return {
+      project_id: session.project_id,
+      machine_id: runtime.machine_id,
+      machine_credential_id: credential(runtime.machine_id),
+      session_id: session.id,
+      runtime_id: runtime.id,
+      generation: runtime.generation,
+      ...(kind === "cancel"
+        ? { cancel_mode: runtime.state === "starting" ? "runtime" : runtime.controls?.cancel_mode }
+        : {}),
+      ...(kind === "cancel" &&
+      runtime.state !== "starting" &&
+      runtime.controls?.cancel_mode === "turn"
+        ? { active_prompt_id: runtime.active_prompt_id }
+        : {}),
+    };
   }
   read(name: Operation, a: Input, p: Principal): unknown {
     if (name === "machines_list")

@@ -162,11 +162,13 @@ export async function startServer(overrides: Partial<Config> = {}) {
       await stopHttp();
       throw error;
     }
+    workspace.approvals.recover();
     upstream.start();
     let closing: Promise<void> | undefined;
     const stop = () =>
       (closing ??= (async () => {
         control?.beginShutdown();
+        workspace.approvals.close();
         await upstream?.stop();
         tower?.stop();
         workspace.artifacts?.previews.close();

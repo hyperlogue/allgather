@@ -133,10 +133,12 @@ test("public MCP exposes work tools and rejects private operations before dispat
     );
     const inventory = await client.listTools();
     const names = inventory.tools.map((tool) => tool.name);
-    expect(names).toHaveLength(61);
+    expect(names).toHaveLength(63);
     for (const name of [
       "tasks_create",
       "tasks_ready",
+      "requests_get",
+      "requests_list",
       "roles_list",
       "session_launch",
       "session_prompt",

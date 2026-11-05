@@ -3,6 +3,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import OAuth2Server from "@node-oauth/oauth2-server";
 import { AppError, type Principal, type Scope, scopes } from "../shared/contracts.ts";
 import { mcpOperationScopes } from "../shared/mcp-surface.ts";
+import { type PermissionModes, permissions } from "../shared/permissions.ts";
 import { resourceGrantsSchema } from "../shared/resource-grants.ts";
 
 export const hash = (text: string) => createHash("sha256").update(text).digest("hex");
@@ -26,6 +27,7 @@ interface TokenRow {
   grant_id: string;
   resources: string;
   granted_scopes: string;
+  permissions: string;
   hash: string;
   refresh_hash: string;
   client_id: string;
@@ -92,8 +94,19 @@ export class Auth {
         ) => {
           const { authorizationCode, ...rest } = code;
           db.transaction(() => {
+            db.query("UPDATE oauth_grants SET revoked=1 WHERE client_id=? AND resource=?").run(
+              client.id,
+              String(user.resource),
+            );
+            db.query("UPDATE oauth_tokens SET revoked=1 WHERE client_id=? AND resource=?").run(
+              client.id,
+              String(user.resource),
+            );
             db.query(
-              "INSERT INTO oauth_grants(id,client_id,resource,scopes,resources,created_at) VALUES(?,?,?,?,?,?)",
+              "DELETE FROM oauth_codes WHERE json_extract(data,'$.client.id')=? AND json_extract(data,'$.resource')=?",
+            ).run(client.id, String(user.resource));
+            db.query(
+              "INSERT INTO oauth_grants(id,client_id,resource,scopes,resources,created_at,permissions) VALUES(?,?,?,?,?,?,?)",
             ).run(
               String(user.grant_id),
               client.id,
@@ -101,6 +114,7 @@ export class Auth {
               JSON.stringify(code.scope),
               JSON.stringify(user.resources),
               new Date().toISOString(),
+              JSON.stringify(user.permission_modes),
             );
             db.query("INSERT INTO oauth_codes VALUES(?,?,?)").run(
               hash(authorizationCode),
@@ -182,7 +196,7 @@ export class Auth {
         getRefreshToken: async (value: string) => {
           const row = db
             .query(
-              "SELECT t.*,g.resources,g.scopes granted_scopes FROM oauth_tokens t JOIN oauth_grants g ON g.id=t.grant_id AND g.revoked=0 WHERE t.refresh_hash=? AND t.revoked=0",
+              "SELECT t.*,g.resources,g.scopes granted_scopes,g.permissions FROM oauth_tokens t JOIN oauth_grants g ON g.id=t.grant_id AND g.revoked=0 WHERE t.refresh_hash=? AND t.revoked=0",
             )
             .get(hash(value)) as TokenRow | null;
           if (!row || !this.allowedResource(row.client_id, row.resource)) return false;
@@ -226,7 +240,7 @@ export class Auth {
   private tokenRow(value: string) {
     const r = this.db
       .query(
-        "SELECT t.*,g.resources,g.scopes granted_scopes FROM oauth_tokens t JOIN oauth_grants g ON g.id=t.grant_id AND g.revoked=0 WHERE t.hash=? AND t.revoked=0",
+        "SELECT t.*,g.resources,g.scopes granted_scopes,g.permissions FROM oauth_tokens t JOIN oauth_grants g ON g.id=t.grant_id AND g.revoked=0 WHERE t.hash=? AND t.revoked=0",
       )
       .get(hash(value)) as TokenRow | null;
     return r && this.allowedResource(r.client_id, r.resource) ? r : null;
@@ -247,6 +261,7 @@ export class Auth {
           kind: "client",
           grant_id: row.grant_id,
           resources: resourceGrantsSchema.parse(JSON.parse(row.resources)),
+          permission_modes: JSON.parse(row.permissions),
           inlet: mcp ? "mcp" : "api",
           operator_name: row.operator_name ?? this.client(row.client_id)?.name ?? "MCP client",
           scopes: (JSON.parse(row.scopes) as string[]).filter(
@@ -511,6 +526,24 @@ export class Auth {
       )
         throw new AppError("invalid_grant", "A selected resource no longer exists");
     }
+    const modes: PermissionModes = params.permission_modes
+      ? JSON.parse(params.permission_modes)
+      : {};
+    if (
+      !modes ||
+      typeof modes !== "object" ||
+      Array.isArray(modes) ||
+      Object.entries(modes).some(
+        ([scope, mode]) =>
+          !info.scopes.includes(scope) ||
+          !["allow", "approval"].includes(mode) ||
+          (mode === "approval" && !permissions[scope as Scope].approval),
+      )
+    )
+      throw new AppError(
+        "invalid_grant",
+        "Approval mode is only available for session launch, prompt, stop and resume",
+      );
     const grantId = `grant-${secret()}`;
     const operatorName = params.operator_name?.trim() || info.name;
     if (operatorName.length > 160)
@@ -533,6 +566,7 @@ export class Auth {
             resource: params.resource,
             grant_id: grantId,
             resources,
+            permission_modes: modes,
           }),
         },
         allowEmptyState: true,

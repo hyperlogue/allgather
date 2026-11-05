@@ -1,6 +1,8 @@
 import { type Operation, operations } from "./contracts.ts";
 
 export const mcpOperations = new Set<Operation>([
+  "requests_get",
+  "requests_list",
   "projects_list",
   "projects_get",
   "tasks_search",

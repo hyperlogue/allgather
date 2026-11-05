@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import type { Project } from "../shared/contracts.ts";
 import { Activity } from "./activity.tsx";
 import { call, mutation, request } from "./api.ts";
+import { ApprovalsView, useApprovals } from "./approvals.tsx";
 import { ArtifactsView } from "./artifacts.tsx";
 import { Consent } from "./consent.tsx";
 import { HistoryView, type Repo } from "./history.tsx";
@@ -194,6 +195,8 @@ function WorkspaceApp({ signOut, mcp }: { signOut: () => void; mcp: string }) {
     [refresh, setRefresh] = useState(0),
     [error, setError] = useState(""),
     [connected, setConnected] = useState(true);
+  const approvals = useApprovals(refresh);
+  const pendingApprovals = approvals.filter((row) => row.state === "needs_approval");
   const initialized = useRef(false);
   const changed = useCallback(() => setRefresh((x) => x + 1), []);
   // biome-ignore lint/correctness/useExhaustiveDependencies: Server events invalidate this snapshot.
@@ -266,7 +269,15 @@ function WorkspaceApp({ signOut, mcp }: { signOut: () => void; mcp: string }) {
           </button>
         </div>
         <nav aria-label="Main navigation">
-          {["tasks", "sessions", "artifacts", "history", "activity", "connections"].map((name) => (
+          {[
+            "tasks",
+            "sessions",
+            "artifacts",
+            "history",
+            "activity",
+            "approvals",
+            "connections",
+          ].map((name) => (
             <button
               type="button"
               key={name}
@@ -275,6 +286,7 @@ function WorkspaceApp({ signOut, mcp }: { signOut: () => void; mcp: string }) {
                 setView(name);
                 const url = new URL(location.href);
                 url.searchParams.set("view", name);
+                if (name === "approvals") url.searchParams.delete("request");
                 history.replaceState(null, "", url);
               }}
             >
@@ -285,6 +297,7 @@ function WorkspaceApp({ signOut, mcp }: { signOut: () => void; mcp: string }) {
                   artifacts: "Artifacts",
                   history: "Git history",
                   activity: "Activity",
+                  approvals: "Approvals",
                   connections: "Connections",
                 }[name]
               }
@@ -299,6 +312,26 @@ function WorkspaceApp({ signOut, mcp }: { signOut: () => void; mcp: string }) {
           Sign out
         </button>
       </header>
+      {pendingApprovals.length > 0 && view !== "approvals" && (
+        <div className="approval-notice" role="status">
+          <span>
+            {pendingApprovals.length} agent request{pendingApprovals.length === 1 ? "" : "s"} need
+            your approval.
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setView("approvals");
+              const url = new URL(location.href);
+              url.searchParams.set("view", "approvals");
+              url.searchParams.delete("request");
+              history.replaceState(null, "", url);
+            }}
+          >
+            Review requests
+          </button>
+        </div>
+      )}
       {!connected && (
         <div className="connection-notice" role="status">
           Connection interrupted. The page will refresh after reconnection.
@@ -322,6 +355,8 @@ function WorkspaceApp({ signOut, mcp }: { signOut: () => void; mcp: string }) {
           <SessionsView project={project} refresh={refresh} changed={changed} />
         ) : view === "history" ? (
           <HistoryView project={project} repos={repos} refresh={refresh} changed={changed} />
+        ) : view === "approvals" ? (
+          <ApprovalsView rows={approvals} changed={changed} />
         ) : view === "activity" ? (
           <Activity project={project} refresh={refresh} />
         ) : (

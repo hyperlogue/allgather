@@ -71,6 +71,7 @@ export const HELP = `allgather — one work record for tasks, sessions, and evid
   session configure ID --config JSON | resume ID --machine ID --cwd PATH [--force]
   session reconcile --command ID --decision acknowledged|failed --reason TEXT
   session transcript events ID [--after N] | sources ID | import ID --input FILE
+  request show ID | list
   api OPERATION --input FILE
 
 Use --json for compact output. Mutations accept --key and --expected-revision.
@@ -205,6 +206,7 @@ export async function main(argv = process.argv.slice(2)) {
       link: "links",
       audit: "audit",
       storage: "storage",
+      request: "requests",
       machine: "machines",
       checkout: "checkouts",
     };
@@ -328,6 +330,7 @@ export async function main(argv = process.argv.slice(2)) {
         input.assignee = { kind: v.slice(0, pos), id: v.slice(pos + 1) };
       }
     }
+    if (p[0] === "request" && p[2]) input.request_id = p[2];
     if (p[0] === "machine" && p[2]) input.machine_id = p[2];
     if (name === "session_transcript_import" && f.input) {
       input = { ...JSON.parse(readFileSync(String(f.input), "utf8")), ...input };

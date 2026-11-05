@@ -12,8 +12,10 @@ import { type TowerPolicyReport, type TowerPolicyRule, towerPolicy } from "./tow
 export const VERSION = "0.2.0";
 export { type Scope, scopes } from "./permissions.ts";
 
-import type { Scope } from "./permissions.ts";
+import type { PermissionModes, Scope } from "./permissions.ts";
 export interface Principal {
+  permission_modes?: PermissionModes;
+  approval_id?: string;
   grant_id?: string;
   resources?: ResourceGrants;
   id: string;
@@ -402,6 +404,16 @@ const eventInput = z
   })
   .strict();
 export const operations = {
+  requests_get: spec(
+    z.object({ request_id: id }),
+    "sessions:read",
+    "Read this connection's exact-request approval state and admission result. Approval is not proof that the coding agent finished.",
+  ),
+  requests_list: spec(
+    z.object(paging),
+    "sessions:read",
+    "Find this connection's tracked approval requests and their private owner-review links.",
+  ),
   artifacts_list: spec(
     z.object({
       state: z.enum(["active", "archived"]).optional(),

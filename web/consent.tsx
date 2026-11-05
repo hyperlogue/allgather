@@ -1,5 +1,10 @@
-import { useEffect, useRef, useState } from "react";
-import { permissions, type Scope } from "../shared/permissions.ts";
+import { useEffect, useState } from "react";
+import {
+  type PermissionMode,
+  type PermissionModes,
+  permissions,
+  type Scope,
+} from "../shared/permissions.ts";
 import { noResources, type ResourceGrants } from "../shared/resource-grants.ts";
 import { request } from "./api.ts";
 import { ErrorText, useAction } from "./ui.tsx";
@@ -16,43 +21,84 @@ interface ConsentInfo {
 function Category({
   label,
   scopes,
-  selected,
+  modes,
   change,
 }: {
   label: string;
   scopes: Scope[];
-  selected: Set<Scope>;
-  change: (scopes: Scope[], allowed: boolean) => void;
+  modes: PermissionModes;
+  change: (scopes: Scope[], mode: PermissionMode | "deny") => void;
 }) {
-  const checkbox = useRef<HTMLInputElement>(null);
-  const count = scopes.filter((scope) => selected.has(scope)).length;
-  useEffect(() => {
-    if (checkbox.current) checkbox.current.indeterminate = count > 0 && count < scopes.length;
-  }, [count, scopes.length]);
+  const count = scopes.filter((scope) => modes[scope]).length;
+  const approvalCount = scopes.filter((scope) => modes[scope] === "approval").length;
+  const supportsApproval = scopes.some((scope) => permissions[scope].approval);
+  const reviewMode =
+    supportsApproval &&
+    scopes.every(
+      (scope) =>
+        modes[scope] ===
+        (permissions[scope].approval
+          ? "approval"
+          : permissions[scope].defaultAllowed
+            ? "allow"
+            : undefined),
+    );
+  const mode =
+    count === 0
+      ? "deny"
+      : reviewMode
+        ? "approval"
+        : count === scopes.length && approvalCount === 0
+          ? "allow"
+          : "mixed";
   return (
     <details className="permission-category">
       <summary>
-        <input
-          ref={checkbox}
-          type="checkbox"
-          aria-label={`Grant all ${label.toLowerCase()} permissions`}
-          checked={count === scopes.length}
-          onClick={(event) => event.stopPropagation()}
-          onChange={(event) => change(scopes, event.target.checked)}
-        />
         <span>{label}</span>
         <small>
-          {count} of {scopes.length}
+          {count} selected{approvalCount ? ` · ${approvalCount} need approval` : ""}
         </small>
+        <select
+          aria-label={`${label} access`}
+          value={mode}
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => change(scopes, event.target.value as PermissionMode | "deny")}
+        >
+          <option value="mixed" disabled>
+            Mixed
+          </option>
+          <option value="deny">Deny all</option>
+          {supportsApproval && <option value="approval">Read; approve execution</option>}
+          <option value="allow">Allow all</option>
+        </select>
       </summary>
       {scopes.map((scope) => (
-        <label className="permission-choice" key={scope}>
-          <input
-            type="checkbox"
-            checked={selected.has(scope)}
-            onChange={(event) => change([scope], event.target.checked)}
-          />
-          <span>{permissions[scope].label}</span>
+        <label key={scope} htmlFor={`permission-${scope}`} className="permission-choice">
+          {permissions[scope].approval ? (
+            <>
+              <span>{permissions[scope].label}</span>
+              <select
+                id={`permission-${scope}`}
+                aria-label={permissions[scope].label}
+                value={modes[scope] ?? "deny"}
+                onChange={(event) => change([scope], event.target.value as PermissionMode | "deny")}
+              >
+                <option value="deny">Deny</option>
+                <option value="approval">Require approval</option>
+                <option value="allow">Allow without approval</option>
+              </select>
+            </>
+          ) : (
+            <>
+              <input
+                id={`permission-${scope}`}
+                type="checkbox"
+                checked={!!modes[scope]}
+                onChange={(event) => change([scope], event.target.checked ? "allow" : "deny")}
+              />
+              <span>{permissions[scope].label}</span>
+            </>
+          )}
         </label>
       ))}
     </details>
@@ -105,7 +151,8 @@ export function Consent() {
   const [info, setInfo] = useState<ConsentInfo | null>(null);
   const [loadError, setLoadError] = useState("");
   const [operatorName, setOperatorName] = useState("");
-  const [selected, setSelected] = useState(new Set<Scope>());
+  const [modes, setModes] = useState<PermissionModes>({});
+  const selected = new Set(Object.keys(modes) as Scope[]);
   const [keepAccess, setKeepAccess] = useState(true);
   const [resources, setResources] = useState<ResourceGrants>(noResources);
   const { busy, error, run } = useAction();
@@ -114,7 +161,13 @@ export function Consent() {
       .then((value) => {
         setInfo(value);
         setOperatorName(value.name);
-        setSelected(new Set(value.scopes.filter((scope) => permissions[scope].defaultAllowed)));
+        setModes(
+          Object.fromEntries(
+            value.scopes
+              .filter((scope) => permissions[scope].defaultAllowed || permissions[scope].approval)
+              .map((scope) => [scope, permissions[scope].approval ? "approval" : "allow"]),
+          ),
+        );
       })
       .catch((error) => setLoadError(error.message));
   }, []);
@@ -124,12 +177,19 @@ export function Consent() {
     const category = permissions[scope].category;
     categories.set(category, [...(categories.get(category) ?? []), scope]);
   }
-  const change = (scopes: Scope[], allowed: boolean) =>
-    setSelected((previous) => {
-      const next = new Set(previous);
+  const change = (scopes: Scope[], mode: PermissionMode | "deny") =>
+    setModes((previous) => {
+      const next = { ...previous };
       for (const scope of scopes)
-        if (allowed) next.add(scope);
-        else next.delete(scope);
+        if (
+          mode === "deny" ||
+          (mode === "approval" &&
+            !permissions[scope].approval &&
+            !permissions[scope].defaultAllowed)
+        )
+          delete next[scope];
+        else
+          next[scope] = mode === "approval" && permissions[scope].approval ? "approval" : "allow";
       return next;
     });
   return (
@@ -163,15 +223,18 @@ export function Consent() {
           </label>
           <div className="permission-tree">
             {[...categories].map(([label, scopes]) => (
-              <Category
-                key={label}
-                label={label}
-                scopes={scopes}
-                selected={selected}
-                change={change}
-              />
+              <Category key={label} label={label} scopes={scopes} modes={modes} change={change} />
             ))}
           </div>
+          {["sessions:launch", "sessions:prompt", "sessions:resume"].some((scope) =>
+            selected.has(scope as Scope),
+          ) && (
+            <p className="notice">
+              Project grants restrict Allgather records. Coding agents can access machine files
+              permitted by Tower and their harness. Review the directory and prompt before approving
+              execution.
+            </p>
+          )}
           <div className="permission-tree">
             <p>
               Project and machine access are separate. Both are required for a session on a machine.
@@ -213,7 +276,9 @@ export function Consent() {
           )}
           {selected.has("admin") && (
             <p className="notice">
-              Administrative access includes machine credentials, policy changes and backups.
+              Administration grants every operation scope, including execution. Explicit approval
+              modes and project and machine limits still apply. Owner-only actions still require
+              your browser.
             </p>
           )}
           <label className="permission-choice">
@@ -252,6 +317,7 @@ export function Consent() {
                     operator_name: operatorName,
                     keep_access: String(keepAccess),
                     resource_grants: JSON.stringify(resources),
+                    permission_modes: JSON.stringify(modes),
                   });
                   location.assign(result.redirect_uri);
                 })

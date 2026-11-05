@@ -292,7 +292,7 @@ export class Client {
           headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
           body: body === undefined ? undefined : JSON.stringify(body),
           redirect: "error",
-          signal: AbortSignal.timeout(30_000),
+          signal: AbortSignal.timeout(45_000),
         });
         break;
       } catch (error) {

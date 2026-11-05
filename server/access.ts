@@ -1,14 +1,38 @@
 import type { Database } from "bun:sqlite";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { AppError, type Operation, type Principal } from "../shared/contracts.ts";
-import { noResources, type ResourceGrants } from "../shared/resource-grants.ts";
+import {
+  noResources,
+  type ResourceGrants,
+  resourceGrantsSchema,
+} from "../shared/resource-grants.ts";
 
 type Input = Record<string, unknown>;
 export class Access {
   private context = new AsyncLocalStorage<Principal>();
   constructor(private db: Database) {}
-  run<T>(principal: Principal, work: () => T): T {
-    return this.context.run(principal, work);
+  run<T>(principal: Principal, work: (current: Principal) => T): T {
+    let current = principal;
+    if (principal.kind === "client" && principal.grant_id) {
+      const grant = this.db
+        .query(
+          "SELECT g.scopes,g.resources,g.permissions FROM oauth_grants g JOIN oauth_clients c ON c.id=g.client_id WHERE g.id=? AND g.client_id=? AND g.revoked=0 AND c.revoked=0",
+        )
+        .get(principal.grant_id, principal.id) as {
+        scopes: string;
+        resources: string;
+        permissions: string;
+      } | null;
+      if (!grant)
+        throw new AppError("grant_revoked", "This connection's access grant was revoked", 403);
+      current = {
+        ...principal,
+        scopes: principal.scopes.filter((scope) => JSON.parse(grant.scopes).includes(scope)),
+        resources: resourceGrantsSchema.parse(JSON.parse(grant.resources)),
+        permission_modes: JSON.parse(grant.permissions),
+      };
+    }
+    return this.context.run(current, () => work(current));
   }
   private get grants(): ResourceGrants | null {
     const p = this.context.getStore();
@@ -212,7 +236,7 @@ export class Access {
     return null;
   }
   inputs(name: Operation, a: Input) {
-    if (!this.restricted) return;
+    if (!this.restricted || name.startsWith("requests_")) return;
     if (["audit_list", "storage_get", "artifacts_gc", "artifacts_usage"].includes(name))
       this.require(this.global());
     if (["roles_create", "roles_update", "roles_delete"].includes(name))

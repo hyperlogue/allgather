@@ -43,3 +43,20 @@ export function migrateResourceGrants(db: Database) {
     `);
   }).immediate();
 }
+
+export function migrateApprovals(db: Database) {
+  db.transaction(() =>
+    db.exec(`
+    ALTER TABLE oauth_grants ADD COLUMN permissions TEXT NOT NULL DEFAULT '{}';
+    CREATE TABLE approval_requests(
+      id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES oauth_clients(id), grant_id TEXT NOT NULL REFERENCES oauth_grants(id),
+      operation TEXT NOT NULL, operation_key TEXT NOT NULL, fingerprint TEXT NOT NULL, input TEXT NOT NULL, principal TEXT NOT NULL, target TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('needs_approval','approved','executing','succeeded','failed','denied','expired')),
+      revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, decided_at TEXT, decided_by TEXT, result TEXT, error TEXT,
+      UNIQUE(client_id,operation_key)
+    );
+    CREATE INDEX approval_requests_grant ON approval_requests(grant_id,created_at);
+    PRAGMA user_version=25;
+  `),
+  ).immediate();
+}

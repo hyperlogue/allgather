@@ -3,6 +3,7 @@ import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { AppError, can, operationName, VERSION } from "../shared/contracts.ts";
 import { machineScopes } from "../shared/tower-acp.ts";
+import { approvalWait } from "./approvals.ts";
 import { artifactApi } from "./artifact-api.ts";
 import type { Auth } from "./auth.ts";
 import { mcpResponse } from "./mcp.ts";
@@ -36,6 +37,7 @@ export function createApp(
   } = {},
 ) {
   const app = new Hono();
+  workspace.approvals.ownerUrl = auth.baseUrl;
   const enrollment = new TowerEnrollment(workspace, auth.baseUrl);
   const surface = options.surface ?? "private";
   const originUrl = surface === "public" ? auth.mcpBaseUrl : auth.baseUrl;
@@ -191,6 +193,27 @@ export function createApp(
       throw new AppError("forbidden", "Sign in as the owner in this browser", 403);
     return p;
   };
+  app.get("/api/approvals", (c) => {
+    browserOwner(c.req.raw);
+    return c.json(workspace.approvals.ownerList());
+  });
+  app.get("/api/approvals/:id", (c) => {
+    browserOwner(c.req.raw);
+    return c.json(workspace.approvals.ownerGet(c.req.param("id")));
+  });
+  app.post("/api/approvals/:id/decision", async (c) => {
+    const p = browserOwner(c.req.raw),
+      body = await c.req.json();
+    if (
+      !body ||
+      !["approve", "deny"].includes(body.decision) ||
+      !Number.isSafeInteger(body.expected_revision)
+    )
+      throw new AppError("invalid_input", "Provide decision and expected_revision");
+    return c.json(
+      workspace.approvals.decide(c.req.param("id"), body.decision, body.expected_revision, p),
+    );
+  });
   app.get("/api/tower/enrollments/:id", (c) => {
     browserOwner(c.req.raw);
     return c.json(enrollment.info(c.req.param("id")));
@@ -313,6 +336,7 @@ export function createApp(
         operationName(c.req.param("operation")),
         await c.req.json(),
         principal,
+        { waitMs: approvalWait(c.req.raw), signal: c.req.raw.signal },
       ),
     });
   });
@@ -402,6 +426,7 @@ export function createApp(
     rate(`revoke:${options.peer?.(c.req.raw) ?? "local"}`, 60);
     const token = new URLSearchParams(await c.req.text()).get("token");
     if (token) auth.revokeToken(token);
+    workspace.onChange();
     return c.json({});
   });
   app.get("/api/clients", (c) => {
@@ -415,6 +440,7 @@ export function createApp(
     if (!p || !can(p, "admin")) throw new AppError("forbidden", "Owner access required", 403);
     workspace.access.run(p, () => workspace.access.require(workspace.access.global()));
     auth.revoke(c.req.param("id"));
+    workspace.onChange();
     return c.json({ ok: true });
   });
   app.get("/api/backup", async (c) => {

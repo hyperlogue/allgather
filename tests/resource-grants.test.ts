@@ -373,3 +373,49 @@ test("refresh retains the exact grant and explicit token revocation retires pend
     f.close();
   }
 });
+
+test("agent artifact contributions inherit their task project without an Unassigned grant or a hidden-session identity", async () => {
+  const f = await setup();
+  try {
+    const { p } = await f.agent({ project_ids: [f.a.id], machine_ids: [], unassigned: false }, [
+      "tasks:read",
+      "tasks:write",
+      "artifacts:read",
+      "artifacts:contribute",
+      "sessions:read",
+    ]);
+    const artifact = await f.write(
+      "artifacts_create",
+      {
+        kind: "html",
+        title: "Task evidence",
+        task_id: f.ta.id,
+        session_id: "project-agent",
+        operator_kind: "agent",
+      },
+      p,
+    );
+    expect(artifact.projectId).toBe(f.a.id);
+    expect(f.w.sessions.get("project-agent").project_id).toBe(f.a.id);
+    await f.write("sessions_declare", {
+      target_session_id: "hidden-agent",
+      project_id: f.b.id,
+      label: "Hidden label",
+    });
+    await expect(
+      f.write(
+        "task_comments_add",
+        {
+          task_id: f.ta.id,
+          body: "Impersonated",
+          session_id: "hidden-agent",
+          operator_kind: "agent",
+        },
+        p,
+      ),
+    ).rejects.toMatchObject({ code: "resource_not_granted" });
+    expect(f.w.all("SELECT id FROM task_comments WHERE body='Impersonated'")).toHaveLength(0);
+  } finally {
+    f.close();
+  }
+});

@@ -13,6 +13,7 @@ import {
 } from "../shared/contracts.ts";
 import { mcpOperations } from "../shared/mcp-surface.ts";
 import { Access } from "./access.ts";
+import { Approvals } from "./approvals.ts";
 import { Artifacts } from "./artifacts.ts";
 import { Audit } from "./audit.ts";
 import { BlobStore } from "./blobs.ts";
@@ -35,6 +36,7 @@ export function canonical(value: unknown): string {
   return JSON.stringify(value);
 }
 export class Workspace {
+  readonly approvals: Approvals;
   readonly access: Access;
   readonly history: History;
   readonly graph: Graph;
@@ -66,6 +68,7 @@ export class Workspace {
     if (options.dataDir) this.blobs = new BlobStore(join(options.dataDir, "blobs"));
     this.audit = new Audit(db);
     if (this.blobs) this.artifacts = new Artifacts(this, this.blobs);
+    this.approvals = new Approvals(this);
   }
   get managedSessions() {
     return this.options.managedSessions ?? true;
@@ -163,16 +166,26 @@ export class Workspace {
     const run = this.ensureOperator(this.operator);
     if (run) this.graph.add("works_on", run, taskId);
   }
-  async dispatch(name: Operation, input: unknown, principal: Principal): Promise<unknown> {
-    return this.access.run(principal, () => this.dispatchScoped(name, input, principal));
+  async dispatch(
+    name: Operation,
+    input: unknown,
+    principal: Principal,
+    options: { waitMs?: number; signal?: AbortSignal } = {},
+  ): Promise<unknown> {
+    return this.access.run(principal, (current) =>
+      this.dispatchScoped(name, input, current, options),
+    );
   }
   private async dispatchScoped(
     name: Operation,
     input: unknown,
     principal: Principal,
+    options: { waitMs?: number; signal?: AbortSignal },
   ): Promise<unknown> {
     if (principal.inlet === "mcp" && !mcpOperations.has(name))
       throw new AppError("not_found", "Operation is not available through MCP", 404);
+    if (this.approvals.requires(name, principal))
+      return this.approvals.request(name, input, principal, options);
     if (/^artifacts?_/.test(name)) {
       if (!this.artifacts)
         throw new AppError("storage_unavailable", "Artifact storage is not configured", 503);
@@ -212,7 +225,9 @@ export class Workspace {
     principal: Principal,
     prepared?: () => unknown,
   ): unknown {
-    return this.access.run(principal, () => this.executeScoped(name, input, principal, prepared));
+    return this.access.run(principal, (current) =>
+      this.executeScoped(name, input, current, prepared),
+    );
   }
   private executeScoped(
     name: Operation,
@@ -228,6 +243,12 @@ export class Workspace {
       throw new AppError("invalid_input", "Invalid request", 400, parsed.error.flatten());
     const a = parsed.data as Input;
     this.access.inputs(name, a);
+    if (this.approvals.requires(name, principal) && !this.approvals.permits(name, a, principal))
+      throw new AppError(
+        "needs_approval",
+        "This exact request needs owner approval through Workspace.dispatch",
+        403,
+      );
     if (!definition.write) return this.read(name, a, principal);
     return this.recordWrite(name, a, principal, prepared ?? (() => this.write(name, a, principal)));
   }
@@ -339,6 +360,8 @@ export class Workspace {
     };
   }
   private read(name: Operation, a: Input, principal: Principal): unknown {
+    if (name === "requests_get") return this.approvals.get(String(a.request_id), principal);
+    if (name === "requests_list") return this.approvals.list(a, principal);
     if (/^(machines_|checkouts_|session_)/.test(name))
       return this.executions.read(name, a, principal);
     if (name.startsWith("history_") || name.startsWith("repositories_") || name === "storage_get")

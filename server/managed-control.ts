@@ -592,8 +592,13 @@ export class ManagedControl {
       commandId,
     );
     const scope = command?.kind === "cancel" ? "sessions:stop" : `sessions:${command?.kind}`;
-    const access = this.w.one<{ scopes: string; granted_scopes: string; resources: string }>(
-      "SELECT t.scopes,g.scopes granted_scopes,g.resources FROM oauth_tokens t JOIN oauth_clients c ON c.id=t.client_id JOIN oauth_grants g ON g.id=t.grant_id AND g.client_id=t.client_id AND g.resource=t.resource WHERE t.hash=? AND t.client_id=? AND t.grant_id=? AND c.revoked=0 AND g.revoked=0 AND EXISTS(SELECT 1 FROM oauth_tokens live WHERE live.grant_id=t.grant_id AND live.revoked=0 AND (live.expires>? OR live.refresh_hash IS NOT NULL AND live.refresh_expires>?))",
+    const access = this.w.one<{
+      scopes: string;
+      granted_scopes: string;
+      resources: string;
+      permissions: string;
+    }>(
+      "SELECT t.scopes,g.scopes granted_scopes,g.resources,g.permissions FROM oauth_tokens t JOIN oauth_clients c ON c.id=t.client_id JOIN oauth_grants g ON g.id=t.grant_id AND g.client_id=t.client_id AND g.resource=t.resource WHERE t.hash=? AND t.client_id=? AND t.grant_id=? AND c.revoked=0 AND g.revoked=0 AND EXISTS(SELECT 1 FROM oauth_tokens live WHERE live.grant_id=t.grant_id AND live.revoked=0 AND (live.expires>? OR live.refresh_hash IS NOT NULL AND live.refresh_expires>?))",
       binding.hash,
       p.id,
       p.grant_id ?? "",
@@ -601,6 +606,11 @@ export class ManagedControl {
       this.w.now(),
     );
     if (!access) return null;
+    if (
+      JSON.parse(access.permissions)[scope] === "approval" &&
+      (!p.approval_id || !this.w.approvals.commandApproved(p.approval_id, commandId, p.grant_id!))
+    )
+      return null;
     const tokenScopes = JSON.parse(access.scopes) as string[],
       grantScopes = JSON.parse(access.granted_scopes) as string[];
     if (

@@ -445,6 +445,9 @@ test("approval prompts reject hidden fields and non-text input, including stored
     );
     const base = { target_session_id: launch.session.id };
     for (const content of [
+      [{ type: "text", text: "Looks safe\u202Ehidden" }],
+      [{ type: "text", text: "Looks safe\u200Bhidden" }],
+      [{ type: "text", text: "Looks safe\u{E0069}\u{E0067}\u{E006E}\u{E006F}\u{E0072}\u{E0065}" }],
       [{ type: "resource_link", uri: "https://example.invalid/hidden" }],
       [{ type: "text", text: "Visible", uri: "https://example.invalid/hidden" }],
       [{ type: "text", text: "Visible", resource: { text: "Hidden" } }],
@@ -477,12 +480,14 @@ test("approval prompts reject hidden fields and non-text input, including stored
       expect(body.error.code).toBe("needs_approval");
       return { id: body.error.details.request_id, input };
     };
-    for (const recover of [false, true]) {
-      const pending = await make(`old-${recover}`);
-      pending.input.content[0] = {
-        type: "resource_link",
-        uri: "https://example.invalid/hidden",
-      } as any;
+    for (const [recover, content] of [
+      [false, { type: "resource_link", uri: "https://example.invalid/hidden" }],
+      [true, { type: "resource_link", uri: "https://example.invalid/hidden" }],
+      [false, { type: "text", text: "Visible\u202Ehidden" }],
+      [true, { type: "text", text: "Visible\u{E0061}" }],
+    ] as const) {
+      const pending = await make(`old-${recover}-${crypto.randomUUID()}`);
+      pending.input.content[0] = content as any;
       f.w.run(
         "UPDATE approval_requests SET input=?,state=? WHERE id=?",
         JSON.stringify(pending.input),
@@ -520,7 +525,7 @@ test("approval prompts reject hidden fields and non-text input, including stored
       "UPDATE approval_requests SET input=? WHERE id=?",
       JSON.stringify({
         ...valid.input,
-        content: [{ type: "text", text: "Visible", uri: "hidden" }],
+        content: [{ type: "text", text: "Visible\u200Bhidden" }],
       }),
       valid.id,
     );

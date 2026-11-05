@@ -165,7 +165,8 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
             {!reviewable && (
               <p className="notice">
                 This stored prompt contains unsupported input. It cannot be approved. Ask the client
-                to submit a text-only request.
+                to submit text-only parts without hidden control or format characters. Tabs and line
+                breaks are permitted.
               </p>
             )}
             {textParts?.success && (

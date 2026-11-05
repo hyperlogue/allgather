@@ -54,7 +54,7 @@ export class Approvals {
     if (!reviewableApproval(name, input))
       throw new AppError(
         "unsupported_approval_content",
-        "Approval prompts require only {type: text, text: string} parts, with no extra fields",
+        "Approval prompts require only {type: text, text: string} parts, with no extra fields or Unicode control/format characters. Tabs and line breaks are permitted.",
         400,
       );
   }
@@ -319,7 +319,8 @@ export class Approvals {
     if (decision === "approve" && !reviewableApproval(row.operation, JSON.parse(row.input))) {
       this.finish(row, "failed", {
         code: "unsupported_approval_content",
-        message: "This stored prompt cannot be reviewed safely. Submit a new text-only request.",
+        message:
+          "This stored prompt cannot be reviewed safely. Submit text-only parts without Unicode control/format characters; tabs and line breaks are permitted.",
       });
       return this.ownerGet(row.id);
     }

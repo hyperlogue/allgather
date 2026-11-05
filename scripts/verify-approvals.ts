@@ -181,7 +181,7 @@ try {
   );
   const parts = [
     { type: "text", text: "First part: <script>plain text only</script>" },
-    { type: "text", text: "Second part: https://example.invalid/resource" },
+    { type: "text", text: "Second part:\n\t中文 café 😀\r\nhttps://example.invalid/resource" },
   ];
   const promptArgs = {
     target_session_id: state.result.session.id,
@@ -225,7 +225,9 @@ try {
     JSON.stringify({
       ...promptArgs,
       operation_key: "legacy-prompt",
-      content: [{ type: "resource_link", uri: "https://example.invalid/legacy" }],
+      content: [
+        { type: "text", text: "Looks safe\u{E0069}\u{E0067}\u{E006E}\u{E006F}\u{E0072}\u{E0065}" },
+      ],
     }),
     legacyId,
   );

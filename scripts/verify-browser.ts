@@ -30,7 +30,7 @@ try {
   };
   const click = async (text: string) => {
     await b.evaluate(
-      `(()=>{const el=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(text)});if(!el)throw new Error('Button missing');el.click()})()`,
+      `(()=>{const el=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(text)});if(!el)throw new Error('Button missing: '+${JSON.stringify(text)});el.click()})()`,
     );
   };
   const field = async (label: string, value: string, scope = "") => {
@@ -58,6 +58,28 @@ try {
   await b.until(
     `!document.querySelector('dialog') && document.querySelector('.task-detail h2')?.textContent==='Verify interrupted imports'`,
   );
+  const taskForContext = running.workspace.one<{ id: string }>(
+    "SELECT id FROM tasks WHERE title='Verify interrupted imports'",
+  )!;
+  await b.evaluate(`(async()=>{
+    const op=async(name,input)=>{const r=await fetch('/api/operations/'+name,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({operation_key:crypto.randomUUID(),...input})});const data=await r.json();if(!r.ok)throw new Error(JSON.stringify(data));return data.result;};
+    const a=await op('artifacts_create',{kind:'html',title:'Deleted fixture review'});
+    await op('links_add',{source_id:${JSON.stringify(taskForContext.id)},target_id:a.id,type:'produces'});
+    await op('artifacts_delete',{artifact_id:a.id});
+  })()`);
+  await b.until(`!!document.querySelector('.context-row button')`);
+  await b.evaluate(`document.querySelector('.context-row button').click()`);
+  await b.until(
+    `document.querySelector('dialog')?.textContent.includes('Deleted fixture review · Deleted')`,
+  );
+  await b.until(`document.querySelector('dialog')?.textContent.includes('content is unavailable')`);
+  if (
+    await b.evaluate<boolean>(
+      `[...document.querySelectorAll('dialog a')].some(a=>a.textContent.includes('Open artifact'))`,
+    )
+  )
+    throw new Error("Deleted graph node still has a live content link");
+  await b.evaluate(`document.querySelector('dialog button[aria-label="Close dialog"]').click()`);
   await click("Claim");
   await b.until(
     `[...document.querySelectorAll('.task-actions button')].some(b=>b.textContent==='Release claim')`,

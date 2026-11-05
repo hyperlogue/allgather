@@ -470,7 +470,7 @@ export const operations = {
   artifacts_delete: spec(
     z.object({ ...key, artifact_id: id }),
     "artifacts:manage",
-    "Delete the whole artifact and its context links. Usage history remains.",
+    "Delete artifact content. Deleted identity, context links, and usage history remain.",
     true,
   ),
   artifacts_archive: spec(

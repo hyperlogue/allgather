@@ -12,7 +12,13 @@ import type {
 } from "../server/r3/shared/artifacts.ts";
 import { openDatabase } from "../server/storage.ts";
 import { Workspace } from "../server/workspace.ts";
-import type { Operation, Principal, Project, Task } from "../shared/contracts.ts";
+import {
+  type Operation,
+  operations,
+  type Principal,
+  type Project,
+  type Task,
+} from "../shared/contracts.ts";
 
 const owner: Principal = { id: "owner", kind: "owner", inlet: "browser", scopes: ["admin"] },
   agent: Principal = {
@@ -29,7 +35,11 @@ test("multiple agents publish shared artifacts and reply across human and agent 
   const first: Principal = { ...agent, id: "first-agent" },
     second: Principal = { ...agent, id: "second-agent" };
   const call = <T>(name: Operation, input: Record<string, unknown>, principal = owner) =>
-    w.dispatch(name, { operation_key: randomUUID(), ...input }, principal) as Promise<T>;
+    w.dispatch(
+      name,
+      { ...(operations[name].write ? { operation_key: randomUUID() } : {}), ...input },
+      principal,
+    ) as Promise<T>;
   const content = (body: string) => ({
     kind: "html",
     files: [
@@ -166,7 +176,11 @@ test("r3 publication, native review targets, claims, guarded fixes, archive hist
   let now = new Date("2026-01-01T00:00:00Z");
   const w = new Workspace(db, () => now, undefined, { dataDir: root });
   const call = async <T>(name: Operation, input: Record<string, unknown> = {}, principal = owner) =>
-    (await w.dispatch(name, { operation_key: randomUUID(), ...input }, principal)) as T;
+    (await w.dispatch(
+      name,
+      { ...(operations[name].write ? { operation_key: randomUUID() } : {}), ...input },
+      principal,
+    )) as T;
   try {
     const project = await call<Project>("projects_create", { name: "Example" }),
       task = await call<Task>("tasks_create", { project_id: project.id, title: "Design" }),
@@ -294,7 +308,21 @@ test("r3 publication, native review targets, claims, guarded fixes, archive hist
     const gc = await call<{ deletedIds: string[] }>("artifacts_gc", { input: { ttlDays: 30 } });
     expect(gc.deletedIds).toEqual([artifact.id]);
     expect((await w.blobs!.read(asset.blob_hash)).toString()).toBe(html);
-    expect(w.graph.relations(task.id)).toHaveLength(0);
+    expect(w.graph.relations(task.id).length).toBeGreaterThan(0);
+    const context = await call<{
+      neighbors: { id: string; deleted_at: string | null; label: string | null; value: unknown }[];
+    }>("links_context", { entity_id: task.id });
+    expect(context.neighbors.find((e) => e.id === `${artifact.id}@1`)).toMatchObject({
+      value: null,
+    });
+    expect(
+      context.neighbors.filter((e) => e.id.startsWith(artifact.id)).every((e) => !!e.deleted_at),
+    ).toBe(true);
+    expect(() => w.graph.ensure(artifact.id, "artifact")).toThrow("deleted");
+    expect(() =>
+      db.query("UPDATE entities SET deleted_at=NULL WHERE id=?").run(artifact.id),
+    ).toThrow();
+    expect(w.db.query("PRAGMA foreign_key_check").all()).toEqual([]);
     const usage = w.artifacts!.usage.stat();
     expect(usage.artifacts.total).toBe(0);
     expect(w.all("SELECT * FROM artifact_activity").length).toBeGreaterThan(0);
@@ -314,7 +342,11 @@ test("parallel artifact preparation keeps each audit/receipt atomic and rolls ba
     db = openDatabase(":memory:"),
     w = new Workspace(db, undefined, undefined, { dataDir: root });
   const call = <T>(name: Operation, input: Record<string, unknown>, principal = owner) =>
-    w.dispatch(name, { operation_key: randomUUID(), ...input }, principal) as Promise<T>;
+    w.dispatch(
+      name,
+      { ...(operations[name].write ? { operation_key: randomUUID() } : {}), ...input },
+      principal,
+    ) as Promise<T>;
   const content = (text: string) => ({
     kind: "html",
     files: [

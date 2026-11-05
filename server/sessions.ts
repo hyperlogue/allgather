@@ -170,7 +170,7 @@ export class Sessions {
             "Referenced roles must remain available for history",
             409,
           );
-        this.w.run("DELETE FROM entities WHERE id=?", r.id);
+        this.w.graph.retire(r.id, r.name);
         this.w.run("DELETE FROM roles WHERE id=?", r.id);
         return { id: r.id, deleted: true };
       }

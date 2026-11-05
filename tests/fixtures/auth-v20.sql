@@ -8,3 +8,11 @@ CREATE TABLE oauth_tokens(hash TEXT PRIMARY KEY,refresh_hash TEXT UNIQUE,client_
 CREATE TABLE tower_enrollments(id TEXT PRIMARY KEY,credential_id TEXT,state TEXT);
 CREATE TABLE task_comments(id TEXT PRIMARY KEY);
 CREATE TABLE task_blockers(id TEXT PRIMARY KEY);
+CREATE TABLE entities(id TEXT PRIMARY KEY,kind TEXT,project_id TEXT);
+CREATE TABLE artifacts(id TEXT PRIMARY KEY,title TEXT);
+CREATE TABLE threads(id TEXT PRIMARY KEY);
+CREATE TABLE comments(id TEXT PRIMARY KEY,thread_id TEXT);
+CREATE TABLE artifact_comments(id TEXT PRIMARY KEY);
+CREATE TABLE artifact_versions(artifact_id TEXT,seq INTEGER);
+CREATE TRIGGER artifact_context_cleanup BEFORE DELETE ON artifacts BEGIN SELECT 1; END;
+CREATE TRIGGER artifact_thread_context_cleanup BEFORE DELETE ON threads BEGIN SELECT 1; END;

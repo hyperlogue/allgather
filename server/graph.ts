@@ -4,6 +4,8 @@ export interface Entity {
   id: string;
   kind: string;
   project_id: string | null;
+  deleted_at?: string | null;
+  label?: string | null;
 }
 export const commitEntityId = (repository: string, commit: string) =>
   `commit:${repository}:${commit}`;
@@ -31,13 +33,22 @@ export class Graph {
   ensure(id: string, kind?: string, projectId: string | null = null): Entity {
     const e = this.w.one<Entity>("SELECT * FROM entities WHERE id=?", id);
     if (e) {
+      if (e.deleted_at) throw new AppError("entity_deleted", "This identity was deleted", 410);
       if (kind && e.kind !== kind)
         throw new AppError("identity_conflict", "This ID belongs to another entity kind", 409);
       return e;
     }
     if (!kind) return this.entity(id);
-    this.w.run("INSERT INTO entities VALUES(?,?,?)", id, kind, projectId);
+    this.w.run("INSERT INTO entities(id,kind,project_id) VALUES(?,?,?)", id, kind, projectId);
     return { id, kind, project_id: projectId };
+  }
+  retire(id: string, label: string) {
+    this.w.run(
+      "UPDATE entities SET deleted_at=COALESCE(deleted_at,?),label=COALESCE(label,?) WHERE id=?",
+      this.w.now(),
+      label,
+      id,
+    );
   }
   commit(repositoryId: string, hash: string) {
     this.w.history.repository(repositoryId);
@@ -78,6 +89,8 @@ export class Graph {
       target,
     );
     if (old) return old;
+    if (this.entity(source).deleted_at || this.entity(target).deleted_at)
+      throw new AppError("entity_deleted", "New links require live endpoints", 410);
     const r = {
       id: uid("link"),
       type,
@@ -105,6 +118,7 @@ export class Graph {
     );
   }
   describe(e: Entity) {
+    if (e.deleted_at) return { ...e, value: null };
     let value: unknown = null;
     if (e.kind === "task") value = this.w.task(e.id);
     else if (e.kind === "project") value = this.w.project(e.id);

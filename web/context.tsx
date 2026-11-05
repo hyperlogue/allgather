@@ -7,6 +7,8 @@ interface Entity {
   id: string;
   kind: string;
   project_id: string | null;
+  deleted_at: string | null;
+  label: string | null;
   value: Record<string, unknown> | null;
 }
 interface Context {
@@ -15,9 +17,11 @@ interface Context {
   relations: Page<Relation>;
 }
 function title(e: Entity) {
+  if (e.deleted_at) return `${e.label ?? e.id} · Deleted`;
   return String(e.value?.title ?? e.value?.label ?? e.value?.name ?? e.value?.message ?? e.id);
 }
 function destination(e: Entity) {
+  if (e.deleted_at) return null;
   const v = e.value;
   if (e.kind === "task")
     return `/?view=tasks&task=${encodeURIComponent(e.id)}&project=${encodeURIComponent(e.project_id ?? "")}`;
@@ -55,6 +59,12 @@ export function ContextLink({ id, label = "View context" }: { id: string; label?
                   <a href={destination(data.entity)!}>
                     Open {data.entity.kind.replaceAll("_", " ")}
                   </a>
+                </p>
+              )}
+              {data.entity.deleted_at && (
+                <p className="notice">
+                  Deleted {new Date(data.entity.deleted_at).toLocaleString()}. Its identity and
+                  context links remain; the content is unavailable.
                 </p>
               )}
               {data.entity.value?.body !== undefined && (

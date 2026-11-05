@@ -151,7 +151,7 @@ export class TowerEnrollment {
             "The owner must create a valid pairing code in the private web app",
             401,
           );
-        const fingerprint = digest(canonical(a));
+        const fingerprint = digest(canonical(input));
         let id = invitation.enrollment_id;
         if (id) {
           if (invitation.request_fingerprint !== fingerprint)

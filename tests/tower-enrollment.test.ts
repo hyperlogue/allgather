@@ -112,6 +112,7 @@ test("pairing binds exact request, intersects consent, retries one key and confi
       { request_id: secret() },
       { host_id: "other" },
       { node_label: "other" },
+      { node_label: " Untrusted name " },
       { tower_version: "next" },
       { requested_scopes: ["read"] },
     ])

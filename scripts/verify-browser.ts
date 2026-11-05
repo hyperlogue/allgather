@@ -9,7 +9,7 @@ import { fixtureLoginToken } from "./fixture-auth.ts";
 const executable = process.env.ALLGATHER_TEST_BROWSER;
 if (!executable) throw new Error("Set ALLGATHER_TEST_BROWSER to a Chromium executable");
 const directory = mkdtempSync(join(tmpdir(), "allgather-ui-"));
-const running = await startServer({ dataDir: directory, port: 0, publicUrl: "http://127.0.0.1:0" });
+const running = await startServer({ dataDir: directory, port: 0, ownerUrl: "http://127.0.0.1:0" });
 let browser: Awaited<ReturnType<typeof browserSession>> | undefined;
 let checkoutSocket: WebSocket | undefined;
 try {
@@ -21,7 +21,7 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   });
-  await b.command("Page.navigate", { url: running.settings.publicUrl });
+  await b.command("Page.navigate", { url: running.settings.ownerUrl });
   await b.until(`!!document.querySelector('input[type="password"]')`);
   const fill = async (selector: string, text: string) => {
     await b.evaluate(`document.querySelector(${JSON.stringify(selector)}).focus()`);
@@ -235,7 +235,7 @@ try {
   const NativeSocket = WebSocket as unknown as {
     new (url: string, options: { headers: Record<string, string> }): WebSocket;
   };
-  checkoutSocket = new NativeSocket(running.settings.publicUrl.replace(/^http/, "ws") + "/tower", {
+  checkoutSocket = new NativeSocket(running.settings.ownerUrl.replace(/^http/, "ws") + "/tower", {
     headers: { authorization: `Bearer ${createNode.access_key}` },
   });
   const checkout = {
@@ -360,24 +360,24 @@ try {
   await click("Connections");
   await b.until(`document.querySelector('.connections h1')?.textContent==='Agent connections'`);
   const client = (await (
-    await fetch(`${running.settings.publicUrl}/oauth/register`, {
+    await fetch(`${running.settings.ownerUrl}/oauth/register`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         client_name: "Browser verification",
-        redirect_uris: [`${running.settings.publicUrl}/callback`],
+        redirect_uris: [`${running.settings.ownerUrl}/callback`],
         token_endpoint_auth_method: "none",
       }),
     })
   ).json()) as { client_id: string };
   const verifier = randomBytes(32).toString("base64url");
-  const authorization = new URL(`${running.settings.publicUrl}/oauth/authorize`);
+  const authorization = new URL(`${running.settings.ownerUrl}/oauth/authorize`);
   authorization.search = new URLSearchParams({
     client_id: client.client_id,
-    redirect_uri: `${running.settings.publicUrl}/callback`,
+    redirect_uri: `${running.settings.ownerUrl}/callback`,
     response_type: "code",
     scope: "tasks:read",
-    resource: `${running.settings.publicUrl}/mcp`,
+    resource: `${running.settings.ownerUrl}/mcp`,
     code_challenge_method: "S256",
     code_challenge: createHash("sha256").update(verifier).digest("base64url"),
   }).toString();
@@ -391,16 +391,16 @@ try {
     `location.pathname==='/callback' && new URLSearchParams(location.search).has('code')`,
   );
   const code = (await b.evaluate(`new URLSearchParams(location.search).get('code')`)) as string;
-  const tokenResponse = await fetch(`${running.settings.publicUrl}/oauth/token`, {
+  const tokenResponse = await fetch(`${running.settings.ownerUrl}/oauth/token`, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "authorization_code",
       client_id: client.client_id,
       code,
-      redirect_uri: `${running.settings.publicUrl}/callback`,
+      redirect_uri: `${running.settings.ownerUrl}/callback`,
       code_verifier: verifier,
-      resource: `${running.settings.publicUrl}/mcp`,
+      resource: `${running.settings.ownerUrl}/mcp`,
     }),
   });
   await tokenResponse.arrayBuffer();
@@ -411,7 +411,7 @@ try {
     )?.operator_name !== "Approved browser agent"
   )
     throw new Error("Consent name was not preserved");
-  await b.command("Page.navigate", { url: running.settings.publicUrl });
+  await b.command("Page.navigate", { url: running.settings.ownerUrl });
   await b.until(`!!document.querySelector('.app-header')`);
   const owner = { id: "owner", kind: "owner", inlet: "browser", scopes: ["admin"] } as const;
   const task = running.workspace.one<{ id: string }>(

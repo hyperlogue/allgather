@@ -12,12 +12,12 @@ const root = mkdtempSync(join(tmpdir(), "allgather-enrollment-ui-"));
 const running = await startServer({
   dataDir: root,
   port: 0,
-  publicUrl: "http://127.0.0.1:0",
+  ownerUrl: "http://127.0.0.1:0",
   gitSyncSeconds: 0,
 });
 let browser: Awaited<ReturnType<typeof browserSession>> | undefined;
 try {
-  const origin = running.settings.publicUrl;
+  const origin = running.settings.ownerUrl;
   const post = (path: string, body: unknown, token?: string) =>
     fetch(origin + path, {
       method: "POST",

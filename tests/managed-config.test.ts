@@ -38,14 +38,14 @@ test("normal handshake exposes support without granting control, and opt-out sup
       const running = await startServer({
         dataDir: root,
         port: 0,
-        publicUrl: "http://127.0.0.1:0",
+        ownerUrl: "http://127.0.0.1:0",
         gitSyncSeconds: 0,
         ...(enabled ? {} : { managedSessions: false }),
       });
       let socket: WebSocket | undefined;
       try {
         const w = running.workspace,
-          auth = new Auth(w.db, running.settings.publicUrl);
+          auth = new Auth(w.db, running.settings.ownerUrl);
         const cookie = auth.signIn(auth.createLoginToken("Fixture").token).split(";")[0];
         const principal = auth.principal(new Request(auth.baseUrl, { headers: { cookie } }))!;
         const machine = w.execute(
@@ -55,7 +55,7 @@ test("normal handshake exposes support without granting control, and opt-out sup
         ) as Machine;
         const key = w.executions.issueCredential(machine.id, "Read/send only");
         const frames: Record<string, any>[] = [];
-        socket = new NativeSocket(running.settings.publicUrl.replace("http:", "ws:") + "/tower", {
+        socket = new NativeSocket(running.settings.ownerUrl.replace("http:", "ws:") + "/tower", {
           headers: { authorization: `Bearer ${key.access_key}` },
         });
         socket.onmessage = (event) => frames.push(JSON.parse(String(event.data)));

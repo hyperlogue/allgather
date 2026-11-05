@@ -26,7 +26,7 @@ test("Tower authentication, durable command receipts, transcript replay, and liv
     server = await startServer({
       dataDir: root,
       port: 0,
-      publicUrl: "http://127.0.0.1:0",
+      ownerUrl: "http://127.0.0.1:0",
       gitSyncSeconds: 0,
       managedSessions: true,
     }),
@@ -44,7 +44,7 @@ test("Tower authentication, durable command receipts, transcript replay, and liv
   };
   const received: Record<string, unknown>[] = [];
   const connect = async (token: string) => {
-    const s = new NativeSocket(server.settings.publicUrl.replace("http:", "ws:") + "/tower", {
+    const s = new NativeSocket(server.settings.ownerUrl.replace("http:", "ws:") + "/tower", {
       headers: { authorization: `Bearer ${token}` },
     });
     s.onmessage = (e) => {
@@ -449,7 +449,7 @@ test("Tower authentication, durable command receipts, transcript replay, and liv
         operator_kind: "agent",
         operation_key: randomUUID(),
       },
-      await fixtureAgent(w, server.settings.publicUrl),
+      await fixtureAgent(w, server.settings.ownerUrl),
     );
     await w.dispatch(
       "artifact_threads_add",

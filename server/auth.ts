@@ -38,8 +38,9 @@ export class Auth {
   constructor(
     private db: Database,
     readonly baseUrl: string,
+    readonly mcpBaseUrl = baseUrl,
   ) {
-    this.resource = `${baseUrl}/mcp`;
+    this.resource = `${mcpBaseUrl}/mcp`;
     this.apiResource = `${baseUrl}/api`;
     this.oauth = new OAuth2Server({
       authorizationCodeLifetime: 120,
@@ -434,7 +435,10 @@ export class Auth {
       },
     );
     const location = new URL(response.headers?.location ?? "");
-    location.searchParams.set("iss", this.baseUrl);
+    location.searchParams.set(
+      "iss",
+      params.resource === this.resource ? this.mcpBaseUrl : this.baseUrl,
+    );
     return { redirect_uri: location.toString() };
   }
   async exchange(request: Request, body: Record<string, string>) {
@@ -514,25 +518,26 @@ export class Auth {
       .query("UPDATE oauth_tokens SET revoked=1 WHERE hash=? OR refresh_hash=?")
       .run(hash(value), hash(value));
   }
-  metadata() {
+  metadata(surface: "private" | "public" = "private") {
+    const issuer = surface === "public" ? this.mcpBaseUrl : this.baseUrl;
     return {
-      issuer: this.baseUrl,
+      issuer,
       authorization_endpoint: `${this.baseUrl}/oauth/authorize`,
-      token_endpoint: `${this.baseUrl}/oauth/token`,
-      registration_endpoint: `${this.baseUrl}/oauth/register`,
-      revocation_endpoint: `${this.baseUrl}/oauth/revoke`,
+      token_endpoint: `${issuer}/oauth/token`,
+      registration_endpoint: `${issuer}/oauth/register`,
+      revocation_endpoint: `${issuer}/oauth/revoke`,
       response_types_supported: ["code"],
       grant_types_supported: ["authorization_code", "refresh_token"],
       code_challenge_methods_supported: ["S256"],
       token_endpoint_auth_methods_supported: ["none", "client_secret_post", "client_secret_basic"],
-      scopes_supported: apiScopes,
+      scopes_supported: surface === "public" ? mcpScopes : apiScopes,
       authorization_response_iss_parameter_supported: true,
     };
   }
   resourceMetadata() {
     return {
       resource: this.resource,
-      authorization_servers: [this.baseUrl],
+      authorization_servers: [this.mcpBaseUrl],
       scopes_supported: mcpScopes.filter((s) => s !== "offline_access"),
       bearer_methods_supported: ["header"],
     };

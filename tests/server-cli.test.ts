@@ -26,7 +26,7 @@ function fixture() {
     ALLGATHER_URL: undefined,
     ALLGATHER_TOKEN: undefined,
     ALLGATHER_PORT: "0",
-    ALLGATHER_PUBLIC_URL: "http://127.0.0.1:0",
+    ALLGATHER_OWNER_URL: "http://127.0.0.1:0",
     ALLGATHER_BIND: "127.0.0.1",
     ALLGATHER_GIT_SYNC_SECONDS: "0",
   };
@@ -77,7 +77,9 @@ test("server lifecycle uses authenticated local ownership, retains settings, and
   const f = fixture();
   try {
     expect((await f.command("status")).state).toBe("stopped");
-    const started = await f.command("start");
+    const started = await f.command("start", "--mcp-url", "http://127.0.0.1:0", "--mcp-port", "0");
+    expect(started.settings!.mcpUrl).not.toBe(started.settings!.ownerUrl);
+    expect((await fetch(started.settings!.mcpUrl + "/api/session")).status).toBe(404);
     expect(started.state).toBe("running");
     expect(started.pid).not.toBe(process.pid);
     expect((await f.command("start")).instance).toBe(started.instance);
@@ -89,7 +91,7 @@ test("server lifecycle uses authenticated local ownership, retains settings, and
       (
         await fetch(`http://127.0.0.1:${saved.port}/stop`, {
           method: "POST",
-          headers: { authorization: `Bearer ${saved.token}`, origin: started.settings!.publicUrl },
+          headers: { authorization: `Bearer ${saved.token}`, origin: started.settings!.ownerUrl },
         })
       ).status,
     ).toBe(403);
@@ -99,9 +101,9 @@ test("server lifecycle uses authenticated local ownership, retains settings, and
       "--label",
       "Lifecycle browser",
     );
-    const login = await fetch(started.settings!.publicUrl + "/api/login", {
+    const login = await fetch(started.settings!.ownerUrl + "/api/login", {
       method: "POST",
-      headers: { "content-type": "application/json", origin: started.settings!.publicUrl },
+      headers: { "content-type": "application/json", origin: started.settings!.ownerUrl },
       body: JSON.stringify({ key: issued.token }),
     });
     expect(login.ok).toBe(true);
@@ -109,7 +111,7 @@ test("server lifecycle uses authenticated local ownership, retains settings, and
     expect(listed.some((t) => t.id === issued.id)).toBe(true);
     expect(JSON.stringify(listed)).not.toContain(issued.token);
     await f.command("auth", "revoke-token", issued.id);
-    const session = await fetch(started.settings!.publicUrl + "/api/session", {
+    const session = await fetch(started.settings!.ownerUrl + "/api/session", {
       headers: { cookie: login.headers.get("set-cookie")!.split(";")[0] },
     });
     expect(((await session.json()) as { authenticated: boolean }).authenticated).toBe(false);

@@ -42,10 +42,10 @@ const env = {
 let running = await startServer({
   dataDir: join(root, "server"),
   port: 0,
-  publicUrl: "http://127.0.0.1:0",
+  ownerUrl: "http://127.0.0.1:0",
   gitSyncSeconds: 0,
 });
-const origin = running.settings.publicUrl;
+const origin = running.settings.ownerUrl;
 let login: ReturnType<typeof Bun.spawn> | undefined,
   cookie = "";
 function assert(condition: unknown, message: string): asserts condition {
@@ -275,7 +275,7 @@ try {
   const settings = {
     dataDir: running.settings.dataDir,
     port: running.settings.port,
-    publicUrl: origin,
+    ownerUrl: origin,
     gitSyncSeconds: 0,
   };
   await running.stop();

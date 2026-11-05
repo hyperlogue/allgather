@@ -14,7 +14,7 @@ const root = mkdtempSync(join(tmpdir(), "allgather-controls-ui-"));
 const running = await startServer({
   dataDir: root,
   port: 0,
-  publicUrl: "http://127.0.0.1:0",
+  ownerUrl: "http://127.0.0.1:0",
   gitSyncSeconds: 0,
 });
 let browser: Awaited<ReturnType<typeof browserSession>> | undefined;
@@ -74,7 +74,7 @@ try {
     mobile: true,
   });
   await b.command("Page.navigate", {
-    url: `${running.settings.publicUrl}/?view=sessions&session=${runtime.session_id}`,
+    url: `${running.settings.ownerUrl}/?view=sessions&session=${runtime.session_id}`,
   });
   await b.until(`!!document.querySelector('input[type="password"]')`);
   await b.evaluate(`document.querySelector('input[type="password"]').focus()`);
@@ -274,7 +274,7 @@ try {
     },
   });
   await b.command("Page.navigate", {
-    url: `${running.settings.publicUrl}/?view=sessions&session=${questionRuntime.session_id}`,
+    url: `${running.settings.ownerUrl}/?view=sessions&session=${questionRuntime.session_id}`,
   });
   await b.until(`document.querySelectorAll('.session-request input[type="checkbox"]').length===2`);
   await b.evaluate(

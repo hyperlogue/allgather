@@ -145,7 +145,7 @@ async function start(port = 0) {
   running = await startServer({
     dataDir: join(root, "server"),
     port,
-    publicUrl: origin,
+    ownerUrl: origin,
     gitSyncSeconds: 0,
   });
   destination = `http://127.0.0.1:${running.settings.port}`;

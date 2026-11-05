@@ -87,7 +87,7 @@ export function startLocalControl(
 ) {
   const token = secret(),
     instance = secret();
-  const auth = new Auth(workspace.db, settings.publicUrl);
+  const auth = new Auth(workspace.db, settings.ownerUrl);
   let stopping = false;
   const server = Bun.serve({
     hostname: "127.0.0.1",

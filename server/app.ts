@@ -6,6 +6,7 @@ import { machineScopes } from "../shared/tower-acp.ts";
 import { artifactApi } from "./artifact-api.ts";
 import type { Auth } from "./auth.ts";
 import { mcpResponse } from "./mcp.ts";
+import { isPublicRoute } from "./network.ts";
 import { TowerEnrollment } from "./tower-enrollment.ts";
 import type { Workspace } from "./workspace.ts";
 
@@ -30,21 +31,21 @@ export function createApp(
     backup?: () => ReadableStream<Uint8Array>;
     hostname?: string;
     peer?: (r: Request) => string;
+    surface?: "private" | "public";
   } = {},
 ) {
   const app = new Hono();
   const enrollment = new TowerEnrollment(workspace, auth.baseUrl);
-  const allowedHosts = new Set(
-    [new URL(auth.baseUrl).host, "localhost:4390", "127.0.0.1:4390", options.hostname].filter(
-      Boolean,
-    ),
-  );
+  const surface = options.surface ?? "private";
+  const originUrl = surface === "public" ? auth.mcpBaseUrl : auth.baseUrl;
+  const allowedHosts = new Set([new URL(originUrl).host, options.hostname].filter(Boolean));
   const rates = new Map<string, { count: number; until: number }>();
   app.use("*", async (c, next) => {
+    if (surface === "public" && !isPublicRoute(c.req.raw)) return c.text("Not found", 404);
     const host = c.req.header("host") ?? new URL(c.req.url).host;
     if (!allowedHosts.has(host)) throw new AppError("forbidden_host", "Host is not allowed", 403);
     const origin = c.req.header("origin");
-    if (origin && origin !== auth.baseUrl)
+    if (origin && origin !== originUrl)
       throw new AppError("forbidden_origin", "Origin is not allowed", 403);
     if (
       !["GET", "HEAD", "OPTIONS"].includes(c.req.method) &&
@@ -109,7 +110,7 @@ export function createApp(
     return c.json({ error: { code: "internal_error", message: "Internal server error" } }, 500);
   });
   app.get("/health", (c) => c.json({ ok: true, version: VERSION }));
-  app.get("/.well-known/oauth-authorization-server", (c) => c.json(auth.metadata()));
+  app.get("/.well-known/oauth-authorization-server", (c) => c.json(auth.metadata(surface)));
   app.get("/.well-known/oauth-protected-resource/mcp", (c) => c.json(auth.resourceMetadata()));
   app.get("/.well-known/oauth-protected-resource", (c) => c.json(auth.resourceMetadata()));
   app.post("/api/login", async (c) => {
@@ -299,7 +300,7 @@ export function createApp(
     c.json({
       authenticated: !!auth.principal(c.req.raw),
       version: VERSION,
-      public_url: auth.baseUrl,
+      owner_url: auth.baseUrl,
       mcp_url: auth.resource,
     }),
   );
@@ -384,9 +385,10 @@ export function createApp(
   });
   app.post("/oauth/token", async (c) => {
     rate(`token:${options.peer?.(c.req.raw) ?? "local"}`, 60);
-    return c.json(
-      await auth.exchange(c.req.raw, Object.fromEntries(new URLSearchParams(await c.req.text()))),
-    );
+    const body = Object.fromEntries(new URLSearchParams(await c.req.text()));
+    if (surface === "public" && body.resource !== auth.resource)
+      throw new AppError("invalid_target", "The public endpoint only issues MCP credentials");
+    return c.json(await auth.exchange(c.req.raw, body));
   });
   app.post("/oauth/revoke", async (c) => {
     rate(`revoke:${options.peer?.(c.req.raw) ?? "local"}`, 60);
@@ -421,7 +423,7 @@ export function createApp(
     if (!principal) {
       c.header(
         "WWW-Authenticate",
-        `Bearer resource_metadata="${auth.baseUrl}/.well-known/oauth-protected-resource/mcp"`,
+        `Bearer resource_metadata="${auth.mcpBaseUrl}/.well-known/oauth-protected-resource/mcp"`,
       );
       return c.json({ error: "unauthorized" }, 401);
     }

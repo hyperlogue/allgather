@@ -47,10 +47,10 @@ const env = {
 let running = await startServer({
   dataDir: join(root, "server"),
   port: 0,
-  publicUrl: "http://127.0.0.1:0",
+  ownerUrl: "http://127.0.0.1:0",
   gitSyncSeconds: 0,
 });
-const origin = running.settings.publicUrl;
+const origin = running.settings.ownerUrl;
 let cookie = "",
   mcp: McpClient | undefined;
 function assert(value: unknown, message: string): asserts value {

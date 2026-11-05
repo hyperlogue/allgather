@@ -17,6 +17,7 @@ import { backupWorkspace } from "./backup.ts";
 import { type Config, config } from "./config.ts";
 import { startLocalControl } from "./control.ts";
 import { NativeGit } from "./native-git.ts";
+import { NetworkBoundary } from "./network.ts";
 import { openDatabase } from "./storage.ts";
 import { Tower, type TowerSocketData } from "./tower.ts";
 import { UpstreamSync } from "./upstream-sync.ts";
@@ -24,6 +25,7 @@ import { Workspace } from "./workspace.ts";
 
 export async function startServer(overrides: Partial<Config> = {}) {
   const settings = config(overrides);
+  const network = new NetworkBoundary(settings.trustedProxies, settings.privateNetworks);
   mkdirSync(settings.dataDir, { recursive: true, mode: 0o700 });
   const lock = join(settings.dataDir, "server.lock");
   if (existsSync(lock)) {
@@ -76,21 +78,26 @@ export async function startServer(overrides: Partial<Config> = {}) {
     };
     const peers = new WeakMap<Request, string>();
     let app: ReturnType<typeof createApp> | undefined;
+    let publicApp: ReturnType<typeof createApp> | undefined;
+    let mcpServer: Bun.Server<undefined> | undefined;
     const server = Bun.serve<TowerSocketData>({
       hostname: settings.hostname,
       port: settings.port,
       idleTimeout: 60,
       maxRequestBodySize: 200 * 1024 * 1024,
       fetch(request, server) {
+        const peer = network.client(server.requestIP(request)?.address ?? "", request.headers);
+        if (!network.allowsPrivate(peer))
+          return new Response("Private network required", { status: 403 });
+        peers.set(request, peer!);
         if (new URL(request.url).pathname.startsWith("/__r3_preview/"))
-          return workspace.artifacts!.previews.fetch(request, new Set([settings.publicUrl]));
+          return workspace.artifacts!.previews.fetch(request, new Set([settings.ownerUrl]));
         if (new URL(request.url).pathname === "/tower") {
           const data = tower?.authenticate(request);
           if (!data) return new Response("Machine authentication required", { status: 401 });
           if (server.upgrade(request, { data })) return;
           return new Response("WebSocket upgrade required", { status: 426 });
         }
-        peers.set(request, server.requestIP(request)?.address ?? "unknown");
         return app?.fetch(request) ?? new Response("Starting", { status: 503 });
       },
       websocket: {
@@ -100,21 +107,44 @@ export async function startServer(overrides: Partial<Config> = {}) {
         close: (socket) => tower?.close(socket),
       },
     });
-    stopHttp = () => server.stop(true);
+    stopHttp = async () => {
+      await mcpServer?.stop(true);
+      await server.stop(true);
+    };
     const originalPort = settings.port;
     if (server.port === undefined) {
       await server.stop(true);
       throw new Error("The TCP listener has no port");
     }
     settings.port = server.port;
-    if (originalPort === 0 && new URL(settings.publicUrl).port === "0") {
-      const url = new URL(settings.publicUrl);
+    if (originalPort === 0 && new URL(settings.ownerUrl).port === "0") {
+      const url = new URL(settings.ownerUrl);
       url.port = String(settings.port);
-      settings.publicUrl = url.origin;
+      settings.ownerUrl = url.origin;
     }
     try {
-      const auth = new Auth(database, settings.publicUrl);
-      tower = new Tower(workspace, settings.publicUrl, `${settings.hostname}:${settings.port}`);
+      if (settings.mcpUrl && settings.mcpPort !== null) {
+        mcpServer = Bun.serve({
+          hostname: settings.mcpHostname,
+          port: settings.mcpPort,
+          idleTimeout: 60,
+          maxRequestBodySize: 32 * 1024 * 1024,
+          fetch(request, server) {
+            const peer = network.client(server.requestIP(request)?.address ?? "", request.headers);
+            if (!peer) return new Response("Invalid proxy chain", { status: 403 });
+            peers.set(request, peer);
+            return publicApp?.fetch(request) ?? new Response("Starting", { status: 503 });
+          },
+        });
+        settings.mcpPort = mcpServer.port!;
+        if (new URL(settings.mcpUrl).port === "0") {
+          const url = new URL(settings.mcpUrl);
+          url.port = String(settings.mcpPort);
+          settings.mcpUrl = url.origin;
+        }
+      }
+      const auth = new Auth(database, settings.ownerUrl, settings.mcpUrl ?? settings.ownerUrl);
+      tower = new Tower(workspace, settings.ownerUrl, `${settings.hostname}:${settings.port}`);
       tower.start();
       app = createApp(workspace, auth, updates, {
         assets,
@@ -122,8 +152,14 @@ export async function startServer(overrides: Partial<Config> = {}) {
         peer: (r) => peers.get(r) ?? "unknown",
         backup: () => backupWorkspace(workspace),
       });
+      if (mcpServer)
+        publicApp = createApp(workspace, auth, updates, {
+          surface: "public",
+          hostname: `${settings.mcpHostname}:${settings.mcpPort}`,
+          peer: (r) => peers.get(r) ?? "unknown",
+        });
     } catch (error) {
-      await server.stop(true);
+      await stopHttp();
       throw error;
     }
     upstream.start();
@@ -134,16 +170,16 @@ export async function startServer(overrides: Partial<Config> = {}) {
         await upstream?.stop();
         tower?.stop();
         workspace.artifacts?.previews.close();
-        await server.stop(true);
+        await stopHttp!();
         workspace.db.close();
         await control?.close();
         unlinkSync(lock);
       })());
     control = startLocalControl(settings, workspace, stop);
     console.log(
-      `Allgather: ${settings.publicUrl}\nSign in with a one-time code from: allgather-server auth create-token --data-dir ${settings.dataDir}`,
+      `Allgather: ${settings.ownerUrl}\nSign in with a one-time code from: allgather-server auth create-token --data-dir ${settings.dataDir}`,
     );
-    return { server, workspace, stop, settings };
+    return { server, mcpServer, workspace, stop, settings };
   } catch (error) {
     await upstream?.stop();
     tower?.stop();

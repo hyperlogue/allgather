@@ -38,6 +38,7 @@ const daemonCommand = async (...args: string[]) => {
     instance?: string;
     saved?: boolean;
     restored?: boolean;
+    settings: import("../server/config.ts").Config;
   };
 };
 const server = Bun.spawn(
@@ -48,7 +49,7 @@ const server = Bun.spawn(
     join(directory, "state"),
     "--port",
     "0",
-    "--public-url",
+    "--owner-url",
     "http://127.0.0.1:0",
   ],
   { cwd: directory, stdout: "pipe", stderr: "pipe" },
@@ -152,9 +153,26 @@ try {
   if (await server.exited) throw new Error("Foreground server did not stop cleanly");
   if ((await daemonCommand("status")).state !== "stopped")
     throw new Error("Foreground ownership remained");
-  const started = await daemonCommand("start", "--port", "0", "--public-url", "http://127.0.0.1:0");
+  const started = await daemonCommand(
+    "start",
+    "--port",
+    "0",
+    "--owner-url",
+    "http://127.0.0.1:0",
+    "--mcp-url",
+    "http://127.0.0.1:0",
+    "--mcp-port",
+    "0",
+  );
   if (started.state !== "running") throw new Error("Packaged background server did not start");
+  if (
+    !started.settings.mcpUrl ||
+    (await fetch(started.settings.mcpUrl + "/api/session")).status !== 404
+  )
+    throw new Error("Packaged public listener exposed owner API");
   const restarted = await daemonCommand("restart");
+  if (JSON.stringify(restarted.settings) !== JSON.stringify(started.settings))
+    throw new Error("Packaged restart changed listener settings");
   if (restarted.state !== "running" || restarted.instance === started.instance)
     throw new Error("Packaged background restart did not replace the instance");
   if (!(await daemonCommand("backup", join(directory, "backup.zip"))).saved)

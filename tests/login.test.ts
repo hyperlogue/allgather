@@ -38,7 +38,7 @@ async function authorizeCli(
   env: NodeJS.ProcessEnv,
   scope?: string,
 ) {
-  const url = running.settings.publicUrl;
+  const url = running.settings.ownerUrl;
   const child = Bun.spawn(
     [
       process.execPath,
@@ -106,10 +106,10 @@ test("CLI browser OAuth stores private rotating credentials and API grants canno
     running = await startServer({
       dataDir: join(dir, "state"),
       port: 0,
-      publicUrl: "http://127.0.0.1:0",
+      ownerUrl: "http://127.0.0.1:0",
       gitSyncSeconds: 0,
     }),
-    url = running.settings.publicUrl,
+    url = running.settings.ownerUrl,
     env = {
       ...process.env,
       HOME: dir,
@@ -180,7 +180,7 @@ test("CLI administrative access requires explicit login scopes and default re-lo
   const running = await startServer({
     dataDir: join(dir, "state"),
     port: 0,
-    publicUrl: "http://127.0.0.1:0",
+    ownerUrl: "http://127.0.0.1:0",
     gitSyncSeconds: 0,
   });
   const env = {
@@ -251,11 +251,10 @@ test("CLI administrative access requires explicit login scopes and default re-lo
     expect((await invoke("api", "machines_create", "--input", input)).error.code).toBe("forbidden");
     expect(running.workspace.all("SELECT id FROM machines")).toEqual([]);
     const credentialPath = join(dir, "config", "credentials.json");
-    const saved = () =>
-      JSON.parse(readFileSync(credentialPath, "utf8"))[running.settings.publicUrl];
+    const saved = () => JSON.parse(readFileSync(credentialPath, "utf8"))[running.settings.ownerUrl];
     expect(
       (
-        await fetch(running.settings.publicUrl + "/api/tower/credentials", {
+        await fetch(running.settings.ownerUrl + "/api/tower/credentials", {
           headers: { authorization: `Bearer ${saved().access_token}` },
         })
       ).status,
@@ -313,10 +312,10 @@ test("legacy master keys retire on upgrade and local recovery resets credentials
   const running = await startServer({
     dataDir: dir,
     port: 0,
-    publicUrl: "http://127.0.0.1:0",
+    ownerUrl: "http://127.0.0.1:0",
     gitSyncSeconds: 0,
   });
-  const origin = running.settings.publicUrl;
+  const origin = running.settings.ownerUrl;
   const request = (path: string, body: unknown, headers: Record<string, string>) =>
     fetch(origin + path, {
       method: "POST",

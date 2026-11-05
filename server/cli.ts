@@ -23,7 +23,10 @@ export const HELP = `allgather-server — local Allgather server administration
   restore FILE --data-dir NEW_DIRECTORY
 
 Use --data-dir DIR to select the local instance. Control results are JSON; run prints logs.
-Start/run/restart: --port PORT --bind HOST --public-url URL --managed-sessions true|false.
+Private server: --port PORT --bind HOST --owner-url URL.
+Public MCP (opt in): --mcp-url URL --mcp-port PORT --mcp-bind HOST.
+Network: --trusted-proxies CIDRS --private-networks CIDRS (comma separated).
+Execution: --managed-sessions true|false.
 Auth and backup require a running local server. Login codes expire after ten minutes and work once.
 Auth reset revokes all browser, connector and machine access. Restore also revokes prior credentials.
 Restore writes to a new directory.
@@ -77,8 +80,22 @@ async function start(settings: Config): Promise<ServerStatus> {
     String(settings.port),
     "--bind",
     settings.hostname,
-    "--public-url",
-    settings.publicUrl,
+    "--owner-url",
+    settings.ownerUrl,
+    "--trusted-proxies",
+    settings.trustedProxies.join(","),
+    "--private-networks",
+    settings.privateNetworks.join(","),
+    ...(settings.mcpUrl
+      ? [
+          "--mcp-url",
+          settings.mcpUrl,
+          "--mcp-port",
+          String(settings.mcpPort),
+          "--mcp-bind",
+          settings.mcpHostname,
+        ]
+      : []),
     "--managed-sessions",
     String(settings.managedSessions),
   ];
@@ -127,7 +144,19 @@ export async function main(argv = process.argv.slice(2)) {
   const allowed = new Set([
     "json",
     "data-dir",
-    ...(startup ? ["port", "bind", "public-url", "managed-sessions"] : []),
+    ...(startup
+      ? [
+          "port",
+          "bind",
+          "owner-url",
+          "mcp-url",
+          "mcp-port",
+          "mcp-bind",
+          "trusted-proxies",
+          "private-networks",
+          "managed-sessions",
+        ]
+      : []),
     ...(p[0] === "auth" ? ["label"] : []),
   ]);
   for (const flag of Object.keys(f))
@@ -146,7 +175,18 @@ export async function main(argv = process.argv.slice(2)) {
       dataDir: text("data-dir"),
       port: text("port") === undefined ? undefined : Number(f.port),
       hostname: text("bind"),
-      publicUrl: text("public-url"),
+      ownerUrl: text("owner-url"),
+      mcpUrl: text("mcp-url"),
+      mcpPort: text("mcp-port") === undefined ? undefined : Number(f["mcp-port"]),
+      mcpHostname: text("mcp-bind"),
+      trustedProxies: text("trusted-proxies")
+        ?.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+      privateNetworks: text("private-networks")
+        ?.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
       managedSessions: managed === undefined ? undefined : managed === "true",
     }).filter(([, value]) => value !== undefined),
   );

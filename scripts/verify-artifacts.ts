@@ -11,7 +11,7 @@ const dir = mkdtempSync(join(tmpdir(), "allgather-artifact-ui-")),
   server = await startServer({
     dataDir: dir,
     port: 0,
-    publicUrl: "http://127.0.0.1:0",
+    ownerUrl: "http://127.0.0.1:0",
     gitSyncSeconds: 0,
   }),
   p = { id: "owner", kind: "owner", inlet: "browser", scopes: ["admin"] } as const;
@@ -44,7 +44,7 @@ try {
   );
   await verifyArtifactBrowser(
     executable,
-    server.settings.publicUrl,
+    server.settings.ownerUrl,
     await fixtureLoginToken(dir),
     artifact.id,
   );

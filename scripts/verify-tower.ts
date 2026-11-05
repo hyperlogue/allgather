@@ -12,7 +12,7 @@ const dataDir = join(root, "allgather");
 let running = await startServer({
   dataDir,
   port: 0,
-  publicUrl: "http://127.0.0.1:0",
+  ownerUrl: "http://127.0.0.1:0",
   gitSyncSeconds: 0,
 });
 const owner: Principal = { id: "owner", kind: "owner", scopes: ["admin"], inlet: "browser" };
@@ -44,7 +44,7 @@ const config = join(root, "config", "tower");
 mkdirSync(config, { recursive: true, mode: 0o700 });
 writeFileSync(
   join(config, "config.toml"),
-  `[scan]\nenabled=false\n[allgather]\nurl = "${running.settings.publicUrl.replace("http:", "ws:")}/tower"\npolicy_id = "tower"\nclient_id = "tower"\n`,
+  `[scan]\nenabled=false\n[allgather]\nurl = "${running.settings.ownerUrl.replace("http:", "ws:")}/tower"\npolicy_id = "tower"\nclient_id = "tower"\n`,
   { mode: 0o600 },
 );
 const env: NodeJS.ProcessEnv = {
@@ -182,7 +182,7 @@ try {
     projection.display_name === "Metadata fixture" && !("token" in projection),
     "Incorrect public status projection",
   );
-  const forbidden = await fetch(running.settings.publicUrl + "/api/operations/tasks_search", {
+  const forbidden = await fetch(running.settings.ownerUrl + "/api/operations/tasks_search", {
     method: "POST",
     headers: { authorization: `Bearer ${key.access_key}`, "content-type": "application/json" },
     body: "{}",
@@ -192,7 +192,7 @@ try {
   const settings = {
     dataDir,
     port: running.settings.port,
-    publicUrl: running.settings.publicUrl,
+    ownerUrl: running.settings.ownerUrl,
     gitSyncSeconds: 0,
   };
   await running.stop();

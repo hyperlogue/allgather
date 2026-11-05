@@ -19,14 +19,14 @@ test("CLI mutations, upstream configuration, and backup restore preserve work", 
   const running = await startServer({
     dataDir: join(root, "state"),
     port: 0,
-    publicUrl: "http://127.0.0.1:0",
+    ownerUrl: "http://127.0.0.1:0",
   });
   const env = {
     ...process.env,
-    ALLGATHER_URL: running.settings.publicUrl,
+    ALLGATHER_URL: running.settings.ownerUrl,
     ALLGATHER_TOKEN: await fixtureApiToken(
-      running.settings.publicUrl,
-      await fixtureLogin(join(root, "state"), running.settings.publicUrl),
+      running.settings.ownerUrl,
+      await fixtureLogin(join(root, "state"), running.settings.ownerUrl),
     ),
     ALLGATHER_CONFIG_DIR: join(root, "config"),
   };
@@ -336,7 +336,7 @@ test("CLI mutations, upstream configuration, and backup restore preserve work", 
     const savedBackup = readFileSync(backup);
     await expect(invoke("backup", backup)).rejects.toThrow();
     expect(readFileSync(backup)).toEqual(savedBackup);
-    const downloaded = await fetch(`${running.settings.publicUrl}/api/backup`, {
+    const downloaded = await fetch(`${running.settings.ownerUrl}/api/backup`, {
       headers: { authorization: `Bearer ${env.ALLGATHER_TOKEN}` },
     });
     expect(downloaded.headers.get("content-type")).toBe("application/zip");
@@ -349,7 +349,7 @@ test("CLI mutations, upstream configuration, and backup restore preserve work", 
     const recovered = await startServer({
       dataDir: restored,
       port: 0,
-      publicUrl: "http://127.0.0.1:0",
+      ownerUrl: "http://127.0.0.1:0",
     });
     try {
       expect(
@@ -365,7 +365,7 @@ test("CLI mutations, upstream configuration, and backup restore preserve work", 
       expect(existsSync(join(restored, "owner-key"))).toBe(false);
       expect(
         (
-          await fetch(recovered.settings.publicUrl + "/api/operations/projects_list", {
+          await fetch(recovered.settings.ownerUrl + "/api/operations/projects_list", {
             method: "POST",
             headers: {
               authorization: `Bearer ${env.ALLGATHER_TOKEN}`,

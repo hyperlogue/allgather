@@ -12,7 +12,7 @@ import {
   type SessionCommand,
   type SessionRuntime,
 } from "../shared/contracts.ts";
-import { fixtureOwner, fullControls } from "./fixtures/tower-controls.ts";
+import { fixtureAgent, fixtureOwner, fullControls } from "./fixtures/tower-controls.ts";
 
 async function until(check: () => boolean) {
   for (let i = 0; i < 200; i++) {
@@ -449,7 +449,7 @@ test("Tower authentication, durable command receipts, transcript replay, and liv
         operator_kind: "agent",
         operation_key: randomUUID(),
       },
-      { ...owner, inlet: "api" },
+      await fixtureAgent(w, server.settings.publicUrl),
     );
     await w.dispatch(
       "artifact_threads_add",

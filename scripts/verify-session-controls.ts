@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { hash } from "../server/auth.ts";
 import { startServer } from "../server/index.ts";
 import type { Machine, SessionRuntime } from "../shared/contracts.ts";
+import { fixtureOwner } from "../tests/fixtures/tower-controls.ts";
 import { browserSession } from "./browser.ts";
+import { fixtureLoginToken } from "./fixture-auth.ts";
 
 const executable = process.env.ALLGATHER_TEST_BROWSER;
 if (!executable) throw new Error("Set ALLGATHER_TEST_BROWSER to Chromium");
@@ -19,16 +20,7 @@ const running = await startServer({
 let browser: Awaited<ReturnType<typeof browserSession>> | undefined;
 try {
   const w = running.workspace,
-    owner = {
-      id: "owner",
-      kind: "owner",
-      inlet: "browser",
-      scopes: ["admin"],
-      auth_binding: {
-        kind: "owner",
-        hash: hash(readFileSync(join(root, "owner-key"), "utf8").trim()),
-      },
-    } as const;
+    owner = fixtureOwner(w);
   const machine = w.execute(
     "machines_create",
     { name: "Synthetic bridge", operation_key: randomUUID() },
@@ -86,7 +78,7 @@ try {
   });
   await b.until(`!!document.querySelector('input[type="password"]')`);
   await b.evaluate(`document.querySelector('input[type="password"]').focus()`);
-  await b.command("Input.insertText", { text: readFileSync(join(root, "login-token"), "utf8") });
+  await b.command("Input.insertText", { text: await fixtureLoginToken(root) });
   await b.evaluate(`document.querySelector('button[type="submit"]').click()`);
   await b.until(`document.body.textContent.includes('Stop runtime and queued work')`);
   await b.until(

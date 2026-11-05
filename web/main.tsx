@@ -27,7 +27,7 @@ function Login({ done }: { done: () => void }) {
     <main className="login">
       <Brand />
       <h1>Your work, together.</h1>
-      <p>Use a login token from your Allgather server to sign in.</p>
+      <p>Use a one-time code from your Allgather server to sign in.</p>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -39,9 +39,9 @@ function Login({ done }: { done: () => void }) {
         }}
       >
         <label>
-          Login token
+          Login code
           <input
-            autoComplete="current-password"
+            autoComplete="one-time-code"
             type="password"
             required
             value={key}
@@ -54,7 +54,8 @@ function Login({ done }: { done: () => void }) {
         </button>
       </form>
       <p className="muted small">
-        The server prints the location of the login token file when it starts.
+        Create a code locally with allgather-server auth create-token. Codes expire after ten
+        minutes.
       </p>
     </main>
   );

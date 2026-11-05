@@ -1,5 +1,4 @@
 import {
-  chmodSync,
   closeSync,
   existsSync,
   mkdirSync,
@@ -13,7 +12,7 @@ import artifactPage from "../web/artifact.html";
 import page from "../web/index.html";
 import { createApp, Updates } from "./app.ts";
 import { loadAssets } from "./assets.ts";
-import { Auth, secret } from "./auth.ts";
+import { Auth } from "./auth.ts";
 import { backupWorkspace } from "./backup.ts";
 import { type Config, config } from "./config.ts";
 import { startLocalControl } from "./control.ts";
@@ -46,15 +45,11 @@ export async function startServer(overrides: Partial<Config> = {}) {
   let control: ReturnType<typeof startLocalControl> | undefined;
   let stopHttp: (() => Promise<void>) | undefined;
   try {
-    const keyPath = join(settings.dataDir, "owner-key");
-    if (!existsSync(keyPath) && existsSync(join(settings.dataDir, "allgather.sqlite")))
-      throw new Error(
-        "The owner key file is missing. Restore it from your backup before starting.",
-      );
-    if (!existsSync(keyPath)) writeFileSync(keyPath, secret(), { flag: "wx", mode: 0o600 });
-    chmodSync(keyPath, 0o600);
-    const ownerKey = readFileSync(keyPath, "utf8").trim();
     database = openDatabase(join(settings.dataDir, "allgather.sqlite"));
+    for (const name of ["owner-key", "login-token"]) {
+      const path = join(settings.dataDir, name);
+      if (existsSync(path)) unlinkSync(path);
+    }
     const updates = new Updates(),
       workspace = new Workspace(
         database,
@@ -118,23 +113,14 @@ export async function startServer(overrides: Partial<Config> = {}) {
       settings.publicUrl = url.origin;
     }
     try {
-      const auth = new Auth(database, settings.publicUrl, ownerKey);
+      const auth = new Auth(database, settings.publicUrl);
       tower = new Tower(workspace, settings.publicUrl, `${settings.hostname}:${settings.port}`);
       tower.start();
-      const loginPath = join(settings.dataDir, "login-token");
-      if (!existsSync(loginPath)) {
-        const token = auth.createLoginToken("Server bootstrap");
-        writeFileSync(loginPath, token.token, { mode: 0o600, flag: "wx" });
-      } else {
-        const token = readFileSync(loginPath, "utf8").trim();
-        if (!auth.hasLoginToken(token)) auth.createLoginToken("Server bootstrap", token);
-      }
-
       app = createApp(workspace, auth, updates, {
         assets,
         hostname: `${settings.hostname}:${settings.port}`,
         peer: (r) => peers.get(r) ?? "unknown",
-        backup: () => backupWorkspace(workspace, ownerKey),
+        backup: () => backupWorkspace(workspace),
       });
     } catch (error) {
       await server.stop(true);
@@ -153,9 +139,9 @@ export async function startServer(overrides: Partial<Config> = {}) {
         await control?.close();
         unlinkSync(lock);
       })());
-    control = startLocalControl(settings, workspace, ownerKey, stop);
+    control = startLocalControl(settings, workspace, stop);
     console.log(
-      `Allgather: ${settings.publicUrl}\nLogin token file: ${join(settings.dataDir, "login-token")}\nRecovery key file: ${keyPath}`,
+      `Allgather: ${settings.publicUrl}\nSign in with a one-time code from: allgather-server auth create-token --data-dir ${settings.dataDir}`,
     );
     return { server, workspace, stop, settings };
   } catch (error) {

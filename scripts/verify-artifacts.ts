@@ -1,8 +1,9 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server/index.ts";
 import { verifyArtifactBrowser } from "./artifact-browser.ts";
+import { fixtureLoginToken } from "./fixture-auth.ts";
 
 const executable = process.env.ALLGATHER_TEST_BROWSER;
 if (!executable) throw new Error("Set ALLGATHER_TEST_BROWSER to a Chromium executable");
@@ -44,7 +45,7 @@ try {
   await verifyArtifactBrowser(
     executable,
     server.settings.publicUrl,
-    readFileSync(join(dir, "login-token"), "utf8"),
+    await fixtureLoginToken(dir),
     artifact.id,
   );
   console.log(

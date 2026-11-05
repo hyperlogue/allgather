@@ -9,9 +9,9 @@ import { Tower, type TowerSocketData } from "../server/tower.ts";
 import { Workspace } from "../server/workspace.ts";
 import type { Machine, Operation, SessionCommand, SessionRuntime } from "../shared/contracts.ts";
 import type { MachineScope } from "../shared/tower-acp.ts";
-import { fixtureOwner, fullControls } from "./fixtures/tower-controls.ts";
+import { fixtureAgent, fixtureOwner, fullControls } from "./fixtures/tower-controls.ts";
 
-function fixture() {
+async function fixture() {
   const root = mkdtempSync(join(tmpdir(), "allgather-notification-test-")),
     db = openDatabase(":memory:");
   let tower!: Tower;
@@ -22,6 +22,7 @@ function fixture() {
     { dataDir: root, managedSessions: true },
   );
   const owner = fixtureOwner(w);
+  const agent = await fixtureAgent(w);
   tower = new Tower(w, "http://127.0.0.1:4390", "127.0.0.1:4390");
   const call = <T>(name: Operation, a: Record<string, unknown> = {}) =>
     w.execute(name, { operation_key: randomUUID(), ...a }, owner) as T;
@@ -136,7 +137,7 @@ function fixture() {
     await artifactCall(
       "artifacts_listen",
       { artifact_id: a.id, session_id: r.session_id, operator_kind: "agent" },
-      { ...owner, inlet: "api" },
+      agent,
     );
     await artifactCall("artifact_threads_add", {
       artifact_id: a.id,
@@ -147,6 +148,7 @@ function fixture() {
   return {
     w,
     owner,
+    agent,
     tower,
     call,
     artifactCall,
@@ -170,7 +172,7 @@ function fixture() {
 }
 
 test("managed notifications preserve provenance, serialize turns, and reconcile acceptance without generic injection", async () => {
-  const f = fixture();
+  const f = await fixture();
   try {
     const artifact = await f.artifact();
     const active = f.call<SessionCommand>("session_prompt", {
@@ -245,7 +247,7 @@ test("managed notifications preserve provenance, serialize turns, and reconcile 
 });
 
 test("managed notification needs caller control, machine consent, and a current subscription", async () => {
-  const f = fixture();
+  const f = await fixture();
   try {
     const artifact = await f.artifact();
     await expect(
@@ -285,7 +287,7 @@ test("managed notification needs caller control, machine consent, and a current 
     await f.artifactCall(
       "artifacts_unlisten",
       { artifact_id: other, session_id: f.r.session_id, operator_kind: "agent" },
-      { ...f.owner, inlet: "api" },
+      f.agent,
     );
     f.event("turn_end", { stop_reason: "end_turn" }, active.id);
     expect(f.w.executions.command(queued.notification.command_id).state).toBe("failed");
@@ -298,7 +300,7 @@ test("managed notification needs caller control, machine consent, and a current 
 });
 
 test("archive waits for managed admission and retains separate turn outcome", async () => {
-  const f = fixture();
+  const f = await fixture();
   try {
     const artifact = await f.artifact();
     const archiving = f.artifactCall<{ notification: { acknowledgement: string } }>(
@@ -334,7 +336,7 @@ test("archive waits for managed admission and retains separate turn outcome", as
 test("archive timeout cancels an undispatched managed prompt", async () => {
   let now = Date.now();
   const clock = spyOn(Date, "now").mockImplementation(() => now);
-  const f = fixture();
+  const f = await fixture();
   try {
     const artifact = await f.artifact();
     const active = f.call<SessionCommand>("session_prompt", {
@@ -373,7 +375,7 @@ test("archive timeout cancels an undispatched managed prompt", async () => {
 });
 
 test("managed generation loss and native aliases never fall back to generic messaging", async () => {
-  const f = fixture();
+  const f = await fixture();
   try {
     const artifact = await f.artifact();
     f.call("session_prompt", {

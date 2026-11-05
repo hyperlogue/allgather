@@ -8,7 +8,6 @@ import {
   receiptSchema,
   requestSchema,
 } from "../shared/tower-acp.ts";
-import { setting } from "./storage.ts";
 import { canonical, uid, type Workspace } from "./workspace.ts";
 
 type Input = Record<string, unknown>;
@@ -577,17 +576,16 @@ export class ManagedControl {
     const p: Principal = JSON.parse(row.principal),
       binding = p.auth_binding;
     if (!binding) return null;
-    if (binding.kind === "owner")
-      return setting(this.w.db, "owner_key_hash") === binding.hash ? row.expires_at : null;
     if (binding.kind === "browser")
       return this.w.one(
-        "SELECT 1 FROM sessions s LEFT JOIN login_tokens t ON t.id=s.token_id WHERE s.hash=? AND s.expires>? AND (s.token_id IS NULL OR (t.revoked_at IS NULL AND t.last_used_at>?))",
+        "SELECT 1 FROM sessions s JOIN login_tokens t ON t.id=s.token_id WHERE s.hash=? AND s.expires>? AND t.revoked_at IS NULL AND t.last_used_at>?",
         binding.hash,
         this.w.now(),
         new Date(Date.parse(this.w.now()) - 14 * 86400000).toISOString(),
       )
         ? row.expires_at
         : null;
+    if (binding.kind !== "oauth") return null;
     return this.w.one(
       "SELECT 1 FROM oauth_tokens t JOIN oauth_clients c ON c.id=t.client_id WHERE t.hash=? AND t.expires>? AND t.revoked=0 AND c.revoked=0 AND (EXISTS (SELECT 1 FROM json_each(t.scopes) WHERE value='sessions:control') OR EXISTS (SELECT 1 FROM json_each(t.scopes) WHERE value='admin'))",
       binding.hash,

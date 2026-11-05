@@ -15,7 +15,7 @@ test("asset retry identity survives response loss and reads require the exact ru
     db = openDatabase(":memory:");
   const w = new Workspace(db, undefined, undefined, { dataDir: root, managedSessions: true });
   const origin = "http://127.0.0.1:4390",
-    auth = new Auth(db, origin, "test-owner-".repeat(5)),
+    auth = new Auth(db, origin),
     app = createApp(w, auth, new Updates());
   const owner = fixtureOwner(w);
   try {

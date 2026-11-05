@@ -1,9 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server/index.ts";
 import { browserSession } from "./browser.ts";
+import { fixtureLoginToken } from "./fixture-auth.ts";
 
 const executable = process.env.ALLGATHER_TEST_BROWSER;
 if (!executable) throw new Error("Set ALLGATHER_TEST_BROWSER to a Chromium executable");
@@ -38,7 +39,7 @@ try {
       `(()=>{const label=[...document.querySelectorAll(${JSON.stringify(selector)})].find(l=>l.childNodes[0]?.textContent.trim()===${JSON.stringify(label)});if(!label)throw new Error('Missing field '+${JSON.stringify(label)});const el=label.querySelector('input,textarea,select');const proto=el instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:el instanceof HTMLSelectElement?HTMLSelectElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value').set.call(el,${JSON.stringify(value)});el.dispatchEvent(new Event(el.tagName==='SELECT'?'change':'input',{bubbles:true}));})()`,
     );
   };
-  await fill('input[type="password"]', readFileSync(join(directory, "login-token"), "utf8"));
+  await fill('input[type="password"]', await fixtureLoginToken(directory));
   await click("Sign in");
   await b.until(`!!document.querySelector('.app-header')`);
   await b.evaluate(`document.querySelector('[aria-label="New project"]').click()`);

@@ -83,12 +83,11 @@ export async function serverStatus(directory: string): Promise<ServerStatus> {
 export function startLocalControl(
   settings: Config,
   workspace: Workspace,
-  ownerKey: string,
   shutdown: () => Promise<void>,
 ) {
   const token = secret(),
     instance = secret();
-  const auth = new Auth(workspace.db, settings.publicUrl, ownerKey);
+  const auth = new Auth(workspace.db, settings.publicUrl);
   let stopping = false;
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -122,9 +121,14 @@ export function startLocalControl(
           return Response.json({ state: "stopping", instance });
         }
         if (path === "/backup" && request.method === "GET")
-          return new Response(backupWorkspace(workspace, ownerKey), {
+          return new Response(backupWorkspace(workspace), {
             headers: { "content-type": "application/zip" },
           });
+        if (path === "/auth/reset" && request.method === "POST") {
+          auth.resetAccess();
+          workspace.onChange();
+          return Response.json({ reset: true });
+        }
         if (path === "/auth/list-tokens" && request.method === "GET")
           return Response.json(auth.loginTokens());
         if (path === "/auth/create-token" && request.method === "POST") {

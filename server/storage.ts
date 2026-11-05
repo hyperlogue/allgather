@@ -6,6 +6,7 @@ import { AppError } from "../shared/contracts.ts";
 import { migrateArtifacts } from "./artifact-migration.ts";
 import { migrateAuthentication } from "./auth-migration.ts";
 import { migrateCatalog } from "./catalog-migration.ts";
+import { migrateCredentials } from "./credential-migration.ts";
 import { migrateDesign } from "./design-migration.ts";
 import { migrateNotifications } from "./notification-migration.ts";
 import { migrateSessions } from "./session-migration.ts";
@@ -13,7 +14,7 @@ import { migrateTaskWorkflow } from "./task-migration.ts";
 import { migrateTerminalSessions } from "./terminal-migration.ts";
 import { migrateTower } from "./tower-migration.ts";
 
-export const SCHEMA_VERSION = 20;
+export const SCHEMA_VERSION = 21;
 export function writeDatabaseSnapshot(db: Database, path: string) {
   writeFileSync(path, "", { mode: 0o600, flag: "wx" });
   db.query("VACUUM INTO ?").run(path);
@@ -173,6 +174,7 @@ export function openDatabase(path: string) {
       PRAGMA user_version=20;
     `),
     ).immediate();
+  if (version < 21) migrateCredentials(db);
   return db;
 }
 export function setting(db: Database, key: string) {

@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fixtureApiToken, fixtureLogin } from "../scripts/fixture-auth.ts";
 import { startServer } from "../server/index.ts";
 import type {
   EpicProgress,
@@ -23,7 +24,10 @@ test("CLI mutations, upstream configuration, and backup restore preserve work", 
   const env = {
     ...process.env,
     ALLGATHER_URL: running.settings.publicUrl,
-    ALLGATHER_TOKEN: readFileSync(join(root, "state", "owner-key"), "utf8"),
+    ALLGATHER_TOKEN: await fixtureApiToken(
+      running.settings.publicUrl,
+      await fixtureLogin(join(root, "state"), running.settings.publicUrl),
+    ),
     ALLGATHER_CONFIG_DIR: join(root, "config"),
   };
   const invoke = async <T>(...args: string[]): Promise<T> => {
@@ -358,7 +362,19 @@ test("CLI mutations, upstream configuration, and backup restore preserve work", 
       expect(recovered.workspace.history.repository(repo.id).project_links).toEqual(
         cleared.project_links,
       );
-      expect(readFileSync(join(restored, "owner-key"), "utf8")).toBe(env.ALLGATHER_TOKEN);
+      expect(existsSync(join(restored, "owner-key"))).toBe(false);
+      expect(
+        (
+          await fetch(recovered.settings.publicUrl + "/api/operations/projects_list", {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${env.ALLGATHER_TOKEN}`,
+              "content-type": "application/json",
+            },
+            body: "{}",
+          })
+        ).status,
+      ).toBe(401);
     } finally {
       await recovered.stop();
     }

@@ -9,7 +9,7 @@ test("browser enrollment separates consent and polling, retries one key, and con
     origin = "http://127.0.0.1:4390";
   let now = Date.now();
   const w = new Workspace(db, () => new Date(now));
-  const auth = new Auth(db, origin, "owner-test-".repeat(5)),
+  const auth = new Auth(db, origin),
     app = createApp(w, auth, new Updates());
   const cookie = auth.signIn(auth.createLoginToken("Test").token).split(";")[0]!;
   const req = (path: string, body?: unknown, headers: Record<string, string> = {}) =>

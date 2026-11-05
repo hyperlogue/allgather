@@ -1,31 +1,34 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Auth, secret } from "../server/auth.ts";
+import { fixtureApiToken, fixtureLogin, fixtureLoginToken } from "../scripts/fixture-auth.ts";
+import { Auth, hash, secret } from "../server/auth.ts";
+import { controlRequest } from "../server/control.ts";
 import { startServer } from "../server/index.ts";
 import { openDatabase } from "../server/storage.ts";
 
-test("browser login tokens expire on inactivity and revocation invalidates dependent sessions", () => {
+test("browser login codes are single-use and expire and revocation invalidates dependent sessions", () => {
   const db = openDatabase(":memory:"),
     recovery = secret(),
-    auth = new Auth(db, "https://allgather.example", recovery);
+    auth = new Auth(db, "https://allgather.example");
   try {
-    expect(() => auth.signIn(recovery)).toThrow("login token");
+    expect(() => auth.signIn(recovery)).toThrow("login code");
     const token = auth.createLoginToken("Browser"),
       cookie = auth.signIn(token.token).split(";")[0],
       request = new Request(auth.baseUrl + "/api/session", { headers: { cookie } });
     expect(auth.principal(request)?.inlet).toBe("browser");
+    expect(() => auth.signIn(token.token)).toThrow("already used");
     expect(JSON.stringify(auth.loginTokens())).not.toContain(token.token);
     auth.revokeLoginToken(token.id);
     expect(auth.principal(request)).toBeNull();
     expect(() => auth.signIn(token.token)).toThrow("revoked");
     const inactive = auth.createLoginToken("Old");
-    db.query("UPDATE login_tokens SET last_used_at=? WHERE id=?").run(
+    db.query("UPDATE login_tokens SET expires_at=? WHERE id=?").run(
       "2000-01-01T00:00:00Z",
       inactive.id,
     );
-    expect(() => auth.signIn(inactive.token)).toThrow("inactive");
+    expect(() => auth.signIn(inactive.token)).toThrow("expired");
   } finally {
     db.close();
   }
@@ -75,7 +78,7 @@ async function authorizeCli(
       method: "POST",
       headers: { "content-type": "application/json", origin: url },
       body: JSON.stringify({
-        key: readFileSync(join(running.settings.dataDir, "login-token"), "utf8"),
+        key: await fixtureLoginToken(running.settings.dataDir),
       }),
     });
     expect(login.status).toBe(200);
@@ -293,3 +296,86 @@ test("CLI administrative access requires explicit login scopes and default re-lo
     rmSync(dir, { recursive: true, force: true });
   }
 }, 30000);
+
+test("legacy master keys retire on upgrade and local recovery resets credentials without deleting work", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "allgather-recovery-"));
+  const legacy = secret();
+  const db = openDatabase(join(dir, "allgather.sqlite"));
+  const priorAuth = new Auth(db, "http://127.0.0.1:4390");
+  const oldCookie = priorAuth.signIn(priorAuth.createLoginToken("Old browser").token).split(";")[0];
+  db.query("INSERT INTO settings VALUES('owner_key_hash',?)").run(hash(legacy));
+  db.exec(
+    "ALTER TABLE login_tokens DROP COLUMN expires_at; ALTER TABLE login_tokens DROP COLUMN consumed_at; PRAGMA user_version=20;",
+  );
+  db.close();
+  writeFileSync(join(dir, "owner-key"), legacy, { mode: 0o600 });
+  writeFileSync(join(dir, "login-token"), "old-bootstrap-token", { mode: 0o600 });
+  const running = await startServer({
+    dataDir: dir,
+    port: 0,
+    publicUrl: "http://127.0.0.1:0",
+    gitSyncSeconds: 0,
+  });
+  const origin = running.settings.publicUrl;
+  const request = (path: string, body: unknown, headers: Record<string, string>) =>
+    fetch(origin + path, {
+      method: "POST",
+      headers: { origin, "content-type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+  try {
+    expect(existsSync(join(dir, "owner-key"))).toBe(false);
+    expect(existsSync(join(dir, "login-token"))).toBe(false);
+    expect(running.workspace.one("SELECT 1 FROM settings WHERE key='owner_key_hash'")).toBeNull();
+    expect(
+      (await request("/api/operations/projects_list", {}, { authorization: `Bearer ${legacy}` }))
+        .status,
+    ).toBe(401);
+    expect((await request("/api/operations/projects_list", {}, { cookie: oldCookie })).status).toBe(
+      401,
+    );
+    const cookie = await fixtureLogin(dir, origin);
+    const token = await fixtureApiToken(origin, cookie);
+    expect(
+      (
+        await request(
+          "/api/login-tokens",
+          { label: "Privilege escalation" },
+          { authorization: `Bearer ${token}` },
+        )
+      ).status,
+    ).toBe(403);
+    const created = await (
+      await request(
+        "/api/operations/projects_create",
+        { name: "Retained work", operation_key: "create-project" },
+        { cookie },
+      )
+    ).json();
+    const machine = await (
+      await request(
+        "/api/operations/machines_create",
+        { name: "Retained machine", operation_key: "create-machine" },
+        { cookie },
+      )
+    ).json();
+    const key = running.workspace.executions.issueCredential(machine.result.id, "Recovery fixture");
+    expect(running.workspace.executions.authenticate(key.access_key)).not.toBeNull();
+    expect(await (await controlRequest(dir, "auth/reset", {})).json()).toEqual({ reset: true });
+    expect((await request("/api/operations/projects_list", {}, { cookie })).status).toBe(401);
+    expect(
+      (await request("/api/operations/projects_list", {}, { authorization: `Bearer ${token}` }))
+        .status,
+    ).toBe(401);
+    expect(running.workspace.executions.authenticate(key.access_key)).toBeNull();
+    expect(running.workspace.project(created.result.id).name).toBe("Retained work");
+    expect(running.workspace.executions.machine(machine.result.id).name).toBe("Retained machine");
+    const fresh = await fixtureLogin(dir, origin);
+    expect((await request("/api/operations/projects_list", {}, { cookie: fresh })).status).toBe(
+      200,
+    );
+  } finally {
+    await running.stop();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

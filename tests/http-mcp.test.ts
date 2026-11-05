@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { fixtureApiToken } from "../scripts/fixture-auth.ts";
 import { createApp, Updates } from "../server/app.ts";
 import { Auth, OWNER, secret } from "../server/auth.ts";
 import { openDatabase } from "../server/storage.ts";
@@ -24,11 +25,10 @@ import {
 import terminalWire from "./fixtures/tower-terminal-v1.json";
 
 const base = "https://allgather.example";
-function setup(dataDir?: string) {
+async function setup(dataDir?: string) {
   const db = openDatabase(":memory:"),
-    key = secret(),
     w = new Workspace(db, undefined, undefined, { dataDir }),
-    auth = new Auth(db, base, key),
+    auth = new Auth(db, base),
     app = createApp(w, auth, new Updates());
   const req = (path: string, body?: unknown, headers: Record<string, string> = {}) =>
     app.fetch(
@@ -39,10 +39,12 @@ function setup(dataDir?: string) {
       }),
     );
   const loginToken = auth.createLoginToken("Test browser").token;
+  const cookie = auth.signIn(auth.createLoginToken("API fixture consent").token).split(";")[0];
+  const key = await fixtureApiToken(base, cookie, ["admin"], (request) => app.fetch(request));
   return { db, key, loginToken, w, auth, app, req };
 }
 async function authorize(
-  s: ReturnType<typeof setup>,
+  s: Awaited<ReturnType<typeof setup>>,
   scope = "tasks:read tasks:write history:read transcripts:read offline_access",
   operatorName = "Approved test agent",
 ) {
@@ -65,7 +67,11 @@ async function authorize(
     code_challenge: challenge,
     code_challenge_method: "S256",
   };
-  const login = await s.req("/api/login", { key: s.loginToken }, { origin: base });
+  const login = await s.req(
+    "/api/login",
+    { key: s.auth.createLoginToken("MCP consent").token },
+    { origin: base },
+  );
   expect(login.status).toBe(200);
   const cookieHeader = login.headers.get("set-cookie");
   if (!cookieHeader) throw new Error("Missing login cookie");
@@ -83,7 +89,7 @@ async function authorize(
   if (!code) throw new Error("Missing authorization code");
   return { client, params, verifier, code, cookie };
 }
-async function exchange(s: ReturnType<typeof setup>, body: Record<string, string>) {
+async function exchange(s: Awaited<ReturnType<typeof setup>>, body: Record<string, string>) {
   return s.app.fetch(
     new Request(`${base}/oauth/token`, {
       method: "POST",
@@ -94,7 +100,7 @@ async function exchange(s: ReturnType<typeof setup>, body: Record<string, string
 }
 test("public MCP exposes work tools and rejects private operations before dispatch", async () => {
   const root = mkdtempSync(join(tmpdir(), "allgather-mcp-surface-"));
-  const s = setup(root);
+  const s = await setup(root);
   let client: McpClient | undefined;
   const dispatch = spyOn(s.w, "dispatch");
   const execute = spyOn(s.w, "execute");
@@ -299,7 +305,7 @@ test("public MCP exposes work tools and rejects private operations before dispat
 });
 
 test("MCP terminal admission uses machine consent and rejects unsupported controls before queueing", async () => {
-  const s = setup();
+  const s = await setup();
   let client: McpClient | undefined;
   try {
     const grant = await authorize(s, "sessions:read sessions:control transcripts:read");
@@ -431,7 +437,7 @@ test("MCP terminal admission uses machine consent and rejects unsupported contro
 });
 
 test("public MCP discovery, OAuth PKCE and real SDK task operations share the HTTP state", async () => {
-  const s = setup();
+  const s = await setup();
   let client: McpClient | undefined;
   try {
     const project = s.w.execute(
@@ -777,7 +783,7 @@ test("public MCP discovery, OAuth PKCE and real SDK task operations share the HT
   }
 });
 test("PKCE failure consumes the code; redirect, resource, origin and grant checks fail closed", async () => {
-  const s = setup();
+  const s = await setup();
   try {
     const grant = await authorize(s, "tasks:read");
     const bad = {
@@ -829,7 +835,7 @@ test("PKCE failure consumes the code; redirect, resource, origin and grant check
 });
 
 test("read-only consent has no refresh token and is bound to the MCP resource", async () => {
-  const s = setup();
+  const s = await setup();
   try {
     const grant = await authorize(s, "tasks:read");
     const result = await exchange(s, {
@@ -848,7 +854,7 @@ test("read-only consent has no refresh token and is bound to the MCP resource", 
     });
     expect(s.auth.principal(request, true)?.scopes).toEqual(["tasks:read"]);
     expect(s.auth.principal(request, false)).toBeNull();
-    const otherResource = new Auth(s.db, "https://other.example", s.key);
+    const otherResource = new Auth(s.db, "https://other.example");
     expect(otherResource.principal(request, true)).toBeNull();
     s.db.query("UPDATE oauth_tokens SET expires=?").run(new Date(0).toISOString());
     expect(s.auth.principal(request, true)).toBeNull();

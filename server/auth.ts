@@ -3,7 +3,6 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import OAuth2Server from "@node-oauth/oauth2-server";
 import { AppError, type Principal, type Scope, scopes } from "../shared/contracts.ts";
 import { mcpOperationScopes } from "../shared/mcp-surface.ts";
-import { setSetting, setting } from "./storage.ts";
 
 export const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 export const secret = () => randomBytes(32).toString("base64url");
@@ -39,17 +38,9 @@ export class Auth {
   constructor(
     private db: Database,
     readonly baseUrl: string,
-    ownerKey: string,
   ) {
-    if (ownerKey.length < 32 || ownerKey.length > 512) {
-      throw new AppError("invalid_owner_key", "The owner key must contain 32 to 512 characters");
-    }
     this.resource = `${baseUrl}/mcp`;
     this.apiResource = `${baseUrl}/api`;
-    const ownerHash = setting(db, "owner_key_hash");
-    if (!ownerHash) setSetting(db, "owner_key_hash", hash(ownerKey));
-    else if (!equal(ownerHash, hash(ownerKey)))
-      throw new AppError("owner_key_mismatch", "Owner key does not match this database");
     this.oauth = new OAuth2Server({
       authorizationCodeLifetime: 120,
       accessTokenLifetime: 3600,
@@ -199,20 +190,11 @@ export class Auth {
       ? r
       : null;
   }
-  ownerKey(value: string) {
-    return equal(setting(this.db, "owner_key_hash") ?? "", hash(value));
-  }
   principal(request: Request, mcp = false): Principal | null {
     const authorization = request.headers.get("authorization");
     if (authorization) {
       if (!authorization.startsWith("Bearer ")) return null;
       const token = authorization.slice(7);
-      if (!mcp && this.ownerKey(token))
-        return {
-          ...OWNER,
-          auth_binding: { kind: "owner", hash: hash(token) },
-          inlet: "api",
-        };
       const row = this.tokenRow(token);
       if (
         row &&
@@ -239,21 +221,15 @@ export class Auth {
       const now = new Date().toISOString(),
         row = this.db
           .query(
-            "SELECT s.token_id,t.last_used_at,t.revoked_at FROM sessions s LEFT JOIN login_tokens t ON t.id=s.token_id WHERE s.hash=? AND s.expires>?",
+            "SELECT s.token_id,t.last_used_at,t.revoked_at FROM sessions s JOIN login_tokens t ON t.id=s.token_id WHERE s.hash=? AND s.expires>?",
           )
           .get(hash(cookie), now) as {
-          token_id: string | null;
-          last_used_at: string | null;
+          token_id: string;
+          last_used_at: string;
           revoked_at: string | null;
         } | null;
-      if (
-        row &&
-        (!row.token_id ||
-          (!row.revoked_at &&
-            row.last_used_at &&
-            Date.parse(row.last_used_at) > Date.now() - 14 * 86400000))
-      ) {
-        if (row.token_id && Date.parse(row.last_used_at!) < Date.now() - 60000)
+      if (row && !row.revoked_at && Date.parse(row.last_used_at) > Date.now() - 14 * 86400000) {
+        if (Date.parse(row.last_used_at) < Date.now() - 60000)
           this.db.query("UPDATE login_tokens SET last_used_at=? WHERE id=?").run(now, row.token_id);
         return {
           ...OWNER,
@@ -265,25 +241,24 @@ export class Auth {
     }
     return null;
   }
-  createLoginToken(label = "Browser login", value = secret()) {
-    if (value.length < 32 || value.length > 512)
-      throw new AppError("invalid_login_token", "Login tokens must have 32 to 512 characters");
+  createLoginToken(label = "Browser login") {
     if (!label.trim() || label.length > 160)
       throw new AppError("invalid_label", "Token label must have 1 to 160 characters");
-    const id = `login-${secret().slice(0, 16)}`,
-      now = new Date().toISOString();
+    const value = secret(),
+      id = `login-${secret().slice(0, 16)}`;
+    const now = new Date().toISOString(),
+      expires = new Date(Date.now() + 10 * 60000).toISOString();
     this.db
-      .query("INSERT INTO login_tokens VALUES(?,?,?,?,?,NULL)")
-      .run(id, hash(value), label.trim(), now, now);
-    return { id, label: label.trim(), token: value };
-  }
-  hasLoginToken(value: string) {
-    return !!this.db.query("SELECT 1 FROM login_tokens WHERE hash=?").get(hash(value));
+      .query(
+        "INSERT INTO login_tokens(id,hash,label,created_at,last_used_at,expires_at) VALUES(?,?,?,?,?,?)",
+      )
+      .run(id, hash(value), label.trim(), now, now, expires);
+    return { id, label: label.trim(), token: value, expires_at: expires };
   }
   loginTokens() {
     return this.db
       .query(
-        "SELECT id,label,created_at,last_used_at,revoked_at FROM login_tokens ORDER BY created_at DESC",
+        "SELECT id,label,created_at,last_used_at,revoked_at,expires_at,consumed_at FROM login_tokens ORDER BY created_at DESC",
       )
       .all();
   }
@@ -297,18 +272,29 @@ export class Auth {
       })
       .immediate();
   }
+  resetAccess() {
+    revokeCredentials(this.db);
+  }
   signIn(token: string) {
-    const row = this.db
-      .query("SELECT id,last_used_at FROM login_tokens WHERE hash=? AND revoked_at IS NULL")
-      .get(hash(token)) as { id: string; last_used_at: string } | null;
-    if (!row || Date.parse(row.last_used_at) <= Date.now() - 14 * 86400000)
-      throw new AppError("unauthorized", "The login token is invalid, revoked, or inactive", 401);
     const value = secret(),
       now = new Date().toISOString();
     this.db
       .transaction(() => {
+        const row = this.db
+          .query(
+            "SELECT id FROM login_tokens WHERE hash=? AND revoked_at IS NULL AND consumed_at IS NULL AND expires_at>?",
+          )
+          .get(hash(token), now) as { id: string } | null;
+        if (!row)
+          throw new AppError(
+            "unauthorized",
+            "The login code is invalid, expired, revoked, or already used",
+            401,
+          );
         this.db.query("DELETE FROM sessions WHERE expires<=?").run(now);
-        this.db.query("UPDATE login_tokens SET last_used_at=? WHERE id=?").run(now, row.id);
+        this.db
+          .query("UPDATE login_tokens SET last_used_at=?,consumed_at=? WHERE id=?")
+          .run(now, now, row.id);
         this.db
           .query("INSERT INTO sessions(hash,expires,token_id) VALUES(?,?,?)")
           .run(hash(value), new Date(Date.now() + 30 * 86400000).toISOString(), row.id);
@@ -551,4 +537,23 @@ export class Auth {
       bearer_methods_supported: ["header"],
     };
   }
+}
+
+export function revokeCredentials(db: Database) {
+  db.transaction(() => {
+    db.exec(`
+      DELETE FROM settings WHERE key='owner_key_hash';
+      DELETE FROM sessions;
+      DELETE FROM oauth_codes;
+      UPDATE login_tokens SET revoked_at=strftime('%Y-%m-%dT%H:%M:%fZ','now');
+      UPDATE oauth_tokens SET revoked=1;
+      UPDATE oauth_clients SET revoked=1;
+      UPDATE tower_credentials SET revoked_at=strftime('%Y-%m-%dT%H:%M:%fZ','now');
+      UPDATE tower_enrollments SET state='denied';
+      UPDATE machines SET connected=0,active_credential_id=NULL;
+      UPDATE session_runtimes SET connected=0;
+      UPDATE worker_registrations SET state='retired';
+      UPDATE session_commands SET state='failed',result='{"code":"credentials_revoked"}' WHERE state='queued';
+    `);
+  }).immediate();
 }

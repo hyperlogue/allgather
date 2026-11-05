@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Auth } from "../server/auth.ts";
@@ -45,18 +45,9 @@ test("normal handshake exposes support without granting control, and opt-out sup
       let socket: WebSocket | undefined;
       try {
         const w = running.workspace,
-          auth = new Auth(
-            w.db,
-            running.settings.publicUrl,
-            readFileSync(join(root, "owner-key"), "utf8").trim(),
-          );
-        const principal = auth.principal(
-          new Request(running.settings.publicUrl, {
-            headers: {
-              authorization: `Bearer ${readFileSync(join(root, "owner-key"), "utf8").trim()}`,
-            },
-          }),
-        )!;
+          auth = new Auth(w.db, running.settings.publicUrl);
+        const cookie = auth.signIn(auth.createLoginToken("Fixture").token).split(";")[0];
+        const principal = auth.principal(new Request(auth.baseUrl, { headers: { cookie } }))!;
         const machine = w.execute(
           "machines_create",
           { name: "Fixture", operation_key: randomUUID() },

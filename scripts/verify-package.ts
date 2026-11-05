@@ -1,6 +1,7 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { fixtureApiToken, fixtureLogin, fixtureLoginToken } from "./fixture-auth.ts";
 
 const executable = resolve(process.argv[2] ?? "dist/allgather");
 const daemon = join(dirname(executable), "allgather-server");
@@ -81,7 +82,7 @@ try {
       if (!result.ok) throw new Error(`Bundled asset failed at ${route}`);
     }
   }
-  const key = readFileSync(join(directory, "state", "owner-key"), "utf8");
+  const key = await fixtureApiToken(origin, await fixtureLogin(join(directory, "state"), origin));
   const invoke = async (...args: string[]) => {
     const child = Bun.spawn([executable, ...args, "--json"], {
       cwd: directory,
@@ -143,7 +144,7 @@ try {
     await verifyArtifactBrowser(
       process.env.ALLGATHER_TEST_BROWSER,
       origin,
-      readFileSync(join(directory, "state", "login-token"), "utf8"),
+      await fixtureLoginToken(join(directory, "state")),
       artifact.id,
     );
   }

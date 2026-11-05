@@ -109,6 +109,7 @@ test("version 15 repository memberships migrate without inventing project prefix
     db.exec(
       readFileSync(new URL("./fixtures/transcript-sources-v17.sql", import.meta.url), "utf8"),
     );
+    db.exec(readFileSync(new URL("./fixtures/auth-v20.sql", import.meta.url), "utf8"));
     db.close();
     db = openDatabase(path);
     expect(db.query("SELECT * FROM project_repositories ORDER BY project_id").all()).toEqual([
@@ -152,7 +153,7 @@ test("version 16 checkout observations retain legacy evidence and catalog revisi
       .all())
       db.exec(`DROP TRIGGER "${row.name}"`);
     db.exec(
-      "DROP TABLE tower_checkouts; DROP TABLE machine_catalog_sync; DROP TABLE repository_catalog_clock; ALTER TABLE machines DROP COLUMN active_credential_id; ALTER TABLE machines DROP COLUMN terminal_controls; ALTER TABLE session_runtimes ADD COLUMN takeover_at TEXT; ALTER TABLE session_runtimes ADD COLUMN protocol_version TEXT; ALTER TABLE session_runtimes ADD COLUMN capabilities TEXT NOT NULL DEFAULT '[]'; CREATE TABLE runtime_takeovers(id TEXT); PRAGMA user_version=16;",
+      "DROP TABLE tower_checkouts; DROP TABLE machine_catalog_sync; DROP TABLE repository_catalog_clock; ALTER TABLE machines DROP COLUMN active_credential_id; ALTER TABLE machines DROP COLUMN terminal_controls; ALTER TABLE session_runtimes ADD COLUMN takeover_at TEXT; ALTER TABLE session_runtimes ADD COLUMN protocol_version TEXT; ALTER TABLE session_runtimes ADD COLUMN capabilities TEXT NOT NULL DEFAULT '[]'; CREATE TABLE runtime_takeovers(id TEXT); ALTER TABLE login_tokens DROP COLUMN expires_at; ALTER TABLE login_tokens DROP COLUMN consumed_at; PRAGMA user_version=16;",
     );
     db.close();
     db = openDatabase(path);
@@ -302,6 +303,7 @@ test("version 18 retires only undispatched takeover replacements and preserves e
       INSERT INTO session_commands VALUES('queued','queued','queued','{"takeover":{"owner_action_id":"grant"}}',NULL,'before'),('sent','running','sent','{"takeover":{"owner_action_id":"grant"}}',NULL,'before'),('normal','normal','queued','{}',NULL,'before');
       PRAGMA user_version=18;
     `);
+    db.exec(readFileSync(new URL("./fixtures/auth-v20.sql", import.meta.url), "utf8"));
     db.close();
     db = openDatabase(path);
     expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: SCHEMA_VERSION });
@@ -412,6 +414,8 @@ test("version 19 removes unused runtime metadata while retaining controls, ident
     db.exec(`ALTER TABLE session_runtimes ADD COLUMN protocol_version TEXT;
       ALTER TABLE session_runtimes ADD COLUMN capabilities TEXT NOT NULL DEFAULT '[]';
       UPDATE session_runtimes SET protocol_version='obsolete',capabilities='["obsolete"]';
+      ALTER TABLE login_tokens DROP COLUMN expires_at;
+      ALTER TABLE login_tokens DROP COLUMN consumed_at;
       PRAGMA user_version=19;`);
     db.close();
     db = openDatabase(path);

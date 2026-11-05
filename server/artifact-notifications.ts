@@ -66,7 +66,6 @@ export class ArtifactNotifications {
     return row ? this.artifacts.workers.get(row.id) : null;
   }
   authorized(principal: string) {
-    if (principal === "owner") return true;
     return !!this.w.one(
       "SELECT 1 FROM oauth_tokens t JOIN oauth_clients c ON c.id=t.client_id WHERE c.id=? AND c.revoked=0 AND t.revoked=0 AND (t.expires>? OR t.refresh_hash IS NOT NULL AND t.refresh_expires>?) AND (EXISTS(SELECT 1 FROM json_each(t.scopes) WHERE value='admin') OR (EXISTS(SELECT 1 FROM json_each(t.scopes) WHERE value='artifacts:read') AND EXISTS(SELECT 1 FROM json_each(t.scopes) WHERE value='sessions:control'))) LIMIT 1",
       principal,

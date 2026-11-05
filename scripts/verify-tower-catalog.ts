@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import { startServer } from "../server/index.ts";
@@ -15,6 +15,7 @@ import type {
   RepositoryCatalog,
   TowerCheckout,
 } from "../shared/tower-catalog.ts";
+import { fixtureLoginToken } from "./fixture-auth.ts";
 import { stopFixturePool, towerFixture } from "./tower-fixture.ts";
 
 // Actual Tower + Allgather + host Git. All data, credentials, and Git history are synthetic.
@@ -263,7 +264,7 @@ try {
   const signIn = await fetch(origin + "/api/login", {
     method: "POST",
     headers: { origin, "content-type": "application/json" },
-    body: JSON.stringify({ key: readFileSync(join(root, "server", "login-token"), "utf8") }),
+    body: JSON.stringify({ key: await fixtureLoginToken(join(root, "server")) }),
   });
   assert(signIn.ok, "Synthetic owner login failed");
   await signIn.arrayBuffer();

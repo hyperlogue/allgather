@@ -12,6 +12,7 @@ import {
   type SessionRuntime,
 } from "../shared/contracts.ts";
 import type { MachineScope } from "../shared/tower-acp.ts";
+import { fixtureLoginToken } from "./fixture-auth.ts";
 import { stopFixturePool, towerFixture } from "./tower-fixture.ts";
 
 const bundle = towerFixture("allgather-terminal-integration-");
@@ -108,7 +109,7 @@ async function signIn() {
   const response = await fetch(origin + "/api/login", {
     method: "POST",
     headers: { origin, "content-type": "application/json" },
-    body: JSON.stringify({ key: readFileSync(join(root, "server", "login-token"), "utf8") }),
+    body: JSON.stringify({ key: await fixtureLoginToken(join(root, "server")) }),
   });
   assert(response.ok, "Synthetic browser login failed");
   await response.arrayBuffer();

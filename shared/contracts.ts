@@ -30,7 +30,7 @@ export interface Principal {
   inlet?: "browser" | "api" | "mcp" | "tower";
   operator_name?: string;
   machine_id?: string;
-  auth_binding?: { kind: "browser" | "oauth" | "owner"; hash: string };
+  auth_binding?: { kind: "browser" | "oauth"; hash: string };
 }
 export class AppError extends Error {
   constructor(

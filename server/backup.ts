@@ -6,9 +6,9 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { Readable, Writable } from "node:stream";
 import { BlobReader, TextReader, ZipReader, ZipWriter } from "@zip.js/zip.js/index-native.js";
-import { hash } from "./auth.ts";
+import { revokeCredentials } from "./auth.ts";
 import { BlobStore } from "./blobs.ts";
-import { SCHEMA_VERSION, writeDatabaseSnapshot } from "./storage.ts";
+import { openDatabase, SCHEMA_VERSION, writeDatabaseSnapshot } from "./storage.ts";
 import type { Workspace } from "./workspace.ts";
 
 const blobPath = (hash: string) => `blobs/${hash.slice(0, 2)}/${hash.slice(2)}`;
@@ -18,7 +18,7 @@ async function fileHash(path: string) {
   return digest.digest("hex");
 }
 
-export function backupWorkspace(w: Workspace, ownerKey: string): ReadableStream<Uint8Array> {
+export function backupWorkspace(w: Workspace): ReadableStream<Uint8Array> {
   let fail!: (error: unknown) => void;
   const output = new TransformStream<Uint8Array, Uint8Array>({
     start(controller) {
@@ -33,12 +33,11 @@ export function backupWorkspace(w: Workspace, ownerKey: string): ReadableStream<
       writeDatabaseSnapshot(w.db, path);
       snapshot = new Database(path, { readonly: true });
       const archive = new ZipWriter(output.writable, { useWebWorkers: false });
-      const manifest = { format: 3, database_sha256: await fileHash(path) };
+      const manifest = { format: 4, database_sha256: await fileHash(path) };
       await archive.add("manifest.json", new TextReader(JSON.stringify(manifest)), {
         unixMode: 0o100600,
       });
       await archive.add("allgather.sqlite", new BlobReader(Bun.file(path)), { unixMode: 0o100600 });
-      await archive.add("owner-key", new TextReader(ownerKey), { unixMode: 0o100600 });
       for (const row of snapshot
         .query<{ hash: string }, []>("SELECT hash FROM blobs ORDER BY hash")
         .iterate()) {
@@ -87,6 +86,10 @@ async function restoreZip(file: string, target: string) {
       )
         throw new Error("Invalid backup ZIP entry");
       files.add(name);
+      if (name === "owner-key") {
+        await entry.getData(new WritableStream({ write() {} }));
+        continue;
+      }
       const path = join(target, name);
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
       const handle = await open(path, "wx", 0o600);
@@ -101,10 +104,13 @@ async function restoreZip(file: string, target: string) {
   }
   const manifest = JSON.parse(readFileSync(join(target, "manifest.json"), "utf8"));
   if (
-    manifest.format !== 3 ||
+    ![3, 4].includes(manifest.format) ||
     manifest.database_sha256 !== (await fileHash(join(target, "allgather.sqlite")))
   )
     throw new Error("Backup manifest or database digest failed");
+  if (manifest.format === 4 && files.has("owner-key"))
+    throw new Error("Credential included in backup");
+  files.delete("owner-key");
   rmSync(join(target, "manifest.json"));
   files.delete("manifest.json");
   return files;
@@ -112,7 +118,7 @@ async function restoreZip(file: string, target: string) {
 async function validateRestored(target: string, files: ReadonlySet<string>) {
   const db = new Database(join(target, "allgather.sqlite"), { readonly: true }),
     blobs = new BlobStore(join(target, "blobs")),
-    expected = new Set(["allgather.sqlite", "owner-key"]);
+    expected = new Set(["allgather.sqlite"]);
   let count = 0;
   try {
     const version = (db.query("PRAGMA user_version").get() as { user_version: number })
@@ -125,11 +131,6 @@ async function validateRestored(target: string, files: ReadonlySet<string>) {
       db.query("PRAGMA foreign_key_check").all().length
     )
       throw new Error("Backup schema or integrity check failed");
-    const key = db.query("SELECT value FROM settings WHERE key='owner_key_hash'").get() as {
-      value: string;
-    } | null;
-    if (key?.value !== hash(readFileSync(join(target, "owner-key"), "utf8")))
-      throw new Error("Backup owner key does not match database");
     for (const row of db
       .query<{ hash: string; byte_length: number }, []>("SELECT hash,byte_length FROM blobs")
       .iterate()) {
@@ -158,7 +159,14 @@ export async function restoreWorkspace(file: string, directory: string) {
   mkdirSync(target, { mode: 0o700 });
   try {
     const files = await restoreZip(file, target);
-    return { restored: true, blobs: await validateRestored(target, files) };
+    const blobs = await validateRestored(target, files);
+    const db = openDatabase(join(target, "allgather.sqlite"));
+    try {
+      revokeCredentials(db);
+    } finally {
+      db.close();
+    }
+    return { restored: true, blobs };
   } catch (error) {
     rmSync(target, { recursive: true, force: true });
     throw error;

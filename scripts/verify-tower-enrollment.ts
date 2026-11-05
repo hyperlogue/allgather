@@ -1,9 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { hash } from "../server/auth.ts";
 import { startServer } from "../server/index.ts";
 import { browserSession } from "./browser.ts";
+import { fixtureLoginToken } from "./fixture-auth.ts";
 
 const executable = process.env.ALLGATHER_TEST_BROWSER;
 if (!executable) throw new Error("Set ALLGATHER_TEST_BROWSER to Chromium");
@@ -44,7 +45,7 @@ try {
   await b.command("Page.navigate", { url: enrollment.authorization_url });
   await b.until(`!!document.querySelector('input[type="password"]')`);
   await b.evaluate(`document.querySelector('input[type="password"]').focus()`);
-  await b.command("Input.insertText", { text: readFileSync(join(root, "login-token"), "utf8") });
+  await b.command("Input.insertText", { text: await fixtureLoginToken(root) });
   await b.evaluate(`document.querySelector('button[type="submit"]').click()`);
   await b.until(`document.body.textContent.includes('browser-fixture-host')`);
   if (

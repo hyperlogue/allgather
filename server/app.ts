@@ -116,7 +116,7 @@ export function createApp(
     rate(`login:${options.peer?.(c.req.raw) ?? "local"}`, 12);
     const body = await c.req.json();
     if (!body || typeof body.key !== "string" || body.key.length > 512)
-      throw new AppError("invalid_input", "Enter a login token");
+      throw new AppError("invalid_input", "Enter a login code");
     c.header("Set-Cookie", auth.signIn(body.key));
     return c.json({ ok: true });
   });
@@ -270,24 +270,18 @@ export function createApp(
     return c.json({ revoked: true });
   });
   app.get("/api/login-tokens", (c) => {
-    const p = auth.principal(c.req.raw);
-    if (!p || !can(p, "admin"))
-      throw new AppError("forbidden", "Administration access is required", 403);
+    browserOwner(c.req.raw);
     return c.json(auth.loginTokens());
   });
   app.post("/api/login-tokens", async (c) => {
-    const p = auth.principal(c.req.raw);
-    if (!p || !can(p, "admin"))
-      throw new AppError("forbidden", "Administration access is required", 403);
+    browserOwner(c.req.raw);
     const body = await c.req.json();
     return c.json(
       auth.createLoginToken(typeof body.label === "string" ? body.label : "Browser login"),
     );
   });
   app.post("/api/login-tokens/:id/revoke", (c) => {
-    const p = auth.principal(c.req.raw);
-    if (!p || !can(p, "admin"))
-      throw new AppError("forbidden", "Administration access is required", 403);
+    browserOwner(c.req.raw);
     auth.revokeLoginToken(c.req.param("id"));
     return c.json({ revoked: true });
   });

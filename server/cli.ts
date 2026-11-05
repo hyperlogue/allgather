@@ -18,13 +18,15 @@ export const HELP = `allgather-server — local Allgather server administration
   restart     Restart; retain the running settings unless overridden
   status      Report running, stopping, stopped, or unreachable
   run         Run in the foreground (for terminals and service managers)
-  auth create-token [--label NAME] | list-tokens | revoke-token TOKEN_ID
+  auth create-token [--label NAME] | list-tokens | revoke-token TOKEN_ID | reset
   backup FILE
   restore FILE --data-dir NEW_DIRECTORY
 
 Use --data-dir DIR to select the local instance. Control results are JSON; run prints logs.
 Start/run/restart: --port PORT --bind HOST --public-url URL --managed-sessions true|false.
-Auth and backup require a running local server. Restore writes to a new directory.
+Auth and backup require a running local server. Login codes expire after ten minutes and work once.
+Auth reset revokes all browser, connector and machine access. Restore also revokes prior credentials.
+Restore writes to a new directory.
 Backup and restore use the Allgather ZIP format.
 Client work uses allgather login <hostname-or-url>, then allgather guide.
 `;
@@ -150,7 +152,9 @@ export async function main(argv = process.argv.slice(2)) {
   );
   const settings = config(overrides);
   if (p[0] === "auth") {
-    if (p[1] === "create-token" && p.length === 2)
+    if (p[1] === "reset" && p.length === 2)
+      print(await (await controlRequest(settings.dataDir, "auth/reset", {})).json());
+    else if (p[1] === "create-token" && p.length === 2)
       print(
         await (
           await controlRequest(settings.dataDir, "auth/create-token", { label: text("label") })
@@ -162,7 +166,7 @@ export async function main(argv = process.argv.slice(2)) {
       print(
         await (await controlRequest(settings.dataDir, "auth/revoke-token", { id: p[2] })).json(),
       );
-    else throw new Error("Use auth create-token, list-tokens, or revoke-token TOKEN_ID");
+    else throw new Error("Use auth create-token, list-tokens, revoke-token TOKEN_ID, or reset");
     return;
   }
   if (p[0] === "backup") {

@@ -38,7 +38,6 @@ async function fixture() {
     content,
     blobName,
     hash: blob.hash,
-    key: "synthetic-test-owner",
     close() {
       db.close();
       rmSync(root, { recursive: true, force: true });
@@ -67,18 +66,13 @@ async function pack(entries: Map<string, Uint8Array>, options: { zip64?: boolean
   return archive.close();
 }
 
-test("ZIP backups contain raw snapshot/key/blobs, restore ZIP64, and preserve existing destinations", async () => {
+test("ZIP backups omit credentials, restore ZIP64, and preserve existing destinations", async () => {
   const f = await fixture();
   try {
-    const bytes = new Uint8Array(await new Response(backupWorkspace(f.w, f.key)).arrayBuffer());
+    const bytes = new Uint8Array(await new Response(backupWorkspace(f.w)).arrayBuffer());
     const entries = await unpack(bytes);
-    expect([...entries.keys()]).toEqual([
-      "manifest.json",
-      "allgather.sqlite",
-      "owner-key",
-      f.blobName,
-    ]);
-    expect(JSON.parse(new TextDecoder().decode(entries.get("manifest.json"))).format).toBe(3);
+    expect([...entries.keys()]).toEqual(["manifest.json", "allgather.sqlite", f.blobName]);
+    expect(JSON.parse(new TextDecoder().decode(entries.get("manifest.json"))).format).toBe(4);
     expect(Buffer.from(entries.get("allgather.sqlite")!).subarray(0, 16).toString()).toBe(
       "SQLite format 3\0",
     );
@@ -88,7 +82,13 @@ test("ZIP backups contain raw snapshot/key/blobs, restore ZIP64, and preserve ex
     writeFileSync(archivePath, await pack(entries, { zip64: true }));
     expect(await restoreWorkspace(archivePath, target)).toEqual({ restored: true, blobs: 1 });
     expect(readFileSync(join(target, f.blobName))).toEqual(f.content);
-    expect(readFileSync(join(target, "owner-key"), "utf8")).toBe(f.key);
+    expect(existsSync(join(target, "owner-key"))).toBe(false);
+    const restoredDb = openDatabase(join(target, "allgather.sqlite"));
+    expect(restoredDb.query("SELECT count(*) n FROM sessions").get()).toEqual({ n: 0 });
+    expect(
+      restoredDb.query("SELECT count(*) n FROM login_tokens WHERE revoked_at IS NULL").get(),
+    ).toEqual({ n: 0 });
+    restoredDb.close();
     expect(statSync(target).mode & 0o777).toBe(0o700);
     expect(statSync(join(target, f.blobName)).mode & 0o777).toBe(0o600);
     expect(existsSync(join(target, "manifest.json"))).toBe(false);
@@ -99,11 +99,40 @@ test("ZIP backups contain raw snapshot/key/blobs, restore ZIP64, and preserve ex
   }
 });
 
+test("legacy ZIP restore discards the old raw key and requires fresh authentication", async () => {
+  const f = await fixture();
+  try {
+    const entries = await unpack(
+      new Uint8Array(await new Response(backupWorkspace(f.w)).arrayBuffer()),
+    );
+    const manifest = JSON.parse(new TextDecoder().decode(entries.get("manifest.json")));
+    entries.set(
+      "manifest.json",
+      new TextEncoder().encode(JSON.stringify({ ...manifest, format: 3 })),
+    );
+    entries.set("owner-key", new TextEncoder().encode("obsolete-raw-owner-key"));
+    const archive = join(f.root, "legacy.zip"),
+      target = join(f.root, "legacy-restored");
+    writeFileSync(archive, await pack(entries));
+    expect(await restoreWorkspace(archive, target)).toEqual({ restored: true, blobs: 1 });
+    expect(existsSync(join(target, "owner-key"))).toBe(false);
+    const db = openDatabase(join(target, "allgather.sqlite"));
+    try {
+      expect(db.query("SELECT count(*) n FROM sessions").get()).toEqual({ n: 0 });
+      expect(db.query("SELECT value FROM settings WHERE key='owner_key_hash'").get()).toBeNull();
+    } finally {
+      db.close();
+    }
+  } finally {
+    f.close();
+  }
+});
+
 test("ZIP restore rejects missing, corrupt, unreferenced, and unsafe entries without leaving partial data", async () => {
   const f = await fixture();
   try {
     const entries = await unpack(
-      new Uint8Array(await new Response(backupWorkspace(f.w, f.key)).arrayBuffer()),
+      new Uint8Array(await new Response(backupWorkspace(f.w)).arrayBuffer()),
     );
     const variants: Map<string, Uint8Array>[] = [];
     const missing = new Map(entries);
@@ -167,7 +196,7 @@ test("restore rejects non-ZIP input before creating a destination", async () => 
 test("backup cancellation and corrupt source bytes release the publication hold", async () => {
   const f = await fixture();
   try {
-    const reader = backupWorkspace(f.w, f.key).getReader();
+    const reader = backupWorkspace(f.w).getReader();
     await reader.read();
     let collected = false;
     const cleanup = f.w
@@ -183,7 +212,7 @@ test("backup cancellation and corrupt source bytes release the publication hold"
     const path = join(f.root, "source", f.blobName);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, "broken");
-    await expect(new Response(backupWorkspace(f.w, f.key)).arrayBuffer()).rejects.toThrow();
+    await expect(new Response(backupWorkspace(f.w)).arrayBuffer()).rejects.toThrow();
     await f.w.blobs!.collect(() => new Set());
   } finally {
     f.close();

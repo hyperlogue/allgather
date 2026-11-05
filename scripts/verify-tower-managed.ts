@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { startServer } from "../server/index.ts";
 import type { Machine, SessionCommand, SessionRuntime } from "../shared/contracts.ts";
 import { receiptSchema } from "../shared/tower-acp.ts";
+import { fixtureApiToken, fixtureLoginToken } from "./fixture-auth.ts";
 import { stopFixturePool, towerFixture } from "./tower-fixture.ts";
 
 // Real Tower/Allgather transport and runtime owner, with a synthetic shared Codex host.
@@ -168,7 +169,7 @@ try {
         const signIn = await fetch(origin + "/api/login", {
           method: "POST",
           headers: { origin, "content-type": "application/json" },
-          body: JSON.stringify({ key: readFileSync(join(root, "server", "login-token"), "utf8") }),
+          body: JSON.stringify({ key: await fixtureLoginToken(join(root, "server")) }),
         });
         assert(signIn.ok, "Synthetic owner login failed");
         await signIn.arrayBuffer();
@@ -342,11 +343,11 @@ try {
     kind: "html",
     title: "Managed review fixture",
   });
-  const ownerKey = readFileSync(join(root, "server", "owner-key"), "utf8").trim();
+  const agentToken = await fixtureApiToken(origin, cookie, ["artifacts:read", "sessions:control"]);
   await operation(
     "artifacts_listen",
     { artifact_id: artifact.id, session_id: runtime().session_id, operator_kind: "agent" },
-    ownerKey,
+    agentToken,
   );
   await operation("artifact_threads_add", {
     artifact_id: artifact.id,

@@ -445,6 +445,10 @@ test("approval prompts reject hidden fields and non-text input, including stored
     );
     const base = { target_session_id: launch.session.id };
     for (const content of [
+      ...[
+        0xfe0f, 0xe0100, 0x115f, 0x1160, 0x3164, 0xffa0, 0x2800, 0xe000, 0xf0000, 0x100000, 0x0378,
+        0xd800, 0xdc00,
+      ].map((point) => [{ type: "text", text: `Visible${String.fromCodePoint(point)}hidden` }]),
       [{ type: "text", text: "Looks safe\u202Ehidden" }],
       [{ type: "text", text: "Looks safe\u200Bhidden" }],
       [{ type: "text", text: "Looks safe\u{E0069}\u{E0067}\u{E006E}\u{E006F}\u{E0072}\u{E0065}" }],
@@ -485,6 +489,15 @@ test("approval prompts reject hidden fields and non-text input, including stored
       [true, { type: "resource_link", uri: "https://example.invalid/hidden" }],
       [false, { type: "text", text: "Visible\u202Ehidden" }],
       [true, { type: "text", text: "Visible\u{E0061}" }],
+      ...[0xfe0f, 0xe0100, 0x3164, 0x2800, 0xe000, 0xf0000, 0x0378, 0xd800].flatMap((point) =>
+        [false, true].map(
+          (recover) =>
+            [
+              recover,
+              { type: "text", text: `Visible${String.fromCodePoint(point)}hidden` },
+            ] as const,
+        ),
+      ),
     ] as const) {
       const pending = await make(`old-${recover}-${crypto.randomUUID()}`);
       pending.input.content[0] = content as any;
@@ -521,17 +534,21 @@ test("approval prompts reject hidden fields and non-text input, including stored
     expect(((await accepted.json()) as any).state).toBe("succeeded");
     const command = f.w.one<{ id: string }>("SELECT id FROM session_commands WHERE kind='prompt'")!;
     expect(f.w.approvals.commandApproved(valid.id, command.id, f.principal().grant_id!)).toBe(true);
-    f.w.run(
-      "UPDATE approval_requests SET input=? WHERE id=?",
-      JSON.stringify({
-        ...valid.input,
-        content: [{ type: "text", text: "Visible\u200Bhidden" }],
-      }),
-      valid.id,
-    );
-    expect(f.w.approvals.commandApproved(valid.id, command.id, f.principal().grant_id!)).toBe(
-      false,
-    );
+    for (const point of [
+      0x200b, 0xfe0f, 0xe0100, 0x115f, 0x2800, 0xe000, 0xf0000, 0x0378, 0xd800,
+    ]) {
+      f.w.run(
+        "UPDATE approval_requests SET input=? WHERE id=?",
+        JSON.stringify({
+          ...valid.input,
+          content: [{ type: "text", text: `Visible${String.fromCodePoint(point)}hidden` }],
+        }),
+        valid.id,
+      );
+      expect(f.w.approvals.commandApproved(valid.id, command.id, f.principal().grant_id!)).toBe(
+        false,
+      );
+    }
   } finally {
     f.close();
   }

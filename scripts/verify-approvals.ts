@@ -225,9 +225,7 @@ try {
     JSON.stringify({
       ...promptArgs,
       operation_key: "legacy-prompt",
-      content: [
-        { type: "text", text: "Looks safe\u{E0069}\u{E0067}\u{E006E}\u{E006F}\u{E0072}\u{E0065}" },
-      ],
+      content: [{ type: "text", text: "Looks safe\uFE0F\u{E0160}\u3164\u2800" }],
     }),
     legacyId,
   );

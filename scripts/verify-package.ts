@@ -6,23 +6,27 @@ import { fixtureApiToken, fixtureLogin, fixtureLoginToken } from "./fixture-auth
 const executable = resolve(process.argv[2] ?? "dist/allgather");
 const daemon = join(dirname(executable), "allgather-server");
 const directory = mkdtempSync(join(tmpdir(), "allgather-package-"));
+const isolatedEnv = {
+  ...process.env,
+  HOME: directory,
+  XDG_CONFIG_HOME: directory,
+  XDG_STATE_HOME: directory,
+  ALLGATHER_CONFIG_DIR: join(directory, "config"),
+  ALLGATHER_GIT_SYNC_SECONDS: "0",
+};
 const daemonCommand = async (...args: string[]) => {
   const child = Bun.spawn(
     [
       daemon,
       ...args,
-      ...(args.includes("--data-dir") ? [] : ["--data-dir", join(directory, "state")]),
+      ...(args[0] === "config" || args.includes("--data-dir")
+        ? []
+        : ["--data-dir", join(directory, "state")]),
       "--json",
     ],
     {
       cwd: directory,
-      env: {
-        ...process.env,
-        HOME: directory,
-        XDG_CONFIG_HOME: directory,
-        XDG_STATE_HOME: directory,
-        ALLGATHER_GIT_SYNC_SECONDS: "0",
-      },
+      env: isolatedEnv,
       stdout: "pipe",
       stderr: "pipe",
     },
@@ -52,7 +56,7 @@ const server = Bun.spawn(
     "--owner-url",
     "http://127.0.0.1:0",
   ],
-  { cwd: directory, stdout: "pipe", stderr: "pipe" },
+  { cwd: directory, env: isolatedEnv, stdout: "pipe", stderr: "pipe" },
 );
 try {
   const reader = server.stdout.getReader();
@@ -88,7 +92,7 @@ try {
     const child = Bun.spawn([executable, ...args, "--json"], {
       cwd: directory,
       env: {
-        ...process.env,
+        ...isolatedEnv,
         ALLGATHER_URL: origin,
         ALLGATHER_TOKEN: key,
         ALLGATHER_CONFIG_DIR: join(directory, "config"),
@@ -153,23 +157,39 @@ try {
   if (await server.exited) throw new Error("Foreground server did not stop cleanly");
   if ((await daemonCommand("status")).state !== "stopped")
     throw new Error("Foreground ownership remained");
-  const started = await daemonCommand(
-    "start",
-    "--port",
+  await daemonCommand(
+    "config",
+    "set",
+    "dataDir",
+    join(directory, "state"),
+    "port",
     "0",
-    "--owner-url",
+    "ownerUrl",
     "http://127.0.0.1:0",
-    "--mcp-url",
+    "mcpUrl",
     "http://127.0.0.1:0",
-    "--mcp-port",
+    "mcpPort",
     "0",
   );
+  const started = await daemonCommand("start");
   if (started.state !== "running") throw new Error("Packaged background server did not start");
   if (
     !started.settings.mcpUrl ||
     (await fetch(started.settings.mcpUrl + "/api/session")).status !== 404
   )
     throw new Error("Packaged public listener exposed owner API");
+  await daemonCommand(
+    "config",
+    "set",
+    "port",
+    String(started.settings.port),
+    "ownerUrl",
+    started.settings.ownerUrl,
+    "mcpPort",
+    String(started.settings.mcpPort),
+    "mcpUrl",
+    started.settings.mcpUrl!,
+  );
   const restarted = await daemonCommand("restart");
   if (JSON.stringify(restarted.settings) !== JSON.stringify(started.settings))
     throw new Error("Packaged restart changed listener settings");

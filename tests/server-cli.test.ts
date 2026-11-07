@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { baseUrl } from "../cli/client.ts";
 import { controlRequest, type ServerStatus, serverStatus } from "../server/control.ts";
 
-function fixture() {
+function fixture(overrides: Record<string, string | undefined> = {}) {
   const root = mkdtempSync(join(tmpdir(), "allgather-lifecycle-")),
     state = join(root, "state");
   const env = {
@@ -29,6 +29,7 @@ function fixture() {
     ALLGATHER_OWNER_URL: "http://127.0.0.1:0",
     ALLGATHER_BIND: "127.0.0.1",
     ALLGATHER_GIT_SYNC_SECONDS: "0",
+    ...overrides,
   };
   const invoke = async (entry: string, ...args: string[]) => {
     const child = Bun.spawn([process.execPath, "--no-env-file", entry, ...args, "--json"], {
@@ -191,3 +192,66 @@ test("foreground shutdown cleans ownership and an unreachable PID is never signa
     rmSync(f.root, { recursive: true, force: true });
   }
 }, 15000);
+
+test("saved config starts a background server without repeated flags and restart applies edits and removals", async () => {
+  const f = fixture({
+    ALLGATHER_DATA_DIR: undefined,
+    ALLGATHER_PORT: undefined,
+    ALLGATHER_OWNER_URL: undefined,
+  });
+  try {
+    await f.command(
+      "config",
+      "set",
+      "dataDir",
+      f.state,
+      "port",
+      "0",
+      "ownerUrl",
+      "http://127.0.0.1:0",
+      "mcpUrl",
+      "http://127.0.0.1:0",
+      "mcpPort",
+      "0",
+      "managedSessions",
+      "false",
+    );
+    const started = await f.command("start");
+    expect(started.state).toBe("running");
+    expect(started.settings!.dataDir).toBe(f.state);
+    expect(started.settings!.managedSessions).toBe(false);
+    expect(started.settings!.mcpUrl).not.toBeNull();
+    const show = await f.command<{
+      saved: Record<string, unknown>;
+      effective: Record<string, unknown>;
+    }>("config", "show");
+    expect(show.saved.port).toBe(0);
+    expect(show.effective.managedSessions).toBe(false);
+    await f.command("config", "set", "managedSessions", "true");
+    expect((await f.command("status")).settings!.managedSessions).toBe(false);
+    const restarted = await f.command("restart");
+    expect(restarted.instance).not.toBe(started.instance);
+    expect(restarted.settings!.managedSessions).toBe(true);
+    await f.command("config", "unset", "mcpUrl", "mcpPort");
+    expect((await f.command("restart")).settings!.mcpUrl).toBeNull();
+    const file = join(f.root, "config", "server.json");
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+    const saved = readFileSync(file, "utf8");
+    expect(
+      (await f.invoke("server/cli.ts", "config", "set", "mcpUrl", "https://public.example")).code,
+    ).toBe(1);
+    expect(readFileSync(file, "utf8")).toBe(saved);
+    const beforeInvalidRestart = await f.command("status");
+    writeFileSync(file, JSON.stringify({ ...JSON.parse(saved), mcpUrl: "https://public.example" }));
+    expect((await f.invoke("server/cli.ts", "restart")).code).toBe(1);
+    expect((await f.command("status")).instance).toBe(beforeInvalidRestart.instance);
+    writeFileSync(file, '{"ownerUrl":', { mode: 0o600 });
+    expect((await f.invoke("server/cli.ts", "config", "set", "port", "4390")).code).toBe(1);
+    expect(readFileSync(file, "utf8")).toBe('{"ownerUrl":');
+    expect((await f.command("status", "--data-dir", f.state)).state).toBe("running");
+    expect((await f.command("stop", "--data-dir", f.state)).state).toBe("stopped");
+  } finally {
+    await f.command("stop", "--data-dir", f.state).catch(() => {});
+    rmSync(f.root, { recursive: true, force: true });
+  }
+}, 30000);

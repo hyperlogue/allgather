@@ -44,17 +44,34 @@ const ranges = (value: string | undefined, defaults: string[]) =>
         .map((part) => part.trim())
         .filter(Boolean);
 
-export function config(overrides: Partial<Config> = {}): Config {
-  const managed = overrides.managedSessions ?? process.env.ALLGATHER_MANAGED_SESSIONS ?? true;
+export function dataDirectory(
+  override?: string,
+  saved: Partial<Config> = {},
+  env: NodeJS.ProcessEnv = process.env,
+) {
+  return resolve(
+    override ??
+      env.ALLGATHER_DATA_DIR ??
+      saved.dataDir ??
+      join(env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"), "allgather"),
+  );
+}
+export function config(
+  overrides: Partial<Config> = {},
+  saved: Partial<Config> = {},
+  env: NodeJS.ProcessEnv = process.env,
+): Config {
+  const managed =
+    overrides.managedSessions ?? env.ALLGATHER_MANAGED_SESSIONS ?? saved.managedSessions ?? true;
   if (managed !== true && managed !== false && managed !== "true" && managed !== "false")
     throw new Error("ALLGATHER_MANAGED_SESSIONS must be true or false");
   const port = portNumber(
-    overrides.port ?? Number(process.env.ALLGATHER_PORT ?? 4390),
+    overrides.port ?? Number(env.ALLGATHER_PORT ?? saved.port ?? 4390),
     "ALLGATHER_PORT",
   );
-  const hostname = overrides.hostname ?? process.env.ALLGATHER_BIND ?? "127.0.0.1";
+  const hostname = overrides.hostname ?? env.ALLGATHER_BIND ?? saved.hostname ?? "127.0.0.1";
   const ownerUrl = origin(
-    overrides.ownerUrl ?? process.env.ALLGATHER_OWNER_URL ?? `http://127.0.0.1:${port}`,
+    overrides.ownerUrl ?? env.ALLGATHER_OWNER_URL ?? saved.ownerUrl ?? `http://127.0.0.1:${port}`,
     "Owner URL",
   );
   if (
@@ -65,15 +82,16 @@ export function config(overrides: Partial<Config> = {}): Config {
       "Set ALLGATHER_OWNER_URL to the private HTTPS origin before binding externally",
     );
   const rawMcpUrl =
-    overrides.mcpUrl === undefined ? process.env.ALLGATHER_MCP_URL : overrides.mcpUrl;
+    overrides.mcpUrl === undefined ? (env.ALLGATHER_MCP_URL ?? saved.mcpUrl) : overrides.mcpUrl;
   const mcpUrl = rawMcpUrl ? origin(rawMcpUrl, "MCP URL") : null;
   const mcpPort = mcpUrl
     ? portNumber(
-        overrides.mcpPort ?? Number(process.env.ALLGATHER_MCP_PORT ?? 4391),
+        overrides.mcpPort ?? Number(env.ALLGATHER_MCP_PORT ?? saved.mcpPort ?? 4391),
         "ALLGATHER_MCP_PORT",
       )
     : null;
-  const mcpHostname = overrides.mcpHostname ?? process.env.ALLGATHER_MCP_BIND ?? "127.0.0.1";
+  const mcpHostname =
+    overrides.mcpHostname ?? env.ALLGATHER_MCP_BIND ?? saved.mcpHostname ?? "127.0.0.1";
   if (mcpUrl && mcpUrl === ownerUrl && new URL(mcpUrl).port !== "0")
     throw new Error("Owner and public MCP origins must differ");
   if (
@@ -82,29 +100,32 @@ export function config(overrides: Partial<Config> = {}): Config {
     new URL(mcpUrl).protocol !== "https:"
   )
     throw new Error("Set ALLGATHER_MCP_URL to the public HTTPS origin before binding externally");
-  if (process.env.ALLGATHER_TRUSTED_PROXIES !== undefined || "trustedProxies" in overrides)
+  if (env.ALLGATHER_TRUSTED_PROXIES !== undefined || "trustedProxies" in overrides)
     throw new Error(
       "Replace ALLGATHER_TRUSTED_PROXIES with separate ALLGATHER_OWNER_TRUSTED_PROXIES and ALLGATHER_MCP_TRUSTED_PROXIES",
     );
   const ownerTrustedProxies =
-    overrides.ownerTrustedProxies ?? ranges(process.env.ALLGATHER_OWNER_TRUSTED_PROXIES, []);
+    overrides.ownerTrustedProxies ??
+    ranges(env.ALLGATHER_OWNER_TRUSTED_PROXIES, saved.ownerTrustedProxies ?? []);
   const mcpTrustedProxies =
-    overrides.mcpTrustedProxies ?? ranges(process.env.ALLGATHER_MCP_TRUSTED_PROXIES, []);
+    overrides.mcpTrustedProxies ??
+    ranges(env.ALLGATHER_MCP_TRUSTED_PROXIES, saved.mcpTrustedProxies ?? []);
   if (
     mcpUrl &&
     (!["localhost", "127.0.0.1", "[::1]"].includes(new URL(mcpUrl).hostname) ||
       !["localhost", "127.0.0.1", "::1"].includes(mcpHostname)) &&
     !mcpTrustedProxies.length
   )
-    throw new Error("Public MCP requires ALLGATHER_MCP_TRUSTED_PROXIES");
+    throw new Error("Public MCP requires mcpTrustedProxies (ALLGATHER_MCP_TRUSTED_PROXIES)");
   const privateNetworks =
     overrides.privateNetworks ??
-    ranges(process.env.ALLGATHER_PRIVATE_NETWORKS, defaultPrivateNetworks);
+    ranges(env.ALLGATHER_PRIVATE_NETWORKS, saved.privateNetworks ?? defaultPrivateNetworks);
   networks(ownerTrustedProxies);
   networks(mcpTrustedProxies);
   networks(privateNetworks);
   const gitSyncSeconds =
-    overrides.gitSyncSeconds ?? Number(process.env.ALLGATHER_GIT_SYNC_SECONDS ?? 300);
+    overrides.gitSyncSeconds ??
+    Number(env.ALLGATHER_GIT_SYNC_SECONDS ?? saved.gitSyncSeconds ?? 300);
   if (
     !Number.isInteger(gitSyncSeconds) ||
     (gitSyncSeconds !== 0 && (gitSyncSeconds < 30 || gitSyncSeconds > 86400))
@@ -113,11 +134,7 @@ export function config(overrides: Partial<Config> = {}): Config {
   return {
     gitSyncSeconds,
     managedSessions: managed === true || managed === "true",
-    dataDir: resolve(
-      overrides.dataDir ??
-        process.env.ALLGATHER_DATA_DIR ??
-        join(process.env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"), "allgather"),
-    ),
+    dataDir: dataDirectory(overrides.dataDir, saved, env),
     hostname,
     port,
     ownerUrl,

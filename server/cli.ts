@@ -7,17 +7,19 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { parse } from "../cli/args.ts";
 import { restoreWorkspace } from "./backup.ts";
-import { type Config, config } from "./config.ts";
+import { type Config, config, dataDirectory } from "./config.ts";
 import { controlRequest, type ServerStatus, serverStatus } from "./control.ts";
 import { startServer } from "./index.ts";
+import { readServerConfig, serverConfigCommand } from "./server-config.ts";
 
 export const HELP = `allgather-server — local Allgather server administration
 
   start       Start in the background; wait until ready
   stop        Stop the authenticated local server and wait for shutdown
-  restart     Restart; retain the running settings unless overridden
+  restart     Restart with saved configuration; retain running settings when no file exists
   status      Report running, stopping, stopped, or unreachable
   run         Run in the foreground (for terminals and service managers)
+  config show | get KEY | set KEY VALUE [KEY VALUE ...] | unset KEY [KEY ...]
   auth create-token [--label NAME] | list-tokens | revoke-token TOKEN_ID | reset
   backup FILE
   restore FILE --data-dir NEW_DIRECTORY
@@ -27,6 +29,12 @@ Private server: --port PORT --bind HOST --owner-url URL.
 Public MCP (opt in): --mcp-url URL --mcp-port PORT --mcp-bind HOST.
 Network: --owner-trusted-proxies CIDRS --mcp-trusted-proxies CIDRS --private-networks CIDRS (comma separated).
 Execution: --managed-sessions true|false.
+Server config: $ALLGATHER_CONFIG_DIR/server.json or $XDG_CONFIG_HOME/allgather/server.json (default ~/.config/allgather/server.json).
+Keys: dataDir, hostname, port, ownerUrl, mcpUrl, mcpPort, mcpHostname, ownerTrustedProxies, mcpTrustedProxies, privateNetworks, gitSyncSeconds, managedSessions.
+Proxy/network values accept comma-separated CIDRs or a JSON array. Set related keys together atomically. Set mcpUrl to null to disable public MCP.
+config show reports saved and effective settings; config get reads a saved override.
+Priority: command flags > environment > saved settings > defaults. Writes save only explicit values; start/restart applies them. dataDir selects the instance.
+Example: allgather-server config set ownerUrl https://owner.example mcpUrl https://mcp.example mcpTrustedProxies 127.0.0.1/32
 Auth and backup require a running local server. Login codes expire after ten minutes and work once.
 Auth reset revokes all browser, connector and machine access. Restore also revokes prior credentials.
 Restore writes to a new directory.
@@ -88,16 +96,11 @@ async function start(settings: Config): Promise<ServerStatus> {
     settings.mcpTrustedProxies.join(","),
     "--private-networks",
     settings.privateNetworks.join(","),
-    ...(settings.mcpUrl
-      ? [
-          "--mcp-url",
-          settings.mcpUrl,
-          "--mcp-port",
-          String(settings.mcpPort),
-          "--mcp-bind",
-          settings.mcpHostname,
-        ]
-      : []),
+    "--mcp-url",
+    settings.mcpUrl ?? "",
+    "--mcp-bind",
+    settings.mcpHostname,
+    ...(settings.mcpPort === null ? [] : ["--mcp-port", String(settings.mcpPort)]),
     "--managed-sessions",
     String(settings.managedSessions),
   ];
@@ -140,7 +143,11 @@ export async function main(argv = process.argv.slice(2)) {
     console.log(HELP);
     return;
   }
-  if (!["run", "start", "stop", "restart", "status", "auth", "backup", "restore"].includes(p[0]))
+  if (
+    !["run", "start", "stop", "restart", "status", "auth", "backup", "restore", "config"].includes(
+      p[0],
+    )
+  )
     throw new Error("Unknown server command. Run allgather-server help.");
   const startup = ["run", "start", "restart"].includes(p[0]);
   const allowed = new Set([
@@ -164,6 +171,12 @@ export async function main(argv = process.argv.slice(2)) {
   ]);
   for (const flag of Object.keys(f))
     if (!allowed.has(flag)) throw new Error(`Unknown option --${flag}`);
+  if (p[0] === "config") {
+    if (Object.keys(f).some((flag) => flag !== "json"))
+      throw new Error("Config commands use ALLGATHER_CONFIG_DIR, not instance flags");
+    print(serverConfigCommand(p.slice(1)));
+    return;
+  }
   if (p[0] === "restore") {
     if (p.length !== 2 || !text("data-dir"))
       throw new Error("restore needs FILE and --data-dir NEW_DIRECTORY");
@@ -197,22 +210,21 @@ export async function main(argv = process.argv.slice(2)) {
       managedSessions: managed === undefined ? undefined : managed === "true",
     }).filter(([, value]) => value !== undefined),
   );
-  const settings = config(overrides);
+  const saved = !startup && overrides.dataDir ? null : readServerConfig();
+  const directory = dataDirectory(overrides.dataDir, saved ?? {});
   if (p[0] === "auth") {
     if (p[1] === "reset" && p.length === 2)
-      print(await (await controlRequest(settings.dataDir, "auth/reset", {})).json());
+      print(await (await controlRequest(directory, "auth/reset", {})).json());
     else if (p[1] === "create-token" && p.length === 2)
       print(
         await (
-          await controlRequest(settings.dataDir, "auth/create-token", { label: text("label") })
+          await controlRequest(directory, "auth/create-token", { label: text("label") })
         ).json(),
       );
     else if (p[1] === "list-tokens" && p.length === 2)
-      print(await (await controlRequest(settings.dataDir, "auth/list-tokens")).json());
+      print(await (await controlRequest(directory, "auth/list-tokens")).json());
     else if (p[1] === "revoke-token" && p.length === 3)
-      print(
-        await (await controlRequest(settings.dataDir, "auth/revoke-token", { id: p[2] })).json(),
-      );
+      print(await (await controlRequest(directory, "auth/revoke-token", { id: p[2] })).json());
     else throw new Error("Use auth create-token, list-tokens, revoke-token TOKEN_ID, or reset");
     return;
   }
@@ -220,7 +232,7 @@ export async function main(argv = process.argv.slice(2)) {
     if (p.length !== 2) throw new Error("Supply a backup file");
     const file = await open(p[1], "wx", 0o600);
     try {
-      const response = await controlRequest(settings.dataDir, "backup");
+      const response = await controlRequest(directory, "backup");
       if (!response.body) throw new Error("Backup response has no data");
       await pipeline(Readable.from(response.body), file.createWriteStream());
     } catch (error) {
@@ -235,20 +247,22 @@ export async function main(argv = process.argv.slice(2)) {
   }
   if (p.length !== 1) throw new Error("Unexpected server command argument");
   if (p[0] === "status") {
-    print(await serverStatus(settings.dataDir));
+    print(await serverStatus(directory));
     return;
   }
   if (p[0] === "stop") {
-    print(await stop(settings.dataDir));
+    print(await stop(directory));
     return;
   }
   if (p[0] === "restart") {
-    const prior = await serverStatus(settings.dataDir);
-    const next = config({ ...prior.settings, ...overrides });
-    await stop(settings.dataDir);
+    const prior = await serverStatus(directory);
+    const next =
+      saved === null ? config({ ...prior.settings, ...overrides }) : config(overrides, saved);
+    await stop(directory);
     print(await start(next));
     return;
   }
+  const settings = config(overrides, saved ?? {});
   if (p[0] === "start") {
     print(await start(settings));
     return;

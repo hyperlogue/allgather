@@ -7,7 +7,7 @@ import {
 } from "../shared/permissions.ts";
 import { noResources, type ResourceGrants } from "../shared/resource-grants.ts";
 import { request } from "./api.ts";
-import { ErrorText, useAction } from "./ui.tsx";
+import { Brand, ErrorText, useAction } from "./ui.tsx";
 
 interface ConsentInfo {
   name: string;
@@ -194,12 +194,7 @@ export function Consent() {
     });
   return (
     <main className="login consent">
-      <span className="brand">
-        <span aria-hidden="true" className="brand-mark">
-          ▦
-        </span>{" "}
-        allgather
-      </span>
+      <Brand />
       <h1>Connect an agent</h1>
       <ErrorText>{loadError || error}</ErrorText>
       {info ? (

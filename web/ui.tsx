@@ -1,4 +1,13 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import logoUrl from "./brand/logo-small.svg";
+export function Brand() {
+  return (
+    <span className="brand">
+      <img alt="" className="brand-mark" src={logoUrl} />
+      allgather
+    </span>
+  );
+}
 export function useAction() {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");

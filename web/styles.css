@@ -210,9 +210,9 @@ code.wrap {
   white-space: nowrap;
 }
 .brand-mark {
-  color: var(--blue);
-  font-size: 27px;
-  line-height: 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 22.37%;
 }
 .login {
   max-width: 470px;

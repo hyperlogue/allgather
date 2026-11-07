@@ -11,18 +11,8 @@ import { McpPairing } from "./mcp-pairing.tsx";
 import { SessionsView } from "./sessions.tsx";
 import { TasksView } from "./tasks.tsx";
 import { TowerEnrollmentView } from "./tower-enrollment.tsx";
-import { Dialog, ErrorText, useAction } from "./ui.tsx";
+import { Brand, Dialog, ErrorText, useAction } from "./ui.tsx";
 
-function Brand() {
-  return (
-    <span className="brand">
-      <span aria-hidden="true" className="brand-mark">
-        ▦
-      </span>
-      allgather
-    </span>
-  );
-}
 function Login({ done }: { done: () => void }) {
   const [key, setKey] = useState("");
   const { busy, error, run } = useAction();

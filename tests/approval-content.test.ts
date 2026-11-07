@@ -126,6 +126,22 @@ test("every approval operation checks all input strings, nested keys, and displa
       }),
     ).toBe(false);
   }
-  expect(approvalDisplayText("/work/\u202Eevil\n\t")).toBe("/work/\\u{202E}evil\\u{000A}\\u{0009}");
+  expect(approvalDisplayText("/work/\u202Eevil\n\t")).toBe("/work/\\u{202E}evil\n\t");
   expect(approvalDisplayText("café 中文 😀")).toBe("café 中文 😀");
+});
+
+test("approval JSON remains multiline and copyable with tabs and line breaks preserved", () => {
+  const value = {
+    target: { cwd: "/work/project" },
+    request: {
+      label: "First\r\n\tSecond",
+      content: [{ type: "text", text: "line one\nline two" }],
+    },
+  };
+  for (const indent of [2, "\t"]) {
+    const json = JSON.stringify(value, null, indent);
+    expect(approvalDisplayText(json)).toBe(json);
+    expect(JSON.parse(approvalDisplayText(json))).toEqual(value);
+  }
+  expect(approvalDisplayText("first\r\n\tsecond\rthird")).toBe("first\r\n\tsecond\rthird");
 });

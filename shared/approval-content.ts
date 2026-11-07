@@ -7,9 +7,10 @@ export function visibleApprovalText(value: string) {
   return !forbiddenCharacters.test(value);
 }
 export function approvalDisplayText(value: string) {
-  return value.replace(
-    escapedCharacters,
-    (char) => `\\u{${char.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}}`,
+  return value.replace(escapedCharacters, (char) =>
+    visibleApprovalText(char)
+      ? char
+      : `\\u{${char.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}}`,
   );
 }
 function visibleStrings(value: unknown): boolean {

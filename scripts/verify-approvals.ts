@@ -136,6 +136,22 @@ try {
   await b.until(
     `document.querySelector('.approval-detail')?.textContent.includes('Approval machine') && document.querySelector('.approval-detail')?.textContent.includes('/work/project')`,
   );
+  await b.evaluate(`document.querySelector('.approval-detail details').open=true`);
+  const exact = await b.evaluate<string>(
+    `document.querySelector('.approval-detail details pre').textContent`,
+  );
+  if (
+    !exact.includes("\n") ||
+    exact.includes("\\u{000A}") ||
+    JSON.parse(exact).request.cwd !== args.cwd
+  )
+    throw new Error("Exact request JSON lost its readable line breaks");
+  if (
+    !(await b.evaluate<boolean>(
+      `getComputedStyle(document.querySelector('.approval-detail code')).whiteSpace==='break-spaces'`,
+    ))
+  )
+    throw new Error("Directory whitespace is collapsed");
   await click("Approve this request");
   await b.until(
     `document.querySelector('.approval-detail')?.textContent.includes('Request admitted')`,

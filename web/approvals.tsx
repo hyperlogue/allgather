@@ -139,7 +139,7 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
             >
               <span>
                 <strong>{title(row)}</strong>
-                <small>
+                <small className="approval-value">
                   {approvalDisplayText(row.operator_name)} · {row.state.replaceAll("_", " ")}
                 </small>
               </span>
@@ -151,8 +151,11 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
           <section className="approval-detail">
             <h2>{title(current)}</h2>
             <p>
-              Requested by <strong>{approvalDisplayText(current.operator_name)}</strong>. The client
-              supplied this name.
+              Requested by{" "}
+              <strong className="approval-value">
+                {approvalDisplayText(current.operator_name)}
+              </strong>
+              . The client supplied this name.
             </p>
             <dl>
               <dt>State</dt>
@@ -161,23 +164,30 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
               <dd>{new Date(current.expires_at).toLocaleString()}</dd>
             </dl>
             <p>
-              <strong>{approvalDisplayText(current.machine_name ?? "Machine")}</strong> ·{" "}
-              {approvalDisplayText(current.project_name ?? "Unassigned")}
+              <strong className="approval-value">
+                {approvalDisplayText(current.machine_name ?? "Machine")}
+              </strong>{" "}
+              ·{" "}
+              <span className="approval-value">
+                {approvalDisplayText(current.project_name ?? "Unassigned")}
+              </span>
             </p>
             {typeof current.harness === "string" && (
               <p>
-                Agent: <strong>{approvalDisplayText(current.harness!)}</strong>
+                Agent:{" "}
+                <strong className="approval-value">{approvalDisplayText(current.harness!)}</strong>
                 {current.input.mode === "terminal" ? " (terminal)" : ""}
               </p>
             )}
             {typeof current.cwd === "string" && (
               <p>
-                Directory: <code>{approvalDisplayText(current.cwd!)}</code>
+                Directory:{" "}
+                <code className="approval-value">{approvalDisplayText(current.cwd!)}</code>
               </p>
             )}
             {current.label && (
               <p>
-                Label: <code>{approvalDisplayText(current.label)}</code>
+                Label: <code className="approval-value">{approvalDisplayText(current.label)}</code>
               </p>
             )}
             {current.input.force === true && (

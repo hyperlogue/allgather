@@ -1376,6 +1376,10 @@ textarea {
   min-width: 0;
   padding: 1rem;
 }
+.approval-value {
+  white-space: break-spaces;
+  overflow-wrap: anywhere;
+}
 .approval-payload {
   padding: 1rem;
   background: var(--surface);

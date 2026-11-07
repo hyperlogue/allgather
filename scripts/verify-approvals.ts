@@ -45,36 +45,50 @@ try {
     JSON.stringify({ fixture: fullControls() }),
     machine.id,
   );
+  await click("Connections");
+  await b.until(`!!document.querySelector('[aria-label="Launch a coding agent on a machine"]')`);
+  await b.evaluate(`(()=>{
+    const name=[...document.querySelectorAll('.mcp-pairing label')].find(l=>l.childNodes[0]?.textContent.trim()==='Connection name').querySelector('input');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(name,'Remote approval fixture');
+    name.dispatchEvent(new Event('input',{bubbles:true}));
+    if(document.querySelector('[aria-label="Launch a coding agent on a machine"]').value!=='approval')throw new Error('Unsafe execution default');
+    const labels=Array.from(document.querySelectorAll('.mcp-pairing .permission-choice'));
+    for(const name of ['Approval project','Approval machine']){const label=labels.find(l=>l.textContent.trim()===name);if(!label)throw new Error('Missing resource');label.querySelector('input').click();}
+    if(labels.find(l=>l.textContent.includes('Unassigned —')).querySelector('input').checked)throw new Error('Unassigned must remain off');
+  })()`);
+  await click("Open pairing for 1 minute");
+  await b.until(`!!document.querySelector('.pairing-code strong.approval-value')`);
+  const pairingCode = (await b.evaluate(
+    `document.querySelector('.pairing-code strong.approval-value').textContent`,
+  )) as string;
   const client = (await (
     await fetch(publicUrl + "/oauth/register", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        client_name: "Remote approval fixture",
+        client_name: "Self-described fixture",
         redirect_uris: [owner + "/callback"],
       }),
     })
   ).json()) as { client_id: string };
   const verifier = randomBytes(32).toString("base64url");
-  const url = new URL(owner + "/oauth/authorize");
+  const url = new URL(publicUrl + "/oauth/authorize");
   url.search = new URLSearchParams({
     client_id: client.client_id,
     redirect_uri: owner + "/callback",
     response_type: "code",
     resource: publicUrl + "/mcp",
-    scope: "sessions:read sessions:launch sessions:prompt",
     code_challenge_method: "S256",
     code_challenge: createHash("sha256").update(verifier).digest("base64url"),
   }).toString();
   await b.command("Page.navigate", { url: url.toString() });
-  await b.until(`!!document.querySelector('[aria-label="Launch a coding agent on a machine"]')`);
-  await b.evaluate(`(()=>{
-    if(document.querySelector('[aria-label="Launch a coding agent on a machine"]').value!=='approval')throw new Error('Unsafe execution default');
-    const labels=Array.from(document.querySelectorAll('.permission-choice'));
-    for(const name of ['Approval project','Approval machine']){const label=labels.find(l=>l.textContent.trim()===name);if(!label)throw new Error('Missing resource');label.querySelector('input').click();}
-    if(labels.find(l=>l.textContent.includes('Unassigned —')).querySelector('input').checked)throw new Error('Unassigned must remain off');
-  })()`);
-  await click("Allow access");
+  await b.until(
+    `document.body.textContent.includes('Remote approval fixture') && !!document.querySelector('input[name=pairing_code]')`,
+  );
+  await b.evaluate(
+    `(()=>{document.querySelector('input[name=pairing_code]').value=${JSON.stringify(pairingCode)};})()`,
+  );
+  await click("Connect");
   await b.until(
     `location.pathname==='/callback' && new URLSearchParams(location.search).has('code')`,
   );
@@ -358,7 +372,7 @@ try {
   });
   await b.until(`document.documentElement.scrollWidth<=innerWidth+1`);
   console.log(
-    "Approval UI passed: public MCP with private owner consent, scoped resources, execution approval default, held request, owner review, durable MCP and CLI result lookup, duplicate suppression, pinned review selection, denial, and mobile layout. Machine capabilities were synthetic; no native agent was launched.",
+    "Approval UI passed: public MCP pairing with owner-chosen access, scoped resources, execution approval default, held request, owner review, durable MCP and CLI result lookup, duplicate suppression, pinned review selection, denial, and mobile layout. Machine capabilities were synthetic; no native agent was launched.",
   );
 } finally {
   await browser?.close();

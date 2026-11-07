@@ -66,6 +66,7 @@ const publicRoutes = new Map<string, readonly string[]>([
   ["/.well-known/oauth-protected-resource", ["GET"]],
   ["/.well-known/oauth-protected-resource/mcp", ["GET"]],
   ["/oauth/register", ["POST"]],
+  ["/oauth/authorize", ["GET", "POST"]],
   ["/oauth/token", ["POST"]],
   ["/oauth/revoke", ["POST"]],
 ]);

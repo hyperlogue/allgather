@@ -135,3 +135,114 @@ export async function fixtureTowerEnrollment(
     access_key: key.access_key as string,
   };
 }
+
+export async function fixtureMcpAuthorization(
+  ownerOrigin: string,
+  cookie: string,
+  options: {
+    scopes: string[];
+    resources?: ResourceGrants;
+    modes?: PermissionModes;
+    name?: string;
+    mcpOrigin?: string;
+    redirectUri?: string;
+    state?: string;
+    sendOwner?: (request: Request) => Response | Promise<Response>;
+    sendMcp?: (request: Request) => Response | Promise<Response>;
+  },
+) {
+  const mcpOrigin = options.mcpOrigin ?? ownerOrigin,
+    sendOwner = options.sendOwner ?? fetch,
+    sendMcp = options.sendMcp ?? sendOwner,
+    redirectUri = options.redirectUri ?? "https://client.example/callback";
+  const opened = await sendOwner(
+    new Request(ownerOrigin + "/api/mcp/pairings", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie, origin: ownerOrigin },
+      body: JSON.stringify({
+        name: options.name ?? "Approved test agent",
+        scopes: options.scopes.filter((scope) => scope !== "offline_access"),
+        resource_grants: options.resources ?? fixtureResources,
+        permission_modes: options.modes ?? {},
+      }),
+    }),
+  );
+  if (opened.status !== 201)
+    throw new Error(`Fixture MCP pairing: ${opened.status} ${await opened.text()}`);
+  const pairing = (await opened.json()) as { pairing_code: string; pairing_id: string };
+  const registered = await sendMcp(
+    new Request(mcpOrigin + "/oauth/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        client_name: "Test client",
+        redirect_uris: [redirectUri],
+        token_endpoint_auth_method: "none",
+      }),
+    }),
+  );
+  if (registered.status !== 201)
+    throw new Error(`Fixture MCP registration: ${registered.status} ${await registered.text()}`);
+  const client = (await registered.json()) as { client_id: string };
+  const verifier = randomBytes(32).toString("base64url");
+  const params: Record<string, string> = {
+    client_id: client.client_id,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    resource: `${mcpOrigin}/mcp`,
+    code_challenge_method: "S256",
+    code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+    ...(options.state ? { state: options.state } : {}),
+  };
+  const page = await sendMcp(
+    new Request(`${mcpOrigin}/oauth/authorize?${new URLSearchParams(params)}`),
+  );
+  const html = await page.text();
+  const requestId = /name="request_id" value="([^"]+)"/.exec(html)?.[1];
+  if (page.status !== 200 || !requestId)
+    throw new Error(`Fixture MCP authorize page: ${page.status} ${html}`);
+  const submitted = await sendMcp(
+    new Request(mcpOrigin + "/oauth/authorize", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", origin: mcpOrigin },
+      body: new URLSearchParams({ request_id: requestId, pairing_code: pairing.pairing_code }),
+      redirect: "manual",
+    }),
+  );
+  const location = submitted.headers.get("location");
+  if (submitted.status !== 303 || !location)
+    throw new Error(`Fixture MCP pairing code: ${submitted.status} ${await submitted.text()}`);
+  const redirect = new URL(location);
+  const code = redirect.searchParams.get("code");
+  if (!code) throw new Error("Fixture MCP authorization code missing");
+  return { client, params, verifier, code, redirect, pairing };
+}
+
+export async function fixtureMcpToken(
+  ownerOrigin: string,
+  cookie: string,
+  options: Parameters<typeof fixtureMcpAuthorization>[2],
+) {
+  const grant = await fixtureMcpAuthorization(ownerOrigin, cookie, options);
+  const mcpOrigin = options.mcpOrigin ?? ownerOrigin,
+    send = options.sendMcp ?? options.sendOwner ?? fetch;
+  const response = await send(
+    new Request(mcpOrigin + "/oauth/token", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: grant.client.client_id,
+        redirect_uri: grant.params.redirect_uri,
+        code: grant.code,
+        code_verifier: grant.verifier,
+        resource: grant.params.resource,
+      }),
+    }),
+  );
+  if (!response.ok) throw new Error(`Fixture MCP token exchange: ${response.status}`);
+  return {
+    ...grant,
+    tokens: (await response.json()) as { access_token: string; refresh_token?: string },
+  };
+}

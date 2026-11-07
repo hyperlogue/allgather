@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
-import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fixtureMcpAuthorization } from "../scripts/fixture-auth.ts";
 import { config } from "../server/config.ts";
 import { controlRequest } from "../server/control.ts";
 import { startServer } from "../server/index.ts";
@@ -106,7 +106,6 @@ test("public listener only serves MCP/OAuth and completes consent through the pr
       "/api/tower/enrollments",
       "/api/tower/invitations",
       "/tower",
-      "/oauth/authorize",
       "/oauth/register-cli",
       "/artifact-workspace/item",
       "/__r3_preview/item",
@@ -119,51 +118,57 @@ test("public listener only serves MCP/OAuth and completes consent through the pr
       await request("public", "/.well-known/oauth-authorization-server")
     ).json()) as any;
     expect(metadata.issuer).toBe("https://mcp.example");
-    expect(metadata.authorization_endpoint).toBe("https://owner.example/oauth/authorize");
+    expect(metadata.authorization_endpoint).toBe("https://mcp.example/oauth/authorize");
+    expect(JSON.stringify(metadata)).not.toContain("owner.example");
+    expect(
+      JSON.stringify(
+        await (await request("public", "/.well-known/oauth-protected-resource")).json(),
+      ),
+    ).not.toContain("owner.example");
     expect(metadata.token_endpoint).toBe("https://mcp.example/oauth/token");
     expect(metadata.scopes_supported).not.toContain("admin");
     const denied = await request("public", "/mcp");
     expect(denied.status).toBe(401);
     expect(denied.headers.get("www-authenticate")).toContain("https://mcp.example/.well-known/");
+    expect(
+      (
+        await request(
+          "public",
+          "/oauth/register",
+          post({ redirect_uris: ["https://connector.example/callback"] }),
+        )
+      ).status,
+    ).toBe(403);
     const loginCode = (await (await controlRequest(root, "auth/create-token", {})).json()) as any;
     const login = await request("private", "/api/login", post({ key: loginCode.token }));
     const cookie = login.headers.get("set-cookie")!.split(";")[0];
-    const client = (await (
-      await request(
-        "public",
-        "/oauth/register",
-        post({
-          client_name: "Remote fixture",
-          redirect_uris: ["https://connector.example/callback"],
-        }),
-      )
-    ).json()) as any;
-    const verifier = "a".repeat(43);
-    const params = {
-      client_id: client.client_id,
-      redirect_uri: "https://connector.example/callback",
-      response_type: "code",
-      code_challenge: createHash("sha256").update(verifier).digest("base64url"),
-      code_challenge_method: "S256",
-      resource: "https://mcp.example/mcp",
-      scope: "tasks:read offline_access",
-      state: "fixture-state",
+    const via = (surface: "private" | "public") => async (r: Request) => {
+      const url = new URL(r.url);
+      return request(surface, url.pathname + url.search, {
+        method: r.method,
+        headers: Object.fromEntries(r.headers),
+        body: r.method === "GET" ? undefined : await r.text(),
+      });
     };
-    const grantResponse = await request(
-      "private",
-      "/api/oauth/authorize",
-      post(params, { cookie, origin: "https://owner.example" }),
-    );
-    expect(grantResponse.status).toBe(200);
-    const grant = (await grantResponse.json()) as any;
-    const callback = new URL(grant.redirect_uri);
+    const grant = await fixtureMcpAuthorization("https://owner.example", cookie, {
+      scopes: ["tasks:read"],
+      mcpOrigin: "https://mcp.example",
+      redirectUri: "https://connector.example/callback",
+      state: "fixture-state",
+      sendOwner: via("private"),
+      sendMcp: via("public"),
+    });
+    const callback = grant.redirect;
     expect(callback.searchParams.get("iss")).toBe("https://mcp.example");
+    expect(callback.searchParams.get("state")).toBe("fixture-state");
+    const client = grant.client;
+    const params = grant.params;
     const exchange = {
       grant_type: "authorization_code",
       client_id: client.client_id,
       redirect_uri: params.redirect_uri,
-      code: callback.searchParams.get("code")!,
-      code_verifier: verifier,
+      code: grant.code,
+      code_verifier: grant.verifier,
       resource: params.resource,
     };
     const tokenResponse = await request("public", "/oauth/token", {

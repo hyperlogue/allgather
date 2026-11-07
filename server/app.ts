@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { AppError, can, operationName, VERSION } from "../shared/contracts.ts";
@@ -7,6 +7,7 @@ import { artifactApi } from "./artifact-api.ts";
 import type { Auth } from "./auth.ts";
 import { hashBytes } from "./blobs.ts";
 import { mcpResponse } from "./mcp.ts";
+import { McpPairings, pairingHtml } from "./mcp-pairing.ts";
 import { isPublicRoute, listenerRejection } from "./network.ts";
 import { RateLimits } from "./rate-limits.ts";
 import { TowerEnrollment } from "./tower-enrollment.ts";
@@ -36,8 +37,8 @@ export function createApp(
   } = {},
 ) {
   const app = new Hono();
-  workspace.approvals.ownerUrl = auth.baseUrl;
   const enrollment = new TowerEnrollment(workspace, auth.baseUrl);
+  const pairings = new McpPairings(workspace.db, auth);
   const surface = options.surface ?? "private";
   const originUrl = surface === "public" ? auth.mcpBaseUrl : auth.baseUrl;
   const rates = new RateLimits();
@@ -399,8 +400,42 @@ export function createApp(
   });
   app.post("/oauth/register", async (c) => {
     rate(`register:${options.peer?.(c.req.raw) ?? "local"}`, 10);
-    return c.json(auth.register(await c.req.json()), 201);
+    const body = await c.req.json();
+    return c.json(pairings.register(body), 201);
   });
+  const pairingRate = (r: Request) => {
+    rate("mcp-authorize", 30);
+    rate(`mcp-authorize:${options.peer?.(r) ?? "local"}`, 10);
+  };
+  const pairingPage = (c: Context, page: ReturnType<McpPairings["start"]>) => {
+    if (page.redirect) return c.redirect(page.redirect, 303);
+    c.header("Referrer-Policy", "same-origin");
+    return c.html(pairingHtml(page), page.status as 200);
+  };
+  app.get("/oauth/authorize", (c) => {
+    if (surface !== "public" && c.req.query("resource") !== auth.resource)
+      return options.assets?.(c.req.raw) ?? c.text("Not found", 404);
+    pairingRate(c.req.raw);
+    return pairingPage(c, pairings.start(c.req.query()));
+  });
+  app.post("/oauth/authorize", async (c) => {
+    pairingRate(c.req.raw);
+    if (c.req.header("origin") !== originUrl)
+      throw new AppError("origin_required", "Submit the pairing form from this page", 403);
+    const body = Object.fromEntries(new URLSearchParams(await c.req.text()));
+    return pairingPage(c, await pairings.finish(c.req.raw, body));
+  });
+  app.get("/api/mcp/pairings", (c) => {
+    const owner = browserOwner(c.req.raw);
+    return c.json({ pairings: pairings.list(owner), ...pairings.options(owner) });
+  });
+  app.post("/api/mcp/pairings", async (c) => {
+    const owner = browserOwner(c.req.raw);
+    return c.json(pairings.open(await c.req.json(), owner), 201);
+  });
+  app.post("/api/mcp/pairings/:id/revoke", (c) =>
+    c.json(pairings.revoke(c.req.param("id"), browserOwner(c.req.raw))),
+  );
   app.post("/oauth/register-cli", async (c) => {
     rate(`register:${options.peer?.(c.req.raw) ?? "local"}`, 10);
     return c.json(auth.register(await c.req.json(), "api"), 201);

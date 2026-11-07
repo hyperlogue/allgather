@@ -7,6 +7,7 @@ import { ApprovalsView, useApprovals } from "./approvals.tsx";
 import { ArtifactsView } from "./artifacts.tsx";
 import { Consent } from "./consent.tsx";
 import { HistoryView, type Repo } from "./history.tsx";
+import { McpPairing } from "./mcp-pairing.tsx";
 import { SessionsView } from "./sessions.tsx";
 import { TasksView } from "./tasks.tsx";
 import { TowerEnrollmentView } from "./tower-enrollment.tsx";
@@ -126,8 +127,8 @@ function Connections({ mcp }: { mcp: string }) {
         </button>
       </div>
       <p className="muted">
-        Add this URL in your client's MCP settings. Sign in to allgather and approve the requested
-        access.
+        Open pairing below, then add this URL in your client's MCP settings and enter the pairing
+        code on the page it opens.
       </p>
       {mcp.startsWith("http:") && (
         <p className="notice">
@@ -135,6 +136,7 @@ function Connections({ mcp }: { mcp: string }) {
           agent.
         </p>
       )}
+      <McpPairing changed={() => void load()} />
       <ErrorText>{error}</ErrorText>
       <h2>Registered clients</h2>
       {clients.length ? (
@@ -169,7 +171,7 @@ function Connections({ mcp }: { mcp: string }) {
         </ul>
       ) : (
         <p className="empty-copy">
-          No clients yet. Each client will ask for a separate access grant.
+          No clients yet. Each pairing connects one client with the access you choose.
         </p>
       )}
       <div className="history-section">

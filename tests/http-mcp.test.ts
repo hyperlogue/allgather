@@ -1,5 +1,5 @@
 import { expect, spyOn, test } from "bun:test";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +7,7 @@ import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import {
   fixtureApiToken,
+  fixtureMcpAuthorization,
   fixtureResources,
   fixtureTowerEnrollment,
 } from "../scripts/fixture-auth.ts";
@@ -50,50 +51,26 @@ async function authorize(
   s: Awaited<ReturnType<typeof setup>>,
   scope = "tasks:read tasks:write projects:read repositories:read commits:read transcripts:read offline_access",
   operatorName = "Approved test agent",
-  keepAccess = true,
 ) {
-  const client = (await (
-    await s.req("/oauth/register", {
-      client_name: "Test client",
-      redirect_uris: ["https://client.example/callback"],
-      token_endpoint_auth_method: "none",
-    })
-  ).json()) as { client_id: string };
-  const verifier = secret(),
-    challenge = createHash("sha256").update(verifier).digest("base64url");
-  const params = {
-    client_id: client.client_id,
-    redirect_uri: "https://client.example/callback",
-    response_type: "code",
-    resource_grants: JSON.stringify(fixtureResources),
-    scope,
-    keep_access: String(keepAccess),
-    resource: `${base}/mcp`,
-    state: randomUUID(),
-    code_challenge: challenge,
-    code_challenge_method: "S256",
-  };
   const login = await s.req(
     "/api/login",
-    { key: s.auth.createLoginToken("MCP consent").token },
+    { key: s.auth.createLoginToken("MCP pairing").token },
     { origin: base },
   );
   expect(login.status).toBe(200);
   const cookieHeader = login.headers.get("set-cookie");
   if (!cookieHeader) throw new Error("Missing login cookie");
   const cookie = cookieHeader.split(";")[0];
-  const consent = await s.req(
-    "/api/oauth/authorize",
-    { ...params, operator_name: operatorName },
-    { cookie, origin: base },
-  );
-  expect(consent.status).toBe(200);
-  const redirect = new URL(((await consent.json()) as { redirect_uri: string }).redirect_uri);
-  expect(redirect.searchParams.get("iss")).toBe(base);
-  expect(redirect.searchParams.get("state")).toBe(params.state);
-  const code = redirect.searchParams.get("code");
-  if (!code) throw new Error("Missing authorization code");
-  return { client, params, verifier, code, cookie };
+  const state = randomUUID();
+  const grant = await fixtureMcpAuthorization(base, cookie, {
+    scopes: scope.split(" ").filter((value) => value && value !== "offline_access"),
+    name: operatorName,
+    state,
+    sendOwner: (request) => s.app.fetch(request),
+  });
+  expect(grant.redirect.searchParams.get("iss")).toBe(base);
+  expect(grant.redirect.searchParams.get("state")).toBe(state);
+  return { ...grant, cookie };
 }
 async function exchange(s: Awaited<ReturnType<typeof setup>>, body: Record<string, string>) {
   return s.app.fetch(
@@ -216,12 +193,14 @@ test("public MCP exposes work tools and rejects private operations before dispat
     );
     expect(apiAttempt.status).toBe(401);
     const unsupportedScope = await s.req(
-      "/api/oauth/authorize",
-      { ...grant.params, scope: "sessions:identity" },
+      "/api/mcp/pairings",
       {
-        cookie: grant.cookie,
-        origin: base,
+        name: "Private scope",
+        scopes: ["sessions:identity"],
+        resource_grants: fixtureResources,
+        permission_modes: {},
       },
+      { cookie: grant.cookie, origin: base },
     );
     expect(unsupportedScope.status).toBe(400);
     const created = await client.callTool({
@@ -802,47 +781,24 @@ test("PKCE failure consumes the code; redirect, resource, origin and grant check
     expect((await exchange(s, bad)).status).toBe(400);
     expect((await exchange(s, { ...bad, code_verifier: grant.verifier })).status).toBe(400);
     expect(
-      (
-        await s.req(
-          "/api/oauth/authorize",
-          { ...grant.params, redirect_uri: "https://other.example/callback" },
-          { cookie: grant.cookie, origin: base },
-        )
-      ).status,
+      (await s.req("/api/oauth/authorize", grant.params, { cookie: grant.cookie, origin: base }))
+        .status,
     ).toBe(400);
+    expect((await s.req(`/oauth/authorize?${new URLSearchParams(grant.params)}`)).status).toBe(403);
     expect(
-      (
-        await s.req(
-          "/api/oauth/authorize",
-          { ...grant.params, resource: "https://other.example/mcp" },
-          { cookie: grant.cookie, origin: base },
-        )
-      ).status,
-    ).toBe(400);
-    expect(
-      (
-        await s.req("/api/oauth/authorize", grant.params, {
-          cookie: grant.cookie,
-          origin: "https://other.example",
-        })
-      ).status,
+      (await s.req("/oauth/register", { redirect_uris: ["https://client.example/callback"] }))
+        .status,
     ).toBe(403);
-    expect(
-      (await s.req("/api/oauth/authorize", grant.params, { cookie: grant.cookie })).status,
-    ).toBe(403);
-    expect(
-      (await s.req("/oauth/register", { redirect_uris: ["javascript:alert(1)"] })).status,
-    ).toBe(400);
     expect((await s.app.fetch(new Request("https://other.example/api/session"))).status).toBe(403);
   } finally {
     s.db.close();
   }
 });
 
-test("owner can opt out of persistent access and read-only consent stays resource-bound", async () => {
+test("read-only MCP grants stay resource-bound and keep refresh access", async () => {
   const s = await setup();
   try {
-    const grant = await authorize(s, "tasks:read", undefined, false);
+    const grant = await authorize(s, "tasks:read");
     const result = await exchange(s, {
       grant_type: "authorization_code",
       client_id: grant.client.client_id,
@@ -853,7 +809,7 @@ test("owner can opt out of persistent access and read-only consent stays resourc
     });
     expect(result.status).toBe(200);
     const token = (await result.json()) as { access_token: string; refresh_token?: string };
-    expect(token.refresh_token).toBeUndefined();
+    expect(token.refresh_token).toBeString();
     const request = new Request(`${base}/mcp`, {
       headers: { authorization: `Bearer ${token.access_token}` },
     });

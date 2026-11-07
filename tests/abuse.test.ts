@@ -24,20 +24,20 @@ test("registration floods recycle only ungranted clients and expired registratio
     auth = new Auth(db, "https://owner.example");
   const input = { redirect_uris: ["https://connector.example/callback"] };
   try {
-    const granted = auth.register(input);
+    const granted = auth.register(input, "api");
     db.query(
       "INSERT INTO oauth_tokens(hash,client_id,scopes,expires,refresh_expires,resource) VALUES('granted',?,'[\"tasks:read\"]','2099-01-01','2099-01-01',?)",
-    ).run(granted.client_id, auth.resource);
-    const expired = auth.register(input);
+    ).run(granted.client_id, auth.apiResource);
+    const expired = auth.register(input, "api");
     db.query("UPDATE oauth_clients SET created_at='2000-01-01T00:00:00.000Z' WHERE id=?").run(
       expired.client_id,
     );
     expect(auth.client(expired.client_id)).toBeNull();
-    for (let i = 0; i < 300; i++) auth.register(input);
+    for (let i = 0; i < 300; i++) auth.register(input, "api");
     expect(db.query("SELECT COUNT(*) n FROM oauth_clients").get()).toEqual({ n: 257 });
     expect(auth.client(granted.client_id)).not.toBeNull();
     expect(db.query("SELECT 1 FROM oauth_clients WHERE id=?").get(expired.client_id)).toBeNull();
-    expect(auth.client(auth.register(input).client_id)).not.toBeNull();
+    expect(auth.client(auth.register(input, "api").client_id)).not.toBeNull();
   } finally {
     db.close();
   }

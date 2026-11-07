@@ -18,7 +18,7 @@ interface ConsentInfo {
   projects: { id: string; name: string }[];
   machines: { id: string; name: string }[];
 }
-function Category({
+export function Category({
   label,
   scopes,
   modes,
@@ -104,7 +104,7 @@ function Category({
     </details>
   );
 }
-function ResourceCategory({
+export function ResourceCategory({
   title,
   items,
   selected,

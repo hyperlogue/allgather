@@ -71,3 +71,22 @@ export function migrateTowerInvitations(db: Database) {
   `),
   ).immediate();
 }
+
+export function migrateMcpPairings(db: Database) {
+  db.transaction(() =>
+    db.exec(`
+      CREATE TABLE mcp_pairings(
+        id TEXT PRIMARY KEY, code_hash TEXT NOT NULL UNIQUE, name TEXT NOT NULL, scopes TEXT NOT NULL,
+        resources TEXT NOT NULL, permissions TEXT NOT NULL, owner TEXT NOT NULL, created_at TEXT NOT NULL,
+        register_until TEXT NOT NULL, expires_at TEXT NOT NULL, registrations INTEGER NOT NULL DEFAULT 0,
+        failures INTEGER NOT NULL DEFAULT 0, consumed_at TEXT, client_id TEXT, revoked_at TEXT
+      );
+      ALTER TABLE oauth_clients ADD COLUMN pairing_id TEXT REFERENCES mcp_pairings(id);
+      CREATE TABLE oauth_requests(
+        hash TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES oauth_clients(id),
+        pairing_id TEXT NOT NULL REFERENCES mcp_pairings(id), params TEXT NOT NULL, expires_at TEXT NOT NULL
+      );
+      PRAGMA user_version=30;
+    `),
+  ).immediate();
+}

@@ -22,6 +22,7 @@ interface ClientRow {
   method: string;
   created_at: string;
   revoked: number;
+  pairing_id: string | null;
 }
 interface TokenRow {
   grant_id: string;
@@ -386,7 +387,13 @@ export class Auth {
     for (const row of pending.slice(0, Math.max(0, pending.length - 255)))
       this.db.query("DELETE FROM oauth_clients WHERE id=?").run(row.id);
   }
-  register(body: Record<string, unknown>, audience: "mcp" | "api" = "mcp") {
+  register(
+    body: Record<string, unknown>,
+    audience: "mcp" | "api",
+    pairing?: { id: string; name: string },
+  ) {
+    if (audience === "mcp" && !pairing)
+      throw new AppError("pairing_closed", "Open MCP pairing in Allgather first", 403);
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       throw new AppError("invalid_client_metadata", "Provide a client metadata object");
     }
@@ -421,10 +428,12 @@ export class Auth {
     const id = `client-${secret()}`,
       clientSecret = method === "none" ? undefined : secret();
     const name =
-      typeof body.client_name === "string" ? body.client_name.trim().slice(0, 120) : "MCP client";
+      pairing?.name ??
+      ((typeof body.client_name === "string" && body.client_name.trim().slice(0, 120)) ||
+        "API client");
     this.db
       .query(
-        "INSERT INTO oauth_clients(id,name,redirects,secret_hash,method,created_at,revoked,audience) VALUES(?,?,?,?,?,?,0,?)",
+        "INSERT INTO oauth_clients(id,name,redirects,secret_hash,method,created_at,revoked,audience,pairing_id) VALUES(?,?,?,?,?,?,0,?,?)",
       )
       .run(
         id,
@@ -434,6 +443,7 @@ export class Auth {
         String(method),
         new Date().toISOString(),
         audience,
+        pairing?.id ?? null,
       );
     return {
       client_id: id,
@@ -463,6 +473,24 @@ export class Auth {
     }
   }
   authorizeInfo(params: Record<string, string>) {
+    const c = this.authorizationClient(params);
+    if (c.audience !== "api")
+      throw new AppError("pairing_required", "MCP clients connect through MCP pairing", 400);
+    const selected = (params.scope ?? "tasks:read").split(" ").filter(Boolean);
+    if (!selected.every((s) => apiScopes.includes(s)))
+      throw new AppError("invalid_scope", "Requested scopes are not available");
+    return {
+      client_id: c.id,
+      name: c.name,
+      scopes: selected.filter((scope) => scope !== "offline_access"),
+      redirect_uri: params.redirect_uri,
+      audience: c.audience,
+      resource: params.resource,
+      projects: this.db.query("SELECT id,name FROM projects ORDER BY name,id").all(),
+      machines: this.db.query("SELECT id,name FROM machines ORDER BY name,id").all(),
+    };
+  }
+  authorizationClient(params: Record<string, string>) {
     const c = this.client(params.client_id);
     if (!c) throw new AppError("invalid_client", "Unknown or revoked OAuth client");
     if (!(JSON.parse(c.redirects) as string[]).includes(params.redirect_uri))
@@ -478,23 +506,7 @@ export class Auth {
         "invalid_target",
         "This client is not registered for the requested resource",
       );
-    const selected = (params.scope ?? "tasks:read").split(" ").filter(Boolean);
-    if (
-      !selected.every((s) =>
-        (params.resource === this.apiResource ? apiScopes : mcpScopes).includes(s),
-      )
-    )
-      throw new AppError("invalid_scope", "Requested scopes are not available");
-    return {
-      client_id: c.id,
-      name: c.name,
-      scopes: selected.filter((scope) => scope !== "offline_access"),
-      redirect_uri: params.redirect_uri,
-      audience: c.audience,
-      resource: params.resource,
-      projects: this.db.query("SELECT id,name FROM projects ORDER BY name,id").all(),
-      machines: this.db.query("SELECT id,name FROM machines ORDER BY name,id").all(),
-    };
+    return c;
   }
   async authorize(request: Request, params: Record<string, string>) {
     if (this.principal(request)?.inlet !== "browser")
@@ -502,20 +514,40 @@ export class Auth {
     const info = this.authorizeInfo(params);
     if (params.keep_access !== undefined && !["true", "false"].includes(params.keep_access))
       throw new AppError("invalid_request", "Choose whether to keep this connection signed in");
-    if (info.scopes.length === 0)
+    const grant = this.grantChoice("api", {
+      scopes: info.scopes,
+      resources: params.resource_grants ? JSON.parse(params.resource_grants) : {},
+      permission_modes: params.permission_modes ? JSON.parse(params.permission_modes) : {},
+      name: params.operator_name?.trim() || info.name,
+      keep_access: params.keep_access !== "false",
+    });
+    return { redirect_uri: await this.issueCode(request, params, grant) };
+  }
+  grantChoice(
+    audience: "mcp" | "api",
+    choice: {
+      scopes: unknown;
+      resources: unknown;
+      permission_modes: unknown;
+      name: unknown;
+      keep_access: unknown;
+    },
+  ) {
+    const available = audience === "api" ? apiScopes : mcpScopes;
+    if (
+      !Array.isArray(choice.scopes) ||
+      choice.scopes.some(
+        (s) => typeof s !== "string" || s === "offline_access" || !available.includes(s),
+      )
+    )
+      throw new AppError("invalid_scope", "Requested scopes are not available");
+    const selected = [...new Set(choice.scopes as Scope[])];
+    if (selected.length === 0)
       throw new AppError("invalid_scope", "Select at least one permission");
-    params = {
-      ...params,
-      scope: [...info.scopes, ...(params.keep_access === "false" ? [] : ["offline_access"])].join(
-        " ",
-      ),
-    };
-    const selectedResources = resourceGrantsSchema.safeParse(
-      params.resource_grants ? JSON.parse(params.resource_grants) : {},
-    );
-    if (!selectedResources.success)
+    const parsedResources = resourceGrantsSchema.safeParse(choice.resources);
+    if (!parsedResources.success)
       throw new AppError("invalid_grant", "Choose project and machine access");
-    const resources = selectedResources.data;
+    const resources = parsedResources.data;
     for (const [table, ids] of [
       ["projects", resources.project_ids],
       ["machines", resources.machine_ids],
@@ -526,16 +558,14 @@ export class Auth {
       )
         throw new AppError("invalid_grant", "A selected resource no longer exists");
     }
-    const modes: PermissionModes = params.permission_modes
-      ? JSON.parse(params.permission_modes)
-      : {};
+    const modes = choice.permission_modes as PermissionModes;
     if (
       !modes ||
       typeof modes !== "object" ||
       Array.isArray(modes) ||
       Object.entries(modes).some(
         ([scope, mode]) =>
-          !info.scopes.includes(scope) ||
+          !selected.includes(scope as Scope) ||
           !["allow", "approval"].includes(mode) ||
           (mode === "approval" && !permissions[scope as Scope].approval),
       )
@@ -544,17 +574,32 @@ export class Auth {
         "invalid_grant",
         "Approval mode is only available for session launch, prompt, stop and resume",
       );
-    const grantId = `grant-${secret()}`;
-    const operatorName = params.operator_name?.trim() || info.name;
-    if (operatorName.length > 160)
-      throw new AppError("invalid_operator_name", "Operator name must have at most 160 characters");
-
+    if (typeof choice.name !== "string" || !choice.name.trim() || choice.name.trim().length > 160)
+      throw new AppError("invalid_operator_name", "Name must have 1 to 160 characters");
+    if (typeof choice.keep_access !== "boolean")
+      throw new AppError("invalid_request", "Choose whether to keep this connection signed in");
+    return {
+      scopes: selected,
+      resources,
+      permission_modes: modes,
+      name: choice.name.trim(),
+      keep_access: choice.keep_access,
+    };
+  }
+  async issueCode(
+    request: Request,
+    params: Record<string, string>,
+    grant: ReturnType<Auth["grantChoice"]>,
+  ) {
     const response = new OAuth2Server.Response();
     await this.oauth.authorize(
       new OAuth2Server.Request({
         method: "GET",
         headers: Object.fromEntries(request.headers),
-        query: params,
+        query: {
+          ...params,
+          scope: [...grant.scopes, ...(grant.keep_access ? ["offline_access"] : [])].join(" "),
+        },
         body: {},
       }),
       response,
@@ -562,11 +607,11 @@ export class Auth {
         authenticateHandler: {
           handle: () => ({
             id: "owner",
-            operator_name: operatorName,
+            operator_name: grant.name,
             resource: params.resource,
-            grant_id: grantId,
-            resources,
-            permission_modes: modes,
+            grant_id: `grant-${secret()}`,
+            resources: grant.resources,
+            permission_modes: grant.permission_modes,
           }),
         },
         allowEmptyState: true,
@@ -577,7 +622,7 @@ export class Auth {
       "iss",
       params.resource === this.resource ? this.mcpBaseUrl : this.baseUrl,
     );
-    return { redirect_uri: location.toString() };
+    return location.toString();
   }
   async exchange(request: Request, body: Record<string, string>) {
     if (!["authorization_code", "refresh_token"].includes(body.grant_type))
@@ -677,7 +722,7 @@ export class Auth {
     const issuer = surface === "public" ? this.mcpBaseUrl : this.baseUrl;
     return {
       issuer,
-      authorization_endpoint: `${this.baseUrl}/oauth/authorize`,
+      authorization_endpoint: `${issuer}/oauth/authorize`,
       token_endpoint: `${issuer}/oauth/token`,
       registration_endpoint: `${issuer}/oauth/${surface === "public" ? "register" : "register-cli"}`,
       revocation_endpoint: `${issuer}/oauth/revoke`,
@@ -722,6 +767,8 @@ export function revokeCredentials(db: Database) {
       UPDATE oauth_tokens SET revoked=1;
       UPDATE oauth_clients SET revoked=1;
       UPDATE oauth_grants SET revoked=1;
+      UPDATE mcp_pairings SET revoked_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE revoked_at IS NULL;
+      DELETE FROM oauth_requests;
       UPDATE tower_credentials SET revoked_at=strftime('%Y-%m-%dT%H:%M:%fZ','now');
       UPDATE tower_enrollments SET state='denied';
       UPDATE tower_invitations SET revoked_at=strftime('%Y-%m-%dT%H:%M:%fZ','now');

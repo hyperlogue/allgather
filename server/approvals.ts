@@ -43,7 +43,6 @@ export function approvalWait(request: Request) {
   return value === undefined ? 30000 : Math.min(30000, Number(value) * 1000);
 }
 export class Approvals {
-  ownerUrl = "http://127.0.0.1:4390";
   private waiters = new Map<string, Set<() => void>>();
   private stopped = false;
   constructor(private w: Workspace) {}
@@ -176,7 +175,6 @@ export class Approvals {
       created_at: row.created_at,
       expires_at: row.expires_at,
       decided_at: row.decided_at,
-      approval_url: `${this.ownerUrl}/?view=approvals&request=${encodeURIComponent(row.id)}`,
       result: row.result ? JSON.parse(row.result) : null,
       error: row.error ? JSON.parse(row.error) : null,
       ...(owner ? this.review(row) : {}),
@@ -493,12 +491,11 @@ export class Approvals {
       );
     throw new AppError(
       "needs_approval",
-      "The owner must approve this exact request. Open approval_url, then retrieve requests_get; do not submit a new operation key.",
+      "The owner must approve this exact request in the Allgather web app. Retrieve it with requests_get; do not submit a new operation key.",
       403,
       {
         request_id: row.id,
         status: "needs_approval",
-        approval_url: this.view(row).approval_url,
         expires_at: row.expires_at,
       },
     );

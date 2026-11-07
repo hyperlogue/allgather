@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
@@ -12,7 +12,7 @@ import {
   type SessionRuntime,
 } from "../shared/contracts.ts";
 import type { MachineScope } from "../shared/tower-acp.ts";
-import { fixtureLoginToken, fixtureResources } from "./fixture-auth.ts";
+import { fixtureLoginToken, fixtureMcpToken } from "./fixture-auth.ts";
 import { stopFixturePool, towerFixture } from "./tower-fixture.ts";
 
 const bundle = towerFixture("allgather-terminal-integration-");
@@ -183,40 +183,17 @@ async function denied(
   assert(!response.ok && data.error?.code === expected, `${name} did not reject with ${expected}`);
 }
 async function connectMcp() {
-  const registration = await request("/oauth/register", {
-    client_name: "Terminal fixture MCP",
-    redirect_uris: ["https://client.example/callback"],
-    token_endpoint_auth_method: "none",
+  const { tokens } = await fixtureMcpToken(origin, cookie, {
+    scopes: [
+      "sessions:read",
+      "sessions:launch",
+      "sessions:prompt",
+      "sessions:stop",
+      "sessions:resume",
+      "transcripts:read",
+    ],
+    name: "Terminal fixture MCP",
   });
-  const verifier = randomUUID() + randomUUID();
-  const params = {
-    client_id: registration.client_id,
-    redirect_uri: "https://client.example/callback",
-    response_type: "code",
-    resource_grants: JSON.stringify(fixtureResources),
-    scope:
-      "sessions:read sessions:launch sessions:prompt sessions:stop sessions:resume transcripts:read",
-    resource: origin + "/mcp",
-    state: randomUUID(),
-    code_challenge: createHash("sha256").update(verifier).digest("base64url"),
-    code_challenge_method: "S256",
-  };
-  const approved = await request("/api/oauth/authorize", params);
-  const code = new URL(approved.redirect_uri).searchParams.get("code")!;
-  const response = await fetch(origin + "/oauth/token", {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      client_id: params.client_id,
-      redirect_uri: params.redirect_uri,
-      resource: params.resource,
-      code,
-      code_verifier: verifier,
-    }),
-  });
-  assert(response.ok, "MCP token exchange failed");
-  const tokens = await response.json();
   mcp = new McpClient({ name: "terminal-fixture", version: "1.0.0" });
   await mcp.connect(
     new StreamableHTTPClientTransport(new URL(origin + "/mcp"), {

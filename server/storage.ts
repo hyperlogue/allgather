@@ -9,6 +9,7 @@ import {
   migrateAuthentication,
   migrateClientAudiences,
   migrateGranularScopes,
+  migrateMcpPairings,
   migrateResourceGrants,
   migrateTowerInvitations,
 } from "./auth-migration.ts";
@@ -23,7 +24,7 @@ import { migrateTerminalSessions } from "./terminal-migration.ts";
 import { migrateTower } from "./tower-migration.ts";
 import { migrateTranscriptContent } from "./transcript-migration.ts";
 
-export const SCHEMA_VERSION = 29;
+export const SCHEMA_VERSION = 30;
 export function writeDatabaseSnapshot(db: Database, path: string) {
   writeFileSync(path, "", { mode: 0o600, flag: "wx" });
   db.query("VACUUM INTO ?").run(path);
@@ -198,6 +199,7 @@ export function openDatabase(path: string) {
     ).immediate();
   if (version < 28) migrateGraphTombstones(db);
   if (version < 29) migrateTranscriptContent(db);
+  if (version < 30) migrateMcpPairings(db);
   return db;
 }
 export function setting(db: Database, key: string) {

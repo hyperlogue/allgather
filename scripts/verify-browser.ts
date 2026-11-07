@@ -402,41 +402,14 @@ try {
   );
   await click("Connections");
   await b.until(`document.querySelector('.connections h1')?.textContent==='Agent connections'`);
-  const client = (await (
-    await fetch(`${running.settings.ownerUrl}/oauth/register`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        client_name: "Browser verification",
-        redirect_uris: [`${running.settings.ownerUrl}/callback`],
-        token_endpoint_auth_method: "none",
-      }),
-    })
-  ).json()) as { client_id: string };
-  const verifier = randomBytes(32).toString("base64url");
-  const authorization = new URL(`${running.settings.ownerUrl}/oauth/authorize`);
-  authorization.search = new URLSearchParams({
-    client_id: client.client_id,
-    redirect_uri: `${running.settings.ownerUrl}/callback`,
-    response_type: "code",
-    scope:
-      "tasks:read tasks:write sessions:read sessions:launch sessions:prompt transcripts:read artifacts:read commits:read",
-    resource: `${running.settings.ownerUrl}/mcp`,
-    code_challenge_method: "S256",
-    code_challenge: createHash("sha256").update(verifier).digest("base64url"),
-  }).toString();
-  await b.command("Page.navigate", { url: authorization.toString() });
-  await b.until(
-    `document.querySelector('h1')?.textContent==='Connect an agent' && document.body.textContent.includes('Browser verification')`,
-  );
-  await field("Agent name", "Approved browser agent");
+  await field("Connection name", "Approved browser agent", ".mcp-pairing");
   const defaults = await b.evaluate(`(() => {
-    const selected = text => Array.from(document.querySelectorAll('.permission-choice')).find(e => e.textContent.includes(text))?.querySelector('input')?.checked;
+    const selected = text => Array.from(document.querySelectorAll('.mcp-pairing .permission-choice')).find(e => e.textContent.includes(text))?.querySelector('input')?.checked;
     return selected('Read machines') && selected('Read retained') && selected('Read artifacts') && document.querySelector('[aria-label="Launch a coding agent on a machine"]')?.value==='approval' && document.querySelector('[aria-label="Send work to a running coding agent"]')?.value==='approval';
   })()`);
-  if (!defaults) throw new Error("Consent defaults grant unexpected permissions");
+  if (!defaults) throw new Error("Pairing defaults grant unexpected permissions");
   await b.evaluate(`(() => {
-    const choices = Array.from(document.querySelectorAll('.permission-choice'));
+    const choices = Array.from(document.querySelectorAll('.mcp-pairing .permission-choice'));
     if (choices.find(e=>e.textContent.includes('Unassigned —'))?.querySelector('input')?.checked) throw new Error('Unassigned must default off');
     const projects = choices.find(e=>e.textContent.includes('All projects, including new ones'))?.querySelector('input');
     if (!projects || projects.checked) throw new Error('Projects must be chosen explicitly');
@@ -457,11 +430,45 @@ try {
     `document.querySelector('[aria-label="Launch a coding agent on a machine"]').value==='deny'`,
   );
   await b.evaluate(`(() => {
-    for (const item of document.querySelectorAll('.permission-choice')) {
+    for (const item of document.querySelectorAll('.mcp-pairing .permission-choice')) {
       if (item.textContent.includes('Read machines') || item.textContent.includes('Create and update tasks')) item.querySelector('input').click();
     }
   })()`);
-  await click("Allow access");
+  await click("Open pairing for 1 minute");
+  await b.until(`!!document.querySelector('.pairing-code strong.approval-value')`);
+  const pairingCode = (await b.evaluate(
+    `document.querySelector('.pairing-code strong.approval-value').textContent`,
+  )) as string;
+  const client = (await (
+    await fetch(`${running.settings.ownerUrl}/oauth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        client_name: "Browser verification",
+        redirect_uris: [`${running.settings.ownerUrl}/callback`],
+        token_endpoint_auth_method: "none",
+      }),
+    })
+  ).json()) as { client_id: string; client_name: string };
+  if (client.client_name !== "Approved browser agent")
+    throw new Error("Pairing did not assign the owner-chosen name");
+  const verifier = randomBytes(32).toString("base64url");
+  const authorization = new URL(`${running.settings.ownerUrl}/oauth/authorize`);
+  authorization.search = new URLSearchParams({
+    client_id: client.client_id,
+    redirect_uri: `${running.settings.ownerUrl}/callback`,
+    response_type: "code",
+    scope: "tasks:read tasks:write sessions:launch",
+    resource: `${running.settings.ownerUrl}/mcp`,
+    code_challenge_method: "S256",
+    code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+  }).toString();
+  await b.command("Page.navigate", { url: authorization.toString() });
+  await b.until(
+    `document.querySelector('h1')?.textContent==='Connect an MCP client' && document.body.textContent.includes('Approved browser agent')`,
+  );
+  await field("Pairing code from Allgather", pairingCode.toLowerCase());
+  await click("Connect");
   await b.until(
     `location.pathname==='/callback' && new URLSearchParams(location.search).has('code')`,
   );
@@ -485,14 +492,14 @@ try {
     consentToken.scope.includes("sessions:prompt") ||
     consentToken.scope.includes("tasks:write")
   )
-    throw new Error("Consent did not narrow scopes or persist access by default");
+    throw new Error("Pairing did not narrow scopes or persist access by default");
   if (
     !tokenResponse.ok ||
     running.workspace.one<{ operator_name: string }>(
       "SELECT operator_name FROM oauth_tokens WHERE revoked=0",
     )?.operator_name !== "Approved browser agent"
   )
-    throw new Error("Consent name was not preserved");
+    throw new Error("Pairing name was not preserved");
   const resources = running.workspace.one<{ resources: string }>(
     "SELECT resources FROM oauth_grants WHERE client_id=?",
     client.client_id,
@@ -502,7 +509,7 @@ try {
     JSON.stringify(JSON.parse(resources.resources)) !==
       JSON.stringify({ project_ids: "*", machine_ids: [], unassigned: false })
   )
-    throw new Error("Consent resource choices were not preserved");
+    throw new Error("Pairing resource choices were not preserved");
   await b.command("Page.navigate", { url: running.settings.ownerUrl });
   await b.until(`!!document.querySelector('.app-header')`);
   const owner = { id: "owner", kind: "owner", inlet: "browser", scopes: ["admin"] } as const;
@@ -586,7 +593,7 @@ try {
   await click("Sign out");
   await b.until(`!!document.querySelector('input[type="password"]')`);
   console.log(
-    "Browser verification passed: task workflow, comments and drafts, labels and filters, plain deferral, atomic plans and epic progress, three screen widths, upstream connection and project path configuration, checkout identity/move/offline observations, connections, OAuth consent and callback, session history and selection persistence, sign out.",
+    "Browser verification passed: task workflow, comments and drafts, labels and filters, plain deferral, atomic plans and epic progress, three screen widths, upstream connection and project path configuration, checkout identity/move/offline observations, connections, MCP pairing and callback, session history and selection persistence, sign out.",
   );
 } finally {
   checkoutSocket?.close();

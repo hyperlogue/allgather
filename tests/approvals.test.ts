@@ -96,10 +96,11 @@ async function fixture() {
     principal,
     send,
     launch,
-    restart() {
+    restart(beforeOpen?: (db: Workspace["db"]) => void) {
       w.approvals.close();
       db.close();
       db = openDatabase(path);
+      beforeOpen?.(db);
       w = new Workspace(db, undefined, undefined, { dataDir: root });
       auth = new Auth(db, "https://owner.example");
       app = createApp(w, auth, new Updates());
@@ -549,6 +550,157 @@ test("approval prompts reject hidden fields and non-text input, including stored
         false,
       );
     }
+  } finally {
+    f.close();
+  }
+});
+
+test("launch and resume approval reject hidden request and identity strings before persistence", async () => {
+  const f = await fixture();
+  try {
+    for (const field of ["cwd", "harness", "label", "operator_name", "operation_key"]) {
+      for (const hidden of ["\u202E", "\u200B", "\uFE0F", "\uFEFF"]) {
+        const response = await f.send("/api/operations/session_launch", {
+          ...f.launch,
+          operation_key: crypto.randomUUID(),
+          [field]: hidden + "visible",
+        });
+        expect(response.status).toBe(400);
+        expect(((await response.json()) as any).error.code).toBe("unsupported_approval_content");
+      }
+    }
+    const badPrincipal = { ...f.principal(), operator_name: "Trusted\u202Eclient" };
+    await expect(
+      f.w.approvals.request(
+        "session_launch",
+        { ...f.launch, operation_key: "bad-principal" },
+        badPrincipal,
+        { waitMs: 0 },
+      ),
+    ).rejects.toThrow("identity/target");
+    const launch = f.w.execute(
+      "session_launch",
+      { ...f.launch, operation_key: "owner-runtime" },
+      f.owner(),
+    ) as any;
+    const response = await f.send("/api/operations/session_resume", {
+      target_session_id: launch.session.id,
+      machine_id: f.machine.id,
+      cwd: "/work/safe\u200Bhidden",
+      operation_key: "resume-hidden",
+    });
+    expect(response.status).toBe(400);
+    expect(f.w.all("SELECT id FROM approval_requests")).toHaveLength(0);
+    expect(f.w.all("SELECT id FROM session_commands")).toHaveLength(1);
+    const valid = await f.send("/api/operations/session_launch", {
+      ...f.launch,
+      cwd: "/arbitrary/visible/path",
+      label: "Visible label",
+      operation_key: "arbitrary-directory",
+    });
+    expect(((await valid.json()) as any).error.code).toBe("needs_approval");
+  } finally {
+    f.close();
+  }
+});
+
+test("stored launch inputs and changed target names cannot bypass review or queued dispatch", async () => {
+  const f = await fixture();
+  try {
+    const held = async (key: string) => {
+      const r = await f.send("/api/operations/session_launch", { ...f.launch, operation_key: key });
+      return ((await r.json()) as any).error.details.request_id as string;
+    };
+    for (const recovery of [false, true]) {
+      const id = await held(`legacy-launch-${recovery}`);
+      const input = JSON.parse(
+        f.w.one<{ input: string }>("SELECT input FROM approval_requests WHERE id=?", id)!.input,
+      );
+      f.w.run(
+        "UPDATE approval_requests SET input=?,state=? WHERE id=?",
+        JSON.stringify({ ...input, cwd: "/safe/\u202Eevil" }),
+        recovery ? "approved" : "needs_approval",
+        id,
+      );
+      if (recovery) f.restart();
+      else
+        await f.send(
+          `/api/approvals/${id}/decision`,
+          { decision: "approve", expected_revision: 1 },
+          true,
+        );
+      expect(
+        f.w.one<{ state: string }>("SELECT state FROM approval_requests WHERE id=?", id)!.state,
+      ).toBe("failed");
+    }
+    const id = await held("renamed-target");
+    const machine = f.w.executions.machine(f.machine.id);
+    f.w.execute(
+      "machines_update",
+      {
+        machine_id: machine.id,
+        name: "Safe\u200Bmachine",
+        expected_revision: machine.revision,
+        operation_key: "rename-hidden",
+      },
+      f.owner(),
+    );
+    const denied = await f.send(
+      `/api/approvals/${id}/decision`,
+      { decision: "approve", expected_revision: 1 },
+      true,
+    );
+    expect(((await denied.json()) as any).error.code).toBe("unsupported_approval_content");
+    expect(f.w.all("SELECT id FROM session_commands")).toHaveLength(0);
+    const invalid = await f.send("/api/operations/session_launch", {
+      ...f.launch,
+      operation_key: "bad-target-at-create",
+    });
+    expect(((await invalid.json()) as any).error.code).toBe("unsupported_approval_content");
+    f.w.execute(
+      "machines_update",
+      {
+        machine_id: machine.id,
+        name: "Visible machine",
+        expected_revision: machine.revision + 1,
+        operation_key: "rename-safe",
+      },
+      f.owner(),
+    );
+    const queued = await held("queued-launch");
+    await f.send(
+      `/api/approvals/${queued}/decision`,
+      { decision: "approve", expected_revision: 1 },
+      true,
+    );
+    const command = f.w.one<{ id: string }>("SELECT id FROM session_commands")!;
+    expect(f.w.approvals.commandApproved(queued, command.id, f.principal().grant_id!)).toBe(true);
+    const principal = JSON.parse(
+      f.w.one<{ principal: string }>("SELECT principal FROM approval_requests WHERE id=?", queued)!
+        .principal,
+    );
+    f.w.run(
+      "UPDATE approval_requests SET principal=? WHERE id=?",
+      JSON.stringify({ ...principal, operator_name: "Trusted\u200Bclient" }),
+      queued,
+    );
+    expect(f.w.approvals.commandApproved(queued, command.id, f.principal().grant_id!)).toBe(false);
+    f.w.run(
+      "UPDATE approval_requests SET principal=? WHERE id=?",
+      JSON.stringify(principal),
+      queued,
+    );
+    expect(f.w.approvals.commandApproved(queued, command.id, f.principal().grant_id!)).toBe(true);
+    f.restart((db) => {
+      const row = db.query("SELECT payload FROM session_commands WHERE id=?").get(command.id) as {
+        payload: string;
+      };
+      db.query("UPDATE session_commands SET payload=? WHERE id=?").run(
+        JSON.stringify({ ...JSON.parse(row.payload), cwd: "/hidden/\u202Epath" }),
+        command.id,
+      );
+    });
+    expect(f.w.approvals.commandApproved(queued, command.id, f.principal().grant_id!)).toBe(false);
   } finally {
     f.close();
   }

@@ -50,11 +50,11 @@ export class Approvals {
   requires(name: Operation, p: Principal) {
     return p.kind === "client" && p.permission_modes?.[operations[name].scope] === "approval";
   }
-  private reviewable(name: string, input: Input) {
-    if (!reviewableApproval(name, input))
+  private reviewable(name: string, input: unknown, context: unknown = null) {
+    if (!reviewableApproval(name, input, context))
       throw new AppError(
         "unsupported_approval_content",
-        "Approval prompts require only {type: text, text: string} parts with visible, assigned Unicode text. Hidden, control, private-use, unassigned, and surrogate characters and extra fields are forbidden. Tabs and line breaks are permitted.",
+        "All strings in an approval request and its identity/target metadata must use visible, assigned Unicode text. Prompts require text-only parts. Hidden, control, private-use, unassigned, and surrogate characters are forbidden; tabs and line breaks are permitted.",
         400,
       );
   }
@@ -126,6 +126,44 @@ export class Approvals {
         message: "This request's access grant expired or was revoked",
       });
   }
+  private presentation(input: Input, target: Input, p: Principal) {
+    const session = this.w.one<{ agent_type: string; label: string | null }>(
+      "SELECT agent_type,label FROM agent_sessions WHERE id=?",
+      String(target.session_id ?? ""),
+    );
+    return {
+      target,
+      operator_name: p.operator_name ?? p.id,
+      client_id: p.id,
+      machine_name:
+        this.w.one<{ name: string }>(
+          "SELECT name FROM machines WHERE id=?",
+          String(target.machine_id),
+        )?.name ?? null,
+      project_name:
+        this.w.one<{ name: string }>(
+          "SELECT name FROM projects WHERE id=?",
+          String(target.project_id),
+        )?.name ?? null,
+      harness: input.harness ?? session?.agent_type ?? null,
+      cwd:
+        input.cwd ??
+        this.w.one<{ cwd: string }>(
+          "SELECT cwd FROM session_runtimes WHERE id=?",
+          String(target.runtime_id ?? ""),
+        )?.cwd ??
+        null,
+      label: input.label ?? session?.label ?? null,
+    };
+  }
+  private storedReviewable(row: Approval) {
+    const input = JSON.parse(row.input);
+    return reviewableApproval(
+      row.operation,
+      input,
+      this.presentation(input, JSON.parse(row.target), JSON.parse(row.principal)),
+    );
+  }
   private view(row: Approval, owner = false) {
     return {
       id: row.id,
@@ -142,19 +180,11 @@ export class Approvals {
       ...(owner
         ? {
             input: JSON.parse(row.input),
-            target: JSON.parse(row.target),
-            operator_name: (JSON.parse(row.principal) as Principal).operator_name ?? row.client_id,
-            client_id: row.client_id,
-            machine_name:
-              this.w.one<{ name: string }>(
-                "SELECT name FROM machines WHERE id=?",
-                String(JSON.parse(row.target).machine_id),
-              )?.name ?? null,
-            project_name:
-              this.w.one<{ name: string }>(
-                "SELECT name FROM projects WHERE id=?",
-                String(JSON.parse(row.target).project_id),
-              )?.name ?? null,
+            ...this.presentation(
+              JSON.parse(row.input),
+              JSON.parse(row.target),
+              JSON.parse(row.principal),
+            ),
           }
         : {}),
     };
@@ -212,7 +242,8 @@ export class Approvals {
     const row = this.w.one<Approval>("SELECT * FROM approval_requests WHERE id=?", p.approval_id);
     return (
       !!row &&
-      reviewableApproval(name, a) &&
+      reviewableApproval(name, a, { operator_name: p.operator_name, client_id: p.id }) &&
+      this.storedReviewable(row) &&
       !!row.decided_at &&
       row.state === "executing" &&
       row.client_id === p.id &&
@@ -222,13 +253,17 @@ export class Approvals {
     );
   }
   commandApproved(id: string, commandId: string, grantId: string) {
-    const row = this.w.one<{ operation: string; input: string }>(
-      "SELECT r.operation,r.input FROM approval_requests r JOIN session_commands c ON c.id=? JOIN audit_operations a ON a.id=c.operation_id JOIN machines m ON m.id=json_extract(r.target,'$.machine_id') WHERE m.active_credential_id IS json_extract(r.target,'$.machine_credential_id') AND r.id=? AND r.grant_id=? AND r.state IN ('executing','succeeded') AND a.connection_id=r.client_id AND a.operation=r.operation AND a.operation_key=r.operation_key",
+    const row = this.w.one<Approval & { command_payload: string }>(
+      "SELECT r.*,c.payload command_payload FROM approval_requests r JOIN session_commands c ON c.id=? JOIN audit_operations a ON a.id=c.operation_id JOIN machines m ON m.id=json_extract(r.target,'$.machine_id') WHERE m.active_credential_id IS json_extract(r.target,'$.machine_credential_id') AND r.id=? AND r.grant_id=? AND r.state IN ('executing','succeeded') AND a.connection_id=r.client_id AND a.operation=r.operation AND a.operation_key=r.operation_key",
       commandId,
       id,
       grantId,
     );
-    return !!row && reviewableApproval(row.operation, JSON.parse(row.input));
+    return (
+      !!row &&
+      this.storedReviewable(row) &&
+      reviewableApproval(row.operation, JSON.parse(row.command_payload))
+    );
   }
   private finish(row: Approval, state: "succeeded" | "failed", value: unknown) {
     this.w.run(
@@ -256,7 +291,11 @@ export class Approvals {
         throw new AppError("approval_expired", "This request expired; submit a new request", 409);
       const principal = this.current(row),
         input = JSON.parse(row.input) as Input;
-      this.reviewable(row.operation, input);
+      this.reviewable(
+        row.operation,
+        input,
+        this.presentation(input, JSON.parse(row.target), principal),
+      );
       this.w.access.run(principal, () => {
         this.w.access.inputs(row.operation, input);
         const target = this.w.executions.approvalTarget(row.operation, input);
@@ -316,11 +355,11 @@ export class Approvals {
       return this.view(row, true);
     if (row.state !== "needs_approval" || row.revision !== revision)
       throw new AppError("revision_conflict", "This approval request changed; refresh it", 409);
-    if (decision === "approve" && !reviewableApproval(row.operation, JSON.parse(row.input))) {
+    if (decision === "approve" && !this.storedReviewable(row)) {
       this.finish(row, "failed", {
         code: "unsupported_approval_content",
         message:
-          "This stored prompt cannot be reviewed safely. Submit text-only parts with visible, assigned Unicode text; hidden, control, private-use, unassigned, and surrogate characters are forbidden. Tabs and line breaks are permitted.",
+          "This stored request or its identity/target metadata cannot be reviewed safely. Submit a new request with visible, assigned Unicode text.",
       });
       return this.ownerGet(row.id);
     }
@@ -371,11 +410,12 @@ export class Approvals {
       client_id: p.id,
       operation: name,
     });
+    this.reviewable(name, input, { operator_name: p.operator_name, client_id: p.id });
     const parsed = operations[name].schema.safeParse(input);
     if (!parsed.success)
       throw new AppError("invalid_input", "Invalid request", 400, parsed.error.flatten());
     const a = parsed.data as Input;
-    this.reviewable(name, a);
+    this.reviewable(name, a, { operator_name: p.operator_name, client_id: p.id });
     if (name === "session_resume" && a.force && p.inlet === "mcp")
       throw new AppError("forbidden", "Force resume is private", 403);
     this.w.access.inputs(name, a);
@@ -399,6 +439,7 @@ export class Approvals {
         );
     } else {
       const target = this.w.executions.approvalTarget(name, a);
+      this.reviewable(name, a, this.presentation(a, target, p));
       const count = this.w.one<{ n: number }>(
         "SELECT COUNT(*) n FROM approval_requests WHERE grant_id=? AND state='needs_approval'",
         p.grant_id!,

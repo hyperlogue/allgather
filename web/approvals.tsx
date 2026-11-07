@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
-import { approvalTextParts, reviewableApproval } from "../shared/approval-content.ts";
+import {
+  approvalDisplayText,
+  approvalTextParts,
+  reviewableApproval,
+} from "../shared/approval-content.ts";
 import { request } from "./api.ts";
 import { ErrorText, useAction } from "./ui.tsx";
 
@@ -15,6 +19,9 @@ export interface ApprovalView {
   client_id: string;
   machine_name: string | null;
   project_name: string | null;
+  harness: string | null;
+  cwd: string | null;
+  label: string | null;
   input: Record<string, unknown>;
   target: Record<string, unknown>;
   result: unknown;
@@ -80,7 +87,18 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
   const current = selected ? (rows.find((row) => row.id === selected) ?? linked) : null;
   const result = current?.result as { session?: { id: string }; session_id?: string } | null;
   const sessionId = result?.session?.id ?? result?.session_id;
-  const reviewable = !current || reviewableApproval(current.operation, current.input);
+  const reviewable =
+    !current ||
+    reviewableApproval(current.operation, current.input, {
+      target: current.target,
+      operator_name: current.operator_name,
+      client_id: current.client_id,
+      machine_name: current.machine_name,
+      project_name: current.project_name,
+      harness: current.harness,
+      cwd: current.cwd,
+      label: current.label,
+    });
   const textParts =
     current?.operation === "session_prompt"
       ? approvalTextParts.safeParse(current.input.content)
@@ -122,7 +140,7 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
               <span>
                 <strong>{title(row)}</strong>
                 <small>
-                  {row.operator_name} · {row.state.replaceAll("_", " ")}
+                  {approvalDisplayText(row.operator_name)} · {row.state.replaceAll("_", " ")}
                 </small>
               </span>
             </button>
@@ -133,7 +151,8 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
           <section className="approval-detail">
             <h2>{title(current)}</h2>
             <p>
-              Requested by <strong>{current.operator_name}</strong>. The client supplied this name.
+              Requested by <strong>{approvalDisplayText(current.operator_name)}</strong>. The client
+              supplied this name.
             </p>
             <dl>
               <dt>State</dt>
@@ -142,18 +161,23 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
               <dd>{new Date(current.expires_at).toLocaleString()}</dd>
             </dl>
             <p>
-              <strong>{current.machine_name ?? "Machine"}</strong> ·{" "}
-              {current.project_name ?? "Unassigned"}
+              <strong>{approvalDisplayText(current.machine_name ?? "Machine")}</strong> ·{" "}
+              {approvalDisplayText(current.project_name ?? "Unassigned")}
             </p>
-            {typeof current.input.harness === "string" && (
+            {typeof current.harness === "string" && (
               <p>
-                Agent: <strong>{current.input.harness}</strong>
+                Agent: <strong>{approvalDisplayText(current.harness!)}</strong>
                 {current.input.mode === "terminal" ? " (terminal)" : ""}
               </p>
             )}
-            {typeof current.input.cwd === "string" && (
+            {typeof current.cwd === "string" && (
               <p>
-                Directory: <code>{current.input.cwd}</code>
+                Directory: <code>{approvalDisplayText(current.cwd!)}</code>
+              </p>
+            )}
+            {current.label && (
+              <p>
+                Label: <code>{approvalDisplayText(current.label)}</code>
               </p>
             )}
             {current.input.force === true && (
@@ -164,10 +188,9 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
             )}
             {!reviewable && (
               <p className="notice">
-                This stored prompt contains unsupported input. It cannot be approved. Ask the client
-                to submit text-only parts with visible, assigned Unicode text. Hidden, control,
-                private-use, unassigned, and surrogate characters are not permitted. Tabs and line
-                breaks are permitted.
+                This request or its identity/target metadata contains unsupported characters. It
+                cannot be approved. Submit a new request with visible, assigned Unicode text.
+                Prompts require text-only parts.
               </p>
             )}
             {textParts?.success && (
@@ -187,7 +210,9 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
             <details>
               <summary>Exact request and target</summary>
               <pre className="approval-payload">
-                {JSON.stringify({ target: current.target, request: current.input }, null, 2)}
+                {approvalDisplayText(
+                  JSON.stringify({ target: current.target, request: current.input }, null, 2),
+                )}
               </pre>
             </details>
             {current.error && <ErrorText>{current.error.message}</ErrorText>}

@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test";
-import { approvalTextParts, reviewableApproval } from "../shared/approval-content.ts";
+import {
+  approvalDisplayText,
+  approvalTextParts,
+  reviewableApproval,
+} from "../shared/approval-content.ts";
 
 const parts = (text: string) => [{ type: "text" as const, text }];
 const hidden = [
@@ -79,4 +83,49 @@ test("allowed whitespace and part boundaries cannot join lone surrogates during 
     expect(approvalTextParts.safeParse(parts(`\uD800${separator}\uDC00`)).success).toBe(false);
   expect(approvalTextParts.safeParse([...parts("\uD800"), ...parts("\uDC00")]).success).toBe(false);
   expect(approvalTextParts.parse(parts("\uD800\uDC00"))).toEqual(parts("𐀀"));
+});
+
+test("every approval operation checks all input strings, nested keys, and displayed identity and target metadata", () => {
+  for (const operation of [
+    "session_launch",
+    "session_resume",
+    "session_prompt",
+    "session_cancel",
+  ]) {
+    const input =
+      operation === "session_prompt"
+        ? { content: parts("Visible") }
+        : { cwd: "/work/project", harness: "fixture", label: "Task" };
+    expect(reviewableApproval(operation, input)).toBe(true);
+    for (const field of [
+      "cwd",
+      "harness",
+      "label",
+      "operator_name",
+      "operation_key",
+      "target_session_id",
+    ])
+      expect(reviewableApproval(operation, { ...input, [field]: "safe\u202Ehidden" })).toBe(false);
+    expect(
+      reviewableApproval(operation, { ...input, nested: [{ value: "safe\u200Bhidden" }] }),
+    ).toBe(false);
+    expect(reviewableApproval(operation, { ...input, ["hidden\u200Bkey"]: "value" })).toBe(false);
+    for (const field of [
+      "operator_name",
+      "client_id",
+      "machine_name",
+      "project_name",
+      "harness",
+      "cwd",
+      "label",
+    ])
+      expect(reviewableApproval(operation, input, { [field]: "safe\uFE0Fhidden" })).toBe(false);
+    expect(
+      reviewableApproval(operation, input, {
+        target: { cleanup: [{ runtime_id: "hidden\u{E0100}" }] },
+      }),
+    ).toBe(false);
+  }
+  expect(approvalDisplayText("/work/\u202Eevil\n\t")).toBe("/work/\\u{202E}evil\\u{000A}\\u{0009}");
+  expect(approvalDisplayText("café 中文 😀")).toBe("café 中文 😀");
 });

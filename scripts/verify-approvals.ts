@@ -241,6 +241,55 @@ try {
     throw new Error("Legacy unsupported prompt remained approvable");
   await click("Deny request");
   await b.until(`document.querySelector('.approval-detail')?.textContent.includes('denied')`);
+  const invalidLaunch = await mcp("tools/call", {
+    name: "session_launch",
+    arguments: { ...args, operation_key: "hidden-directory", cwd: "/work/\u202Eevil" },
+  });
+  if (
+    JSON.parse(invalidLaunch.result.content[0].text).error.code !== "unsupported_approval_content"
+  )
+    throw new Error("Hidden directory entered the approval flow");
+  const legacyLaunch = await mcp("tools/call", {
+    name: "session_launch",
+    arguments: { ...args, operation_key: "legacy-launch" },
+  });
+  const legacyLaunchId = JSON.parse(legacyLaunch.result.content[0].text).error.details.request_id;
+  const saved = running.workspace.one<{ input: string; principal: string }>(
+    "SELECT input,principal FROM approval_requests WHERE id=?",
+    legacyLaunchId,
+  )!;
+  running.workspace.run(
+    "UPDATE approval_requests SET input=?,principal=? WHERE id=?",
+    JSON.stringify({
+      ...JSON.parse(saved.input),
+      cwd: "/work/\u202Eevil",
+      label: "task\u200Blabel",
+    }),
+    JSON.stringify({ ...JSON.parse(saved.principal), operator_name: "Trusted\u200Bclient" }),
+    legacyLaunchId,
+  );
+  await b.command("Page.navigate", { url: owner + "/?view=approvals&request=" + legacyLaunchId });
+  await b.until(
+    `document.querySelector('.approval-detail')?.textContent.includes('cannot be approved')`,
+  );
+  const displayed = await b.evaluate<string>(
+    `document.querySelector('.approval-detail').textContent`,
+  );
+  if (
+    !displayed.includes("/work/\\u{202E}evil") ||
+    !displayed.includes("Trusted\\u{200B}client") ||
+    displayed.includes("\u202E") ||
+    displayed.includes("\u200B")
+  )
+    throw new Error("Unsafe legacy metadata was not visibly escaped");
+  if (
+    !(await b.evaluate<boolean>(
+      `[...document.querySelectorAll('button')].find(b=>b.textContent==='Approve this request').disabled`,
+    ))
+  )
+    throw new Error("Unsafe legacy launch remained approvable");
+  await click("Deny request");
+  await b.until(`document.querySelector('.approval-detail')?.textContent.includes('denied')`);
   const cliToken = await fixtureApiToken(
     owner,
     await fixtureLogin(root, owner),

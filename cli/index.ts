@@ -62,8 +62,6 @@ export const HELP = `allgather — one work record for tasks, sessions, and evid
   artifact archive ID [--body TEXT] | restore ID | delete ID | listen ID | unlisten ID
   artifact submit ID | watchers ID | stat | gc [--apply]
   machine list | create --name NAME | show ID | update ID --name NAME --expected-revision N
-  machine key ID [--label NAME]
-  machine keys ID | revoke-key KEY_ID
   checkout list [--machine ID] [--repository ID] [--include-removed]
   session launch --machine ID --harness NAME --cwd PATH [--mode managed|terminal] [--project ID] [--label NAME] [--role ID] [--task ID]
   session prompt ID --body TEXT | cancel ID | runtime ID | commands ID | requests ID
@@ -80,6 +78,7 @@ Administrative scopes are opt-in: login HOST --scope "admin offline_access".
 Repository configuration only: login HOST --scope "repositories:read repositories:write offline_access".
 An explicit --scope replaces the defaults. Login always requires browser consent.
 Local lifecycle, browser login tokens, and backups use the allgather-server executable.
+Machine pairing and credential revocation use the owner web app.
 Task fields: --label NAME (repeatable), --add-label NAME, --remove-label NAME,
   --clear-labels, --defer ISO_DATE, --undefer, --assignee owner|session:ID|role:ID|none.
 Use --body-file FILE for a multiline task body or comment.
@@ -161,26 +160,6 @@ export async function main(argv = process.argv.slice(2)) {
     await artifactCommand(client, p, f);
     return;
   }
-  if (p[0] === "machine" && ["key", "keys", "revoke-key"].includes(p[1])) {
-    if (!p[2]) throw new Error("Supply a machine or key ID");
-    const path =
-      p[1] === "revoke-key"
-        ? `/api/tower/credentials/${encodeURIComponent(p[2])}/revoke`
-        : "/api/tower/credentials";
-    const value = await (
-      await client.request(
-        path,
-        p[1] === "keys" ? undefined : { machine_id: p[2], label: string("label") ?? "Tower" },
-      )
-    ).json();
-    print(
-      p[1] === "keys"
-        ? (value as { machine_id: string }[]).filter((k) => k.machine_id === p[2])
-        : value,
-    );
-    return;
-  }
-
   let name: Operation,
     input: Record<string, unknown> = {};
   if (p[0] === "task" && p[1] === "plan" && p[2] === "create") {

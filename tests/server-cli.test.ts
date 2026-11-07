@@ -65,6 +65,16 @@ test("client guide is offline and hostname login normalization is explicit", asy
     expect(guide.code).toBe(0);
     expect(JSON.parse(guide.stdout).workflow).toContain("context");
     expect(existsSync(join(f.root, "config"))).toBe(false);
+    const help = await f.invoke("cli/index.ts", "help");
+    for (const command of ["key", "keys", "revoke-key"]) {
+      expect(help.stdout).not.toContain(
+        command === "revoke-key" ? "revoke-key" : "machine " + command + " ",
+      );
+      const removed = await f.invoke("cli/index.ts", "machine", command, "fixture-id");
+      expect(removed.code).not.toBe(0);
+      expect(removed.stderr).toContain("Unknown operation");
+    }
+
     expect((await f.invoke("cli/index.ts", "guide", "--project", "project_example")).code).toBe(1);
     for (const command of ["server", "auth", "backup", "restore"])
       expect((await f.invoke("cli/index.ts", command)).stderr).toContain("allgather-server");

@@ -90,12 +90,11 @@ export class Approvals {
         "This request's access grant expired or was revoked",
         403,
       );
-    const granted = JSON.parse(grant.scopes) as Scope[];
+    const granted = JSON.parse(grant.scopes) as Scope[],
+      original = JSON.parse(grant.original_scopes) as Scope[];
     const p = {
       ...saved,
-      scopes: saved.scopes.filter(
-        (s) => granted.includes(s) && JSON.parse(grant.original_scopes).includes(s),
-      ),
+      scopes: saved.scopes.filter((s) => granted.includes(s) && original.includes(s)),
       resources: resourceGrantsSchema.parse(JSON.parse(grant.resources)),
       permission_modes: JSON.parse(grant.permissions) as PermissionModes,
     };
@@ -156,13 +155,16 @@ export class Approvals {
       label: input.label ?? session?.label ?? null,
     };
   }
-  private storedReviewable(row: Approval) {
-    const input = JSON.parse(row.input);
-    return reviewableApproval(
-      row.operation,
+  private review(row: Approval) {
+    const input = JSON.parse(row.input) as Input;
+    return {
       input,
-      this.presentation(input, JSON.parse(row.target), JSON.parse(row.principal)),
-    );
+      ...this.presentation(input, JSON.parse(row.target), JSON.parse(row.principal)),
+    };
+  }
+  private storedReviewable(row: Approval) {
+    const { input, ...context } = this.review(row);
+    return reviewableApproval(row.operation, input, context);
   }
   private view(row: Approval, owner = false) {
     return {
@@ -177,16 +179,7 @@ export class Approvals {
       approval_url: `${this.ownerUrl}/?view=approvals&request=${encodeURIComponent(row.id)}`,
       result: row.result ? JSON.parse(row.result) : null,
       error: row.error ? JSON.parse(row.error) : null,
-      ...(owner
-        ? {
-            input: JSON.parse(row.input),
-            ...this.presentation(
-              JSON.parse(row.input),
-              JSON.parse(row.target),
-              JSON.parse(row.principal),
-            ),
-          }
-        : {}),
+      ...(owner ? this.review(row) : {}),
     };
   }
   ownerList() {
@@ -415,7 +408,6 @@ export class Approvals {
     if (!parsed.success)
       throw new AppError("invalid_input", "Invalid request", 400, parsed.error.flatten());
     const a = parsed.data as Input;
-    this.reviewable(name, a, { operator_name: p.operator_name, client_id: p.id });
     if (name === "session_resume" && a.force && p.inlet === "mcp")
       throw new AppError("forbidden", "Force resume is private", 403);
     this.w.access.inputs(name, a);

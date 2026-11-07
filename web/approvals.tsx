@@ -175,14 +175,14 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
             {typeof current.harness === "string" && (
               <p>
                 Agent:{" "}
-                <strong className="approval-value">{approvalDisplayText(current.harness!)}</strong>
+                <strong className="approval-value">{approvalDisplayText(current.harness)}</strong>
                 {current.input.mode === "terminal" ? " (terminal)" : ""}
               </p>
             )}
             {typeof current.cwd === "string" && (
               <p>
                 Directory:{" "}
-                <code className="approval-value">{approvalDisplayText(current.cwd!)}</code>
+                <code className="approval-value">{approvalDisplayText(current.cwd)}</code>
               </p>
             )}
             {current.label && (

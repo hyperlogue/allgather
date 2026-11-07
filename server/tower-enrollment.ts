@@ -166,9 +166,8 @@ export class TowerEnrollment {
           if (e.state !== "approved")
             throw new AppError("invalid_pairing_code", "This pairing is no longer available", 401);
         } else {
-          const scopes = a.requested_scopes.filter((scope) =>
-            (JSON.parse(invitation.scopes) as MachineScope[]).includes(scope),
-          );
+          const granted = JSON.parse(invitation.scopes) as MachineScope[];
+          const scopes = a.requested_scopes.filter((scope) => granted.includes(scope));
           if (!scopes.length)
             throw new AppError(
               "invalid_scope",

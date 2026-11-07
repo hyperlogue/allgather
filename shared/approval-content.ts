@@ -1,16 +1,15 @@
 import { z } from "zod";
 
-const escapedCharacters =
-  /[\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{Cs}\p{Default_Ignorable_Code_Point}\u2800]/gu;
-const forbiddenCharacters = new RegExp(`(?![\\t\\n\\r])${escapedCharacters.source}`, "u");
+const forbiddenCharacters =
+  /(?![\t\n\r])[\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{Cs}\p{Default_Ignorable_Code_Point}\u2800]/u;
+const escapedCharacters = new RegExp(forbiddenCharacters.source, "gu");
 export function visibleApprovalText(value: string) {
   return !forbiddenCharacters.test(value);
 }
 export function approvalDisplayText(value: string) {
-  return value.replace(escapedCharacters, (char) =>
-    visibleApprovalText(char)
-      ? char
-      : `\\u{${char.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}}`,
+  return value.replace(
+    escapedCharacters,
+    (char) => `\\u{${char.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}}`,
   );
 }
 function visibleStrings(value: unknown): boolean {

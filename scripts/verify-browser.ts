@@ -12,6 +12,7 @@ const directory = mkdtempSync(join(tmpdir(), "allgather-ui-"));
 const running = await startServer({ dataDir: directory, port: 0, ownerUrl: "http://127.0.0.1:0" });
 let browser: Awaited<ReturnType<typeof browserSession>> | undefined;
 let checkoutSocket: WebSocket | undefined;
+let lastAction = "Open login";
 try {
   browser = await browserSession(executable);
   const b = browser;
@@ -28,10 +29,23 @@ try {
     await b.evaluate(`document.querySelector(${JSON.stringify(selector)}).select()`);
     await b.command("Input.insertText", { text });
   };
-  const click = async (text: string) => {
+  const click = async (text: string, selector = "button") => {
+    lastAction = text;
     await b.evaluate(
-      `(()=>{const el=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(text)});if(!el)throw new Error('Button missing: '+${JSON.stringify(text)});el.click()})()`,
+      `(()=>{const el=[...document.querySelectorAll(${JSON.stringify(selector)})].find(b=>b.textContent.trim()===${JSON.stringify(text)});if(!el)throw new Error('Button missing: '+${JSON.stringify(text)});el.click()})()`,
     );
+  };
+  const reload = async () => {
+    const previous = await b.evaluate<number>("performance.timeOrigin");
+    const project = await b.evaluate<string>(
+      `document.querySelector("#project-select")?.value ?? ""`,
+    );
+    await b.command("Page.reload");
+    await b.until(`performance.timeOrigin!==${previous}`);
+    if (project)
+      await b.until(
+        `document.querySelector("#project-select")?.value===${JSON.stringify(project)}`,
+      );
   };
   const field = async (label: string, value: string, scope = "") => {
     const selector = `${scope} label`;
@@ -75,6 +89,22 @@ try {
   await fill('input[type="password"]', await fixtureLoginToken(directory));
   await click("Sign in");
   await b.until(`!!document.querySelector('.app-header')`);
+  if (
+    await b.evaluate(
+      `[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Sign out')`,
+    )
+  )
+    throw new Error("Sign out is still exposed in the app");
+  await click("Settings");
+  await b.until(`!!document.querySelector('input[name="theme"][value="dark"]')`);
+  await b.evaluate(`document.querySelector('input[name="theme"][value="dark"]').click()`);
+  await b.until(`document.documentElement.classList.contains('dark')`);
+  await reload();
+  await b.until(`document.querySelector('input[name="theme"][value="dark"]')?.checked`);
+  if (!(await b.evaluate(`document.documentElement.classList.contains('dark')`)))
+    throw new Error("Theme did not survive reload");
+  await click("Tasks");
+
   await b.evaluate(`document.querySelector('[aria-label="New project"]').click()`);
   await b.until(`!!document.querySelector('dialog[open] input')`);
   await fill("dialog input", "Example project");
@@ -138,7 +168,7 @@ try {
   await b.until(
     `!!document.querySelector('.blocker-row.answered') && document.querySelector('.comments')?.textContent.includes('Use a smaller patch.')`,
   );
-  await b.command("Page.reload");
+  await reload();
   await b.until(`!!document.querySelector('.blocker-row.answered')`);
   if (await b.evaluate<boolean>(`!!document.querySelector('.blocker-row input[type="radio"]')`))
     throw new Error("Answered task form became actionable after reload");
@@ -258,7 +288,7 @@ try {
   await b.until(
     `!document.querySelector('dialog') && document.querySelector('.repo-row')?.textContent.includes('paused')`,
   );
-  await click("Settings");
+  await click("Settings", ".repo-row button");
   await b.until(`!!document.querySelector('dialog')`);
   await field("Initial commits", "100", "dialog");
   await click("Save connection");
@@ -619,15 +649,44 @@ try {
     )
   )
     throw new Error("Deleted transcript remained cached in the open view");
-  await b.command("Page.reload");
+  await reload();
   await b.until(
     `document.querySelector('.transcript')?.textContent.includes('Captured content deleted')`,
   );
-  await click("Sign out");
-  await b.until(`!!document.querySelector('input[type="password"]')`);
-  console.log(
-    "Browser verification passed: task workflow, comments and drafts, labels and filters, plain deferral, atomic plans and epic progress, three screen widths, upstream connection and project path configuration, checkout identity/move/offline observations, connections, MCP pairing and callback, session history and selection persistence, sign out.",
+  await click("Settings");
+  await b.until(`!!document.querySelector('input[name="theme"]')`);
+  for (const theme of ["light", "dark"]) {
+    await b.evaluate(`document.querySelector('input[name="theme"][value="${theme}"]').click()`);
+    await b.until(`document.documentElement.classList.contains('dark')===${theme === "dark"}`);
+    for (const width of [375, 1440]) {
+      await b.command("Emulation.setDeviceMetricsOverride", {
+        width,
+        height: 900,
+        deviceScaleFactor: 1,
+        mobile: width < 760,
+      });
+      if (await b.evaluate("document.documentElement.scrollWidth>innerWidth"))
+        throw new Error(`Settings overflow at ${width}`);
+      const screenshot = await b.command("Page.captureScreenshot", { format: "png" });
+      await Bun.write(
+        join(tmpdir(), `allgather-settings-${theme}-${width}.png`),
+        Buffer.from(screenshot.data as string, "base64"),
+      );
+    }
+  }
+  await b.evaluate(
+    `fetch('/api/logout',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})`,
   );
+  await b.command("Page.reload");
+  await b.until(`!!document.querySelector('input[type="password"]')`);
+  if (!(await b.evaluate(`document.documentElement.classList.contains('dark')`)))
+    throw new Error("Login did not retain the browser theme");
+  console.log(
+    "Browser verification passed: task workflow, comments and drafts, labels and filters, plain deferral, atomic plans and epic progress, three screen widths, upstream connection and project path configuration, checkout identity/move/offline observations, connections, MCP pairing and callback, session history and selection persistence, saved light/dark settings and login theme.",
+  );
+} catch (error) {
+  console.error(`Browser failed after: ${lastAction}`);
+  throw error;
 } finally {
   checkoutSocket?.close();
   await browser?.close();

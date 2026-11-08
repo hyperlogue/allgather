@@ -24,7 +24,13 @@ export async function verifyArtifactBrowser(
     await b.command("Input.insertText", { text: loginToken });
     await b.evaluate(`document.querySelector('form').requestSubmit()`);
     await b.until(`!!document.querySelector('.app-header')`);
+    await b.evaluate(
+      `[...document.querySelectorAll('button')].find(b=>b.textContent==='Settings').click()`,
+    );
+    await b.until(`!!document.querySelector('input[name="theme"][value="dark"]')`);
+    await b.evaluate(`document.querySelector('input[name="theme"][value="dark"]').click()`);
     await b.command("Page.navigate", { url: `${origin}/artifact-workspace/${id}` });
+    await b.until(`document.documentElement.classList.contains('dark')`);
     await b.until(
       `!!document.querySelector('[aria-label="Capture area"]')||!![...document.querySelectorAll('button')].find(b=>b.textContent==='Accept risk and continue')`,
     );

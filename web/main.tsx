@@ -9,6 +9,7 @@ import { Consent } from "./consent.tsx";
 import { HistoryView, type Repo } from "./history.tsx";
 import { McpPairing } from "./mcp-pairing.tsx";
 import { SessionsView } from "./sessions.tsx";
+import { SettingsView } from "./settings.tsx";
 import { TasksView } from "./tasks.tsx";
 import { TowerEnrollmentView } from "./tower-enrollment.tsx";
 import { Brand, Dialog, ErrorText, useAction } from "./ui.tsx";
@@ -198,7 +199,7 @@ function Connections({ mcp }: { mcp: string }) {
     </div>
   );
 }
-function WorkspaceApp({ signOut, mcp }: { signOut: () => void; mcp: string }) {
+function WorkspaceApp({ mcp }: { mcp: string }) {
   const [projects, setProjects] = useState<Project[]>([]),
     [project, setProject] = useState(new URLSearchParams(location.search).get("project") ?? ""),
     [repos, setRepos] = useState<Repo[]>([]),
@@ -289,6 +290,7 @@ function WorkspaceApp({ signOut, mcp }: { signOut: () => void; mcp: string }) {
             "activity",
             "approvals",
             "connections",
+            "settings",
           ].map((name) => (
             <button
               type="button"
@@ -311,18 +313,12 @@ function WorkspaceApp({ signOut, mcp }: { signOut: () => void; mcp: string }) {
                   activity: "Activity",
                   approvals: "Approvals",
                   connections: "Connections",
+                  settings: "Settings",
                 }[name]
               }
             </button>
           ))}
         </nav>
-        <button
-          type="button"
-          className="quiet signout"
-          onClick={() => void request("/api/logout", {}).then(signOut)}
-        >
-          Sign out
-        </button>
       </header>
       {pendingApprovals.length > 0 && view !== "approvals" && (
         <div className="approval-notice" role="status">
@@ -369,6 +365,8 @@ function WorkspaceApp({ signOut, mcp }: { signOut: () => void; mcp: string }) {
           <HistoryView project={project} repos={repos} refresh={refresh} changed={changed} />
         ) : view === "approvals" ? (
           <ApprovalsView rows={approvals} changed={changed} />
+        ) : view === "settings" ? (
+          <SettingsView />
         ) : view === "activity" ? (
           <Activity project={project} refresh={refresh} />
         ) : (
@@ -416,7 +414,7 @@ function App() {
   if (!session.authenticated) return <Login done={load} />;
   if (location.pathname.startsWith("/tower/enroll/")) return <TowerEnrollmentView />;
   if (location.pathname === "/oauth/authorize") return <Consent />;
-  return <WorkspaceApp mcp={session.mcp_url} signOut={load} />;
+  return <WorkspaceApp mcp={session.mcp_url} />;
 }
 const root = document.getElementById("root");
 if (root) createRoot(root).render(<App />);

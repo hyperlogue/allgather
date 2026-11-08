@@ -1,3 +1,4 @@
+import "./theme.ts";
 import { QueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";

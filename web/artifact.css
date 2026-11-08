@@ -34,3 +34,19 @@ body,
   margin: 5px 0;
   max-width: 850px;
 }
+
+html.dark {
+  color-scheme: dark;
+  background: #17191d;
+  color: #edf0f4;
+}
+.dark .artifact-boot,
+.dark .artifact-delivery {
+  color: #abb3bf;
+}
+.dark .artifact-boot a {
+  color: #7cb7ff;
+}
+.dark .artifact-delivery {
+  border-color: #373e48;
+}

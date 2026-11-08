@@ -11,6 +11,7 @@ import {
 import { Auth, hash, secret } from "../server/auth.ts";
 import { controlRequest } from "../server/control.ts";
 import { startServer } from "../server/index.ts";
+import { serverConfigCommand } from "../server/server-config.ts";
 import { openDatabase } from "../server/storage.ts";
 
 test("browser login codes are single-use and expire and revocation invalidates dependent sessions", () => {
@@ -128,8 +129,12 @@ test("CLI browser OAuth stores private rotating credentials and API grants canno
       ALLGATHER_TOKEN: undefined,
     };
   try {
+    const serverConfig = join(dir, "config", "server.json");
+    serverConfigCommand(["set", "ownerUrl", url], serverConfig);
+    const serverSettings = readFileSync(serverConfig, "utf8");
     await authorizeCli(running, env);
-    expect(JSON.parse(readFileSync(join(dir, "config", "server.json"), "utf8")).url).toBe(url);
+    expect(readFileSync(serverConfig, "utf8")).toBe(serverSettings);
+    expect(JSON.parse(readFileSync(join(dir, "config", "client.json"), "utf8")).url).toBe(url);
     const credentials = join(dir, "config", "credentials.json"),
       saved = JSON.parse(readFileSync(credentials, "utf8"));
     expect(statSync(credentials).mode & 0o777).toBe(0o600);
@@ -162,6 +167,7 @@ test("CLI browser OAuth stores private rotating credentials and API grants canno
       if (await c.exited) throw new Error(err);
       expect(JSON.parse(await new Response(c.stdout).text())).toEqual([]);
     }
+    expect(readFileSync(serverConfig, "utf8")).toBe(serverSettings);
     const refreshed = JSON.parse(readFileSync(credentials, "utf8"))[url];
     expect(refreshed.access_token).not.toBe(old);
     expect(refreshed.refresh_token).not.toBe(saved[url].refresh_token);

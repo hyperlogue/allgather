@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
+import { configDir, migrateClientConfig } from "../shared/local-config.ts";
 import { config } from "./config.ts";
 
 const port = z.number().int().min(0).max(65535);
@@ -23,13 +23,11 @@ const fields = {
 const schema = z.object(fields).partial().strict();
 export type SavedServerConfig = z.infer<typeof schema>;
 export function serverConfigPath() {
-  return join(
-    process.env.ALLGATHER_CONFIG_DIR ??
-      join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "allgather"),
-    "server.json",
-  );
+  return join(configDir(), "server.json");
 }
 export function readServerConfig(path = serverConfigPath()): SavedServerConfig | null {
+  if (path === join(dirname(path), "server.json") && migrateClientConfig(dirname(path)))
+    return null;
   let raw: string;
   try {
     raw = readFileSync(path, "utf8");

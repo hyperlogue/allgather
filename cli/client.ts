@@ -8,10 +8,13 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { AppError, type Operation, type Scope } from "../shared/contracts.ts";
+import { configDir, migrateClientConfig } from "../shared/local-config.ts";
+
 import { currentOperator, type OperatorMetadata } from "./operator.ts";
+
+export { configDir } from "../shared/local-config.ts";
 export const defaultLoginScopes = [
   "tasks:read",
   "tasks:write",
@@ -36,9 +39,6 @@ export const defaultLoginScopes = [
   "artifacts:contribute",
   "offline_access",
 ] as const satisfies readonly (Scope | "offline_access")[];
-export const configDir = () =>
-  process.env.ALLGATHER_CONFIG_DIR ??
-  join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "allgather");
 export function readJson<T>(path: string, fallback: T): T {
   return existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : fallback;
 }
@@ -49,11 +49,15 @@ export function privateJson(path: string, value: unknown) {
   renameSync(temp, path);
   chmodSync(path, 0o600);
 }
+function savedClientUrl() {
+  migrateClientConfig(configDir());
+  return readJson<{ url?: string }>(join(configDir(), "client.json"), {}).url;
+}
 export function baseUrl(value?: string) {
   const input = (
     value ??
     process.env.ALLGATHER_URL ??
-    readJson<{ url?: string }>(join(configDir(), "server.json"), {}).url ??
+    savedClientUrl() ??
     `http://127.0.0.1:${process.env.ALLGATHER_PORT ?? 4390}`
   ).trim();
   if (!input) throw new Error("Supply a hostname or server URL");
@@ -178,7 +182,7 @@ export class Client {
       };
       const credential = { ...old, ...data, expires_at: Date.now() + data.expires_in * 1000 };
       this.saveCredential(credential);
-      privateJson(join(configDir(), "server.json"), { url: this.url });
+      privateJson(join(configDir(), "client.json"), { url: this.url });
       this.credential = credential;
       return credential.access_token;
     } finally {
@@ -275,7 +279,7 @@ export class Client {
         expires_at: Date.now() + token.expires_in * 1000,
       };
       this.saveCredential(credential);
-      privateJson(join(configDir(), "server.json"), { url: this.url });
+      privateJson(join(configDir(), "client.json"), { url: this.url });
       this.credential = credential;
     } finally {
       clearTimeout(timer);

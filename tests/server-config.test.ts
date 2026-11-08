@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { config, dataDirectory } from "../server/config.ts";
 import { readServerConfig, serverConfigCommand } from "../server/server-config.ts";
+import { migrateClientConfig } from "../shared/local-config.ts";
 
 test("server configuration precedence is flags, environment, saved values, then defaults", () => {
   const saved = {
@@ -85,6 +86,34 @@ test("server config writes validate complete changes atomically and never replac
       expect(() => cmd("set", "port", "4390")).toThrow();
       expect(readFileSync(path, "utf8")).toBe(invalid);
     }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("legacy client selection migrates without replacing newer client or server settings", () => {
+  const root = mkdtempSync(join(tmpdir(), "allgather-config-migration-"));
+  const server = join(root, "server.json"),
+    client = join(root, "client.json");
+  try {
+    writeFileSync(server, JSON.stringify({ url: "https://old.example" }));
+    expect(readServerConfig(server)).toBeNull();
+    expect(JSON.parse(readFileSync(client, "utf8"))).toEqual({ url: "https://old.example" });
+    expect(statSync(client).mode & 0o777).toBe(0o600);
+    writeFileSync(client, JSON.stringify({ url: "https://new.example" }));
+    expect(readServerConfig(server)).toBeNull();
+    expect(JSON.parse(readFileSync(client, "utf8"))).toEqual({ url: "https://new.example" });
+    serverConfigCommand(["set", "ownerUrl", "https://owner.example"], server);
+    const before = readFileSync(server, "utf8");
+    migrateClientConfig(root);
+    expect(readFileSync(server, "utf8")).toBe(before);
+    expect(readServerConfig(server)?.ownerUrl).toBe("https://owner.example");
+    expect(JSON.parse(readFileSync(client, "utf8"))).toEqual({ url: "https://new.example" });
+    writeFileSync(
+      server,
+      JSON.stringify({ ownerUrl: "https://owner.example", url: "https://old.example" }),
+    );
+    expect(() => readServerConfig(server)).toThrow();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -199,6 +199,9 @@ test("saved config starts a background server without repeated flags and restart
     ALLGATHER_PORT: undefined,
     ALLGATHER_OWNER_URL: undefined,
   });
+  const clientFile = join(f.root, "config", "server.json");
+  mkdirSync(join(f.root, "config"), { recursive: true });
+  writeFileSync(clientFile, JSON.stringify({ url: "https://client.example" }));
   try {
     await f.command(
       "config",
@@ -216,6 +219,9 @@ test("saved config starts a background server without repeated flags and restart
       "managedSessions",
       "false",
     );
+    expect(JSON.parse(readFileSync(join(f.root, "config", "client.json"), "utf8"))).toEqual({
+      url: "https://client.example",
+    });
     const started = await f.command("start");
     expect(started.state).toBe("running");
     expect(started.settings!.dataDir).toBe(f.state);
@@ -229,6 +235,10 @@ test("saved config starts a background server without repeated flags and restart
     expect(show.effective.managedSessions).toBe(false);
     await f.command("config", "set", "managedSessions", "true");
     expect((await f.command("status")).settings!.managedSessions).toBe(false);
+    writeFileSync(
+      join(f.root, "config", "client.json"),
+      JSON.stringify({ url: "https://other-client.example" }),
+    );
     const restarted = await f.command("restart");
     expect(restarted.instance).not.toBe(started.instance);
     expect(restarted.settings!.managedSessions).toBe(true);

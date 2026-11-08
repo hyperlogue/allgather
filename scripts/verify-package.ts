@@ -157,6 +157,8 @@ try {
   if (await server.exited) throw new Error("Foreground server did not stop cleanly");
   if ((await daemonCommand("status")).state !== "stopped")
     throw new Error("Foreground ownership remained");
+  mkdirSync(join(directory, "config"), { recursive: true });
+  writeFileSync(join(directory, "config", "server.json"), JSON.stringify({ url: origin }));
   await daemonCommand(
     "config",
     "set",

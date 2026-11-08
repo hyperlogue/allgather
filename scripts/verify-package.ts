@@ -38,6 +38,7 @@ const daemonCommand = async (...args: string[]) => {
   ]);
   if (code) throw new Error(err);
   return JSON.parse(out) as {
+    gateways?: import("../server/gateways.ts").GatewayStatus[];
     state?: string;
     instance?: string;
     saved?: boolean;
@@ -172,9 +173,34 @@ try {
     "http://127.0.0.1:0",
     "mcpPort",
     "0",
+    "gateways",
+    JSON.stringify([
+      {
+        name: "fixture",
+        command: [process.execPath, "--no-env-file", "-e", "setInterval(()=>{},1000)"],
+      },
+    ]),
   );
+  const waitForGateway = async () => {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const row = (await daemonCommand("status")).gateways?.[0];
+      if (row?.state === "running" && row.pid) return row.pid;
+      await Bun.sleep(50);
+    }
+    throw new Error("Packaged gateway did not start");
+  };
+  const assertStopped = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
+      throw error;
+    }
+    throw new Error("Packaged gateway survived shutdown");
+  };
   const started = await daemonCommand("start");
   if (started.state !== "running") throw new Error("Packaged background server did not start");
+  const firstGateway = await waitForGateway();
   if (
     !started.settings.mcpUrl ||
     (await fetch(started.settings.mcpUrl + "/api/session")).status !== 404
@@ -193,6 +219,9 @@ try {
     started.settings.mcpUrl!,
   );
   const restarted = await daemonCommand("restart");
+  assertStopped(firstGateway);
+  const replacementGateway = await waitForGateway();
+  if (firstGateway === replacementGateway) throw new Error("Gateway was not replaced on restart");
   if (JSON.stringify(restarted.settings) !== JSON.stringify(started.settings))
     throw new Error("Packaged restart changed listener settings");
   if (restarted.state !== "running" || restarted.instance === started.instance)
@@ -211,6 +240,7 @@ try {
   )
     throw new Error("Packaged ZIP restore failed");
   if ((await daemonCommand("stop")).state !== "stopped") throw new Error("Packaged stop failed");
+  assertStopped(replacementGateway);
   console.log(
     "Standalone packages passed: HTTP client, offline guide, foreground/background lifecycle, restart, local backup, embedded browser assets, OAuth document, task workflow, artifact capture, and source rendering.",
   );

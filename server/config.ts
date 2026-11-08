@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { type GatewayConfig, gatewayListSchema } from "./gateway-config.ts";
 import { defaultPrivateNetworks, networks } from "./network.ts";
 
 export interface Config {
@@ -15,6 +16,7 @@ export interface Config {
   privateNetworks: string[];
   gitSyncSeconds: number;
   managedSessions: boolean;
+  gateways: GatewayConfig[];
 }
 function portNumber(value: number, name: string) {
   if (!Number.isInteger(value) || value < 0 || value > 65535)
@@ -132,6 +134,12 @@ export function config(
   )
     throw new Error("ALLGATHER_GIT_SYNC_SECONDS must be zero or between 30 and 86400");
   return {
+    gateways: gatewayListSchema.parse(
+      overrides.gateways ??
+        (env.ALLGATHER_GATEWAYS === undefined
+          ? (saved.gateways ?? [])
+          : JSON.parse(env.ALLGATHER_GATEWAYS)),
+    ),
     gitSyncSeconds,
     managedSessions: managed === true || managed === "true",
     dataDir: dataDirectory(overrides.dataDir, saved, env),

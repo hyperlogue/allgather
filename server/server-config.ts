@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { configDir, migrateClientConfig } from "../shared/local-config.ts";
 import { config } from "./config.ts";
+import { gatewayListSchema } from "./gateway-config.ts";
 
 const port = z.number().int().min(0).max(65535);
 const fields = {
@@ -19,6 +20,7 @@ const fields = {
   privateNetworks: z.array(z.string()),
   gitSyncSeconds: z.number().int(),
   managedSessions: z.boolean(),
+  gateways: gatewayListSchema,
 };
 const schema = z.object(fields).partial().strict();
 export type SavedServerConfig = z.infer<typeof schema>;
@@ -37,6 +39,8 @@ export function readServerConfig(path = serverConfigPath()): SavedServerConfig |
   }
   const parsed = schema.parse(JSON.parse(raw));
   if (parsed.dataDir) parsed.dataDir = resolve(dirname(path), parsed.dataDir);
+  for (const gateway of parsed.gateways ?? [])
+    if (gateway.cwd) gateway.cwd = resolve(dirname(path), gateway.cwd);
   return parsed;
 }
 export function serverConfigCommand(args: string[], path = serverConfigPath()) {
@@ -54,7 +58,12 @@ export function serverConfigCommand(args: string[], path = serverConfigPath()) {
       const name = key(values[i]),
         raw = values[i + 1];
       let value: unknown = raw;
-      if (
+      if (name === "gateways")
+        value = gatewayListSchema.parse(JSON.parse(raw)).map((gateway) => ({
+          ...gateway,
+          ...(gateway.cwd ? { cwd: resolve(gateway.cwd) } : {}),
+        }));
+      else if (
         name === "ownerTrustedProxies" ||
         name === "mcpTrustedProxies" ||
         name === "privateNetworks"

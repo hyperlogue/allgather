@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { Auth, secret } from "./auth.ts";
 import { backupWorkspace } from "./backup.ts";
 import type { Config } from "./config.ts";
+import type { GatewayStatus } from "./gateways.ts";
 import type { Workspace } from "./workspace.ts";
 
 interface ControlRecord {
@@ -16,6 +17,7 @@ export interface ServerStatus {
   instance?: string;
   pid?: number;
   settings?: Config;
+  gateways?: GatewayStatus[];
 }
 const recordPath = (directory: string) => join(directory, "server-control.json");
 function record(directory: string): ControlRecord | null {
@@ -84,6 +86,7 @@ export function startLocalControl(
   settings: Config,
   workspace: Workspace,
   shutdown: () => Promise<void>,
+  gatewayStatus: () => GatewayStatus[] = () => [],
 ) {
   const token = secret(),
     instance = secret();
@@ -107,6 +110,7 @@ export function startLocalControl(
           instance,
           pid: process.pid,
           settings,
+          gateways: gatewayStatus(),
         });
       if (stopping) return new Response("Server is stopping", { status: 409 });
       try {

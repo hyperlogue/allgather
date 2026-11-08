@@ -16,6 +16,7 @@ import { Auth } from "./auth.ts";
 import { backupWorkspace } from "./backup.ts";
 import { type Config, config } from "./config.ts";
 import { startLocalControl } from "./control.ts";
+import { Gateways } from "./gateways.ts";
 import { NativeGit } from "./native-git.ts";
 import { listenerRejection, NetworkBoundary } from "./network.ts";
 import { openDatabase } from "./storage.ts";
@@ -45,6 +46,7 @@ export async function startServer(overrides: Partial<Config> = {}) {
   let database: ReturnType<typeof openDatabase> | undefined;
   let upstream: UpstreamSync | undefined;
   let tower: Tower | undefined;
+  let gateways: Gateways | undefined;
   let control: ReturnType<typeof startLocalControl> | undefined;
   let stopHttp: (() => Promise<void>) | undefined;
   try {
@@ -176,6 +178,7 @@ export async function startServer(overrides: Partial<Config> = {}) {
       (closing ??= (async () => {
         control?.beginShutdown();
         workspace.approvals.close();
+        await gateways?.stop();
         await workspace.transcripts.stop();
         await upstream?.stop();
         tower?.stop();
@@ -185,12 +188,15 @@ export async function startServer(overrides: Partial<Config> = {}) {
         await control?.close();
         unlinkSync(lock);
       })());
-    control = startLocalControl(settings, workspace, stop);
+    gateways = new Gateways(settings);
+    control = startLocalControl(settings, workspace, stop, () => gateways!.status());
+    gateways.start();
     console.log(
       `Allgather: ${settings.ownerUrl}\nSign in with a one-time code from: allgather-server auth create-token --data-dir ${settings.dataDir}`,
     );
     return { server, mcpServer, workspace, stop, settings };
   } catch (error) {
+    await gateways?.stop();
     await upstream?.stop();
     tower?.stop();
     await control?.close();

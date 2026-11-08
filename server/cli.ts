@@ -30,8 +30,11 @@ Public MCP (opt in): --mcp-url URL --mcp-port PORT --mcp-bind HOST.
 Network: --owner-trusted-proxies CIDRS --mcp-trusted-proxies CIDRS --private-networks CIDRS (comma separated).
 Execution: --managed-sessions true|false.
 Server config: $ALLGATHER_CONFIG_DIR/server.json or $XDG_CONFIG_HOME/allgather/server.json (default ~/.config/allgather/server.json).
-Keys: dataDir, hostname, port, ownerUrl, mcpUrl, mcpPort, mcpHostname, ownerTrustedProxies, mcpTrustedProxies, privateNetworks, gitSyncSeconds, managedSessions.
+Keys: dataDir, hostname, port, ownerUrl, mcpUrl, mcpPort, mcpHostname, ownerTrustedProxies, mcpTrustedProxies, privateNetworks, gitSyncSeconds, managedSessions, gateways.
 Proxy/network values accept comma-separated CIDRs or a JSON array. Set related keys together atomically. Set mcpUrl to null to disable public MCP.
+Gateways: config set gateways '[{"name":"public","command":["gateway-program","serve"]}]'. Optional cwd and enabled fields. Commands must stay in the foreground; no implicit shell expansion.
+Children receive ALLGATHER_OWNER_BIND/PORT/URL, ALLGATHER_MCP_BIND/PORT/URL (empty port/URL when disabled), ALLGATHER_DATA_DIR and ALLGATHER_GATEWAY_NAME. Default cwd is the data directory.
+Gateway exits restart with 1–30 second backoff; status reports process state, not tunnel reachability. Stop/restart shuts down owned gateway process groups. Logs rotate at 1 MiB with one previous file in DATA_DIR/gateways. Allgather itself still needs a service manager for reboot/crash recovery.
 config show reports saved and effective settings; config get reads a saved override.
 Priority: command flags > environment > saved settings > defaults. Writes save only explicit values; start/restart applies them. dataDir selects the instance.
 Example: allgather-server config set ownerUrl https://owner.example mcpUrl https://mcp.example mcpTrustedProxies 127.0.0.1/32
@@ -43,7 +46,11 @@ Client work uses allgather login <hostname-or-url>, then allgather guide.
 `;
 
 async function stop(directory: string) {
-  const prior = await serverStatus(directory);
+  let prior = await serverStatus(directory);
+  if (prior.state === "unreachable") {
+    await Bun.sleep(250);
+    prior = await serverStatus(directory);
+  }
   if (prior.state === "stopped") return prior;
   if (prior.state === "unreachable")
     throw new Error(
@@ -115,6 +122,7 @@ async function start(settings: Config): Promise<ServerStatus> {
         ...process.env,
         TMPDIR: temporary,
         ALLGATHER_GIT_SYNC_SECONDS: String(settings.gitSyncSeconds),
+        ALLGATHER_GATEWAYS: JSON.stringify(settings.gateways),
       },
     },
   );

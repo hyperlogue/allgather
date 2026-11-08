@@ -7,78 +7,24 @@ import { OWNER } from "../server/auth.ts";
 import { openDatabase, SCHEMA_VERSION } from "../server/storage.ts";
 import { migrateTerminalSessions } from "../server/terminal-migration.ts";
 import { Workspace } from "../server/workspace.ts";
-import type { Machine, TaskContext } from "../shared/contracts.ts";
+import type { Machine } from "../shared/contracts.ts";
 import type { CheckoutObservation } from "../shared/tower-catalog.ts";
 import { fixtureOwner, fullControls } from "./fixtures/tower-controls.ts";
 
-test("upgrading earlier task records preserves intent, original authors, and conflicting hierarchy context", () => {
-  const dir = mkdtempSync(join(tmpdir(), "allgather-task-migration-")),
-    path = join(dir, "data.sqlite");
-  let db = new Database(path);
+test("retired project backfill rejects older populated databases without changing their records", () => {
+  const dir = mkdtempSync(join(tmpdir(), "allgather-retired-upgrade-"));
+  const path = join(dir, "data.sqlite");
+  const db = new Database(path);
   try {
     db.exec(readFileSync(new URL("./fixtures/schema-v1.sql", import.meta.url), "utf8"));
-    const at = "2026-01-01T00:00:00.000Z";
-    db.query("INSERT INTO projects VALUES('project','Example','',1,?)").run(at);
-    const add = (
-      id: string,
-      status: string,
-      kind = "task",
-      parent: string | null = null,
-      epic: string | null = null,
-    ) =>
-      db
-        .query(
-          "INSERT INTO tasks(id,project_id,title,description,kind,status,priority,revision,created_at,updated_at,parent_id,epic_id) VALUES(?,'project',?,'Original intent',?,?,2,3,?,?,?,?)",
-        )
-        .run(id, id, kind, status, at, at, parent, epic);
-    add("epic", "open", "epic");
-    add("other-epic", "open", "epic");
-    add("parent", "in_progress", "task", null, "epic");
-    add("child", "open", "task", "parent", "epic");
-    add("conflict", "open", "task", "parent", "other-epic");
-    add("done", "finished");
-    add("cancelled", "cancelled");
-    db.exec("INSERT INTO dependencies VALUES('child','parent')");
-    db.query(
-      "INSERT INTO events(project_id,task_id,action,actor,at,payload) VALUES('project','child','task.note','earlier-connection',?,?)",
-    ).run(at, JSON.stringify({ note: "Keep this original note" }));
-    db.query(
-      "INSERT INTO events(project_id,task_id,action,actor,at,payload) VALUES('project','done','task.finish','earlier-connection',?,?)",
-    ).run(at, JSON.stringify({ summary: "Original completion summary" }));
-    db.close();
-    db = openDatabase(path);
-    let w = new Workspace(db);
-    expect(w.task("parent").status).toBe("open");
-    expect(w.task("child").blocked).toBe(true);
-    expect(w.task("epic").status).toBe("open");
-    expect(w.task("done").status).toBe("done");
-    expect(w.task("cancelled").status).toBe("cancelled");
-    expect(w.task("child").body).toBe("Original intent");
-    expect(w.task("child").revision).toBe(3);
-    expect(w.task("child").parent_id).toBe("parent");
-    expect(w.task("conflict").body).toContain("other-epic");
-    expect(
-      w.graph
-        .relations("conflict")
-        .some((r) => r.type === "relates_to" && r.target_id === "other-epic"),
-    ).toBe(true);
-    const context = w.execute("tasks_context", { task_id: "child" }, OWNER) as TaskContext;
-    expect(context.comments.items[0]).toMatchObject({
-      body: "Keep this original note",
-      operator_name: "earlier-connection",
-      operator_kind: "unknown",
-      operator_id: null,
-      legacy_event_id: 1,
-    });
-    expect(w.all("SELECT * FROM audit_operations")).toEqual([]);
-    db.close();
-    db = openDatabase(path);
-    w = new Workspace(db);
-    expect(w.all("SELECT * FROM task_comments")).toHaveLength(2);
-    expect((db.query("PRAGMA user_version").get() as { user_version: number }).user_version).toBe(
-      SCHEMA_VERSION,
+    db.query("INSERT INTO projects VALUES('project','Example','',1,?)").run("2026-01-01");
+    const before = db.query("SELECT * FROM projects").all();
+    expect(() => openDatabase(path)).toThrow("project slug backfill has been retired");
+    expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 1 });
+    expect(db.query("SELECT * FROM projects").all()).toEqual(before);
+    expect(db.query("PRAGMA table_info(projects)").all()).not.toContainEqual(
+      expect.objectContaining({ name: "slug" }),
     );
-    expect(w.task("conflict").parent_id).toBe("parent");
   } finally {
     db.close();
     rmSync(dir, { recursive: true, force: true });
@@ -92,7 +38,8 @@ test("version 15 repository memberships migrate without inventing project prefix
   try {
     db.exec(`
       PRAGMA foreign_keys=ON;
-      CREATE TABLE projects(id TEXT PRIMARY KEY,name TEXT);
+      CREATE TABLE projects(id TEXT PRIMARY KEY,name TEXT,created_at TEXT,slug TEXT,task_sequence INTEGER DEFAULT 0);
+      CREATE TABLE tasks(id TEXT PRIMARY KEY,project_id TEXT,created_at TEXT);
       CREATE TABLE repositories(id TEXT PRIMARY KEY,name TEXT,upstream_url TEXT,url_aliases TEXT);
       CREATE TABLE machines(id TEXT PRIMARY KEY);
       CREATE TABLE tower_credentials(id TEXT PRIMARY KEY,revoked_at TEXT);
@@ -101,7 +48,7 @@ test("version 15 repository memberships migrate without inventing project prefix
       CREATE TABLE session_commands(runtime_id TEXT,state TEXT,payload TEXT,result TEXT,updated_at TEXT);
       CREATE TABLE runtime_takeovers(id TEXT);
       CREATE TABLE project_repositories(project_id TEXT NOT NULL REFERENCES projects(id),repository_id TEXT NOT NULL REFERENCES repositories(id),PRIMARY KEY(project_id,repository_id));
-      INSERT INTO projects VALUES('one','One'),('two','Two');
+      INSERT INTO projects(id,name,created_at,slug) VALUES('one','One','2026-01-01','ONE'),('two','Two','2026-01-01','TWO');
       INSERT INTO repositories VALUES('shared','Shared',NULL,'[]');
       INSERT INTO project_repositories VALUES('one','shared'),('two','shared');
       PRAGMA user_version=15;

@@ -159,7 +159,11 @@ export class Tasks {
   }
   private create(a: Input): Task {
     const project = this.w.project(String(a.project_id)),
-      id = uid("ag");
+      sequence = this.w.one<{ task_sequence: number }>(
+        "UPDATE projects SET task_sequence=task_sequence+1 WHERE id=? RETURNING task_sequence",
+        project.id,
+      )!.task_sequence,
+      id = `${project.slug}-${sequence}`;
     this.assignment(a.assignee as Assignment | null);
     this.w.run(
       "INSERT INTO tasks(id,project_id,title,body,labels,defer_until,assignee,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",

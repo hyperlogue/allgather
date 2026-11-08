@@ -108,6 +108,7 @@ try {
   await b.evaluate(`document.querySelector('[aria-label="New project"]').click()`);
   await b.until(`!!document.querySelector('dialog[open] input')`);
   await fill("dialog input", "Example project");
+  await field("Slug", "EX", "dialog");
   await click("Create project");
   await b.until(
     `!document.querySelector('dialog')&&document.querySelector('h1')?.textContent==='Example project'`,
@@ -121,6 +122,12 @@ try {
   await b.until(
     `!document.querySelector('dialog') && document.querySelector('.task-detail h2')?.textContent==='Verify interrupted imports'`,
   );
+  if (
+    running.workspace.one<{ id: string }>(
+      "SELECT id FROM tasks WHERE title='Verify interrupted imports'",
+    )?.id !== "EX-1"
+  )
+    throw new Error("Task ID did not use the configured project slug");
   const taskForContext = running.workspace.one<{ id: string }>(
     "SELECT id FROM tasks WHERE title='Verify interrupted imports'",
   )!;

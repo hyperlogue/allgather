@@ -17,7 +17,7 @@ export const HELP = `allgather — one work record for tasks, sessions, and evid
 
   guide
   login [HOSTNAME_OR_URL]
-  project list | create --name NAME [--body TEXT] | show ID | update ID
+  project list | create --name NAME [--slug CL] [--body TEXT] | show ID | update ID
   task create --project ID --title TEXT [--body TEXT] [--parent ID]
   task search [QUERY] [--project ID] [--status open|done|cancelled]
   task ready [--assignee owner|session:ID|role:ID | --unassigned]

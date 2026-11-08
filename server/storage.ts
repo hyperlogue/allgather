@@ -24,7 +24,7 @@ import { migrateTerminalSessions } from "./terminal-migration.ts";
 import { migrateTower } from "./tower-migration.ts";
 import { migrateTranscriptContent } from "./transcript-migration.ts";
 
-export const SCHEMA_VERSION = 30;
+export const SCHEMA_VERSION = 36;
 export function writeDatabaseSnapshot(db: Database, path: string) {
   writeFileSync(path, "", { mode: 0o600, flag: "wx" });
   db.query("VACUUM INTO ?").run(path);
@@ -48,6 +48,22 @@ export function openDatabase(path: string) {
   if (version > SCHEMA_VERSION) {
     db.close();
     throw new AppError("newer_database", "This database needs a newer allgather release.");
+  }
+  const hasProjectSlug = db
+    .query<{ name: string }, []>("PRAGMA table_info(projects)")
+    .all()
+    .some((column) => column.name === "slug");
+  if (
+    version > 0 &&
+    version < 36 &&
+    !hasProjectSlug &&
+    db.query("SELECT 1 FROM projects LIMIT 1").get()
+  ) {
+    db.close();
+    throw new AppError(
+      "project_slug_upgrade_required",
+      "Upgrade this database with the previous build before opening it here; the project slug backfill has been retired.",
+    );
   }
   if (version > 0 && version < SCHEMA_VERSION && path !== ":memory:") {
     const backup = `${path}.before-v${version}-${Date.now()}.sqlite`;
@@ -200,6 +216,18 @@ export function openDatabase(path: string) {
   if (version < 28) migrateGraphTombstones(db);
   if (version < 29) migrateTranscriptContent(db);
   if (version < 30) migrateMcpPairings(db);
+  if (version < 36)
+    db.transaction(() => {
+      if (!hasProjectSlug)
+        db.exec(`
+        ALTER TABLE projects ADD COLUMN slug TEXT;
+        ALTER TABLE projects ADD COLUMN task_sequence INTEGER NOT NULL DEFAULT 0;
+        CREATE UNIQUE INDEX project_slug_unique ON projects(slug);
+        CREATE TRIGGER project_slug_required BEFORE INSERT ON projects WHEN NEW.slug IS NULL OR length(NEW.slug) NOT BETWEEN 1 AND 16 OR NEW.slug GLOB '*[^A-Z0-9]*' OR NEW.slug NOT GLOB '[A-Z]*' BEGIN SELECT RAISE(ABORT,'Invalid project slug'); END;
+        CREATE TRIGGER project_slug_immutable BEFORE UPDATE OF slug ON projects WHEN NEW.slug IS NOT OLD.slug BEGIN SELECT RAISE(ABORT,'Project slug is immutable'); END;
+      `);
+      db.exec("PRAGMA user_version=36");
+    }).immediate();
   return db;
 }
 export function setting(db: Database, key: string) {

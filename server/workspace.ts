@@ -20,6 +20,7 @@ import { BlobStore, hashBytes } from "./blobs.ts";
 import { Executions } from "./executions.ts";
 import { Graph } from "./graph.ts";
 import { History } from "./history.ts";
+import { availableProjectSlug } from "./project-slugs.ts";
 import { Sessions } from "./sessions.ts";
 import { Tasks } from "./tasks.ts";
 import { Transcripts } from "./transcripts.ts";
@@ -90,7 +91,7 @@ export class Workspace {
   }
   project(id: string) {
     const project = this.one<Project>(
-      "SELECT id,name,body,revision,created_at FROM projects WHERE id=? OR name=?",
+      "SELECT id,name,slug,body,revision,created_at FROM projects WHERE id=? OR name=?",
       id,
       id,
     );
@@ -386,7 +387,7 @@ export class Workspace {
       return this.history.read(name, a, principal);
     if (name === "projects_list")
       return this.all<Project>(
-        "SELECT id,name,body,revision,created_at FROM projects ORDER BY name,id",
+        "SELECT id,name,slug,body,revision,created_at FROM projects ORDER BY name,id",
       ).filter((project) => this.access.project(project.id));
     if (name === "projects_get") return this.project(a.project_id as string);
     if (name.startsWith("roles_") || name.startsWith("sessions_"))
@@ -410,10 +411,14 @@ export class Workspace {
       if (this.one("SELECT 1 FROM projects WHERE name=?", a.name as string))
         throw new AppError("name_conflict", "A project with this name exists", 409);
       const id = uid("prj");
+      const slug = (a.slug as string | undefined) ?? availableProjectSlug(this.db, String(a.name));
+      if (this.one("SELECT 1 FROM projects WHERE slug=?", slug))
+        throw new AppError("slug_conflict", "A project with this slug exists", 409);
       this.run(
-        "INSERT INTO projects(id,name,description,body,created_at) VALUES(?,?,'',?,?)",
+        "INSERT INTO projects(id,name,slug,description,body,created_at) VALUES(?,?,?,'',?,?)",
         id,
         a.name as string,
+        slug,
         a.body as string,
         this.now(),
       );

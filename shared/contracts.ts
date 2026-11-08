@@ -122,6 +122,7 @@ export interface EpicProgress {
 }
 export interface Project {
   id: string;
+  slug: string;
   name: string;
   body: string;
   revision: number;
@@ -821,13 +822,29 @@ export const operations = {
   projects_list: spec(z.object({}), "projects:read", "List projects."),
   projects_get: spec(z.object({ project_id: id }), "projects:read", "Read a project."),
   projects_create: spec(
-    z.object({ ...key, name: text, body: note.default("") }),
+    z.object({
+      ...key,
+      name: text,
+      slug: z
+        .string()
+        .trim()
+        .toUpperCase()
+        .regex(/^[A-Z][A-Z0-9]{0,15}$/)
+        .optional(),
+      body: note.default(""),
+    }),
     "projects:write",
     "Create a project.",
     true,
   ),
   projects_update: spec(
-    z.object({ ...revision, project_id: id, name: text.optional(), body: note.optional() }),
+    z.object({
+      ...revision,
+      project_id: id,
+      slug: z.never().optional(),
+      name: text.optional(),
+      body: note.optional(),
+    }),
     "projects:write",
     "Update a project with a revision guard.",
     true,

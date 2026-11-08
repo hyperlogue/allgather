@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { Project } from "../shared/contracts.ts";
+import { suggestedProjectSlug } from "../shared/project-slug.ts";
 import { Activity } from "./activity.tsx";
 import { call, mutation, request } from "./api.ts";
 import { ApprovalsView, useApprovals } from "./approvals.tsx";
@@ -80,6 +81,7 @@ function Login({ done }: { done: () => void }) {
 }
 function NewProject({ close, created }: { close: () => void; created: (p: Project) => void }) {
   const [name, setName] = useState("");
+  const [slug, setSlug] = useState<string | null>(null);
   const { busy, error, run } = useAction();
   return (
     <Dialog title="New project" close={close}>
@@ -87,7 +89,11 @@ function NewProject({ close, created }: { close: () => void; created: (p: Projec
         onSubmit={(e) => {
           e.preventDefault();
           void run(async () => {
-            const p = await call<Project>("projects_create", { name, ...mutation() });
+            const p = await call<Project>("projects_create", {
+              name,
+              slug: slug ?? suggestedProjectSlug(name),
+              ...mutation(),
+            });
             created(p);
             close();
           });
@@ -97,6 +103,20 @@ function NewProject({ close, created }: { close: () => void; created: (p: Projec
           Name
           <input required maxLength={300} value={name} onChange={(e) => setName(e.target.value)} />
         </label>
+        <label>
+          Slug
+          <input
+            required
+            maxLength={16}
+            pattern="[A-Z][A-Z0-9]*"
+            value={slug ?? suggestedProjectSlug(name)}
+            onChange={(e) => setSlug(e.target.value.toUpperCase())}
+          />
+        </label>
+        <p className="muted small">
+          Task IDs start at {slug ?? suggestedProjectSlug(name)}-1. The slug cannot change after
+          creation.
+        </p>
         <ErrorText>{error}</ErrorText>
         <div className="actions">
           <button type="button" onClick={close}>

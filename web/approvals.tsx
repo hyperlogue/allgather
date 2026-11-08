@@ -119,7 +119,7 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
     <div className="approvals">
       <h1>Request approvals</h1>
       <p>
-        Review one exact request. Approval admits work to Allgather; it does not mean the coding
+        Review one exact request. Approval admits work to AllGather; it does not mean the coding
         agent has completed it.
       </p>
       <ErrorText>{loadError || error}</ErrorText>
@@ -246,7 +246,7 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
                 </button>
                 <button
                   type="button"
-                  className="primary"
+                  className="primary success"
                   disabled={busy || !reviewable}
                   onClick={() => decide("approve")}
                 >

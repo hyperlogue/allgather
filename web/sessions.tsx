@@ -16,7 +16,7 @@ import { call, mutation, request } from "./api.ts";
 import { ContextLink } from "./context.tsx";
 import { TowerPairing } from "./tower-enrollment.tsx";
 import { TranscriptStorage } from "./transcript-storage.tsx";
-import { Dialog, ErrorText, useAction } from "./ui.tsx";
+import { Dialog, ErrorText, FeaturePlaceholder, PageHeading, useAction } from "./ui.tsx";
 
 type Data = Record<string, unknown>;
 const managedAvailable = (machine: Machine | null | undefined) =>
@@ -482,320 +482,336 @@ function SessionDetail({
       : ["ended", "error"].includes(runtime.state));
   return (
     <section className="session-detail">
-      <div className="section-line">
-        <div>
-          <h2>{session.label ?? session.id}</h2>
-          <ContextLink id={session.id} />
-          {runtime && (
+      <div className="session-detail-main">
+        <div className="section-line">
+          <div>
+            <h2>{session.label ?? session.id}</h2>
+            <ContextLink id={session.id} />
+            {runtime && (
+              <p className="muted small">
+                {machines.find((m) => m.id === runtime.machine_id)?.name ?? runtime.machine_id} ·{" "}
+                {runtime.cwd}
+              </p>
+            )}
+            {runtime?.checkout_id && (
+              <p className="muted small session-checkout">
+                Checkout <code>{runtime.checkout_id}</code> ·{" "}
+                {checkout ? (
+                  <>
+                    {checkout.path}
+                    {!checkout.present
+                      ? " · Removed"
+                      : !checkout.available
+                        ? " · Unavailable"
+                        : !checkout.connected
+                          ? " · Observation stale"
+                          : ""}
+                  </>
+                ) : (
+                  "Awaiting checkout observation"
+                )}
+              </p>
+            )}
             <p className="muted small">
-              {machines.find((m) => m.id === runtime.machine_id)?.name ?? runtime.machine_id} ·{" "}
-              {runtime.cwd}
+              {session.agent_type} ·{" "}
+              {runtime
+                ? `${runtime.state}${runtime.connected ? "" : " · disconnected"}`
+                : "Stored history"}
             </p>
-          )}
-          {runtime?.checkout_id && (
-            <p className="muted small session-checkout">
-              Checkout <code>{runtime.checkout_id}</code> ·{" "}
-              {checkout ? (
-                <>
-                  {checkout.path}
-                  {!checkout.present
-                    ? " · Removed"
-                    : !checkout.available
-                      ? " · Unavailable"
-                      : !checkout.connected
-                        ? " · Observation stale"
-                        : ""}
-                </>
-              ) : (
-                "Awaiting checkout observation"
-              )}
-            </p>
-          )}
-          <p className="muted small">
-            {session.agent_type} ·{" "}
-            {runtime
-              ? `${runtime.state}${runtime.connected ? "" : " · disconnected"}`
-              : "Stored history"}
-          </p>
-        </div>
-        {runtime &&
-          controls?.cancel_mode &&
-          !runtime.stop_requested &&
-          !["ended", "error"].includes(runtime.state) && (
+          </div>
+          {runtime &&
+            controls?.cancel_mode &&
+            !runtime.stop_requested &&
+            !["ended", "error"].includes(runtime.state) && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await call("session_cancel", { target_session_id: session.id, ...mutation() });
+                    changed();
+                  })
+                }
+              >
+                {controls.cancel_mode === "runtime"
+                  ? "Stop runtime and queued work"
+                  : "Stop queued and current work"}
+              </button>
+            )}
+          {canResume && runtime && (
             <button
               type="button"
               disabled={busy}
               onClick={() =>
                 void run(async () => {
-                  await call("session_cancel", { target_session_id: session.id, ...mutation() });
+                  await call("session_resume", {
+                    target_session_id: session.id,
+                    machine_id: runtime.machine_id,
+                    cwd: runtime.cwd,
+                    ...(forceResume ? { force: true } : {}),
+                    ...mutation(),
+                  });
                   changed();
                 })
               }
             >
-              {controls.cancel_mode === "runtime"
-                ? "Stop runtime and queued work"
-                : "Stop queued and current work"}
+              {forceResume ? "Clean up and resume" : "Resume session"}
             </button>
           )}
-        {canResume && runtime && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() =>
-              void run(async () => {
-                await call("session_resume", {
-                  target_session_id: session.id,
-                  machine_id: runtime.machine_id,
-                  cwd: runtime.cwd,
-                  ...(forceResume ? { force: true } : {}),
-                  ...mutation(),
-                });
-                changed();
-              })
-            }
-          >
-            {forceResume ? "Clean up and resume" : "Resume session"}
-          </button>
-        )}
-      </div>
-      <ErrorText>{error || actionError}</ErrorText>
-      {canResume && forceResume && (
-        <p className="notice">
-          Clean up and resume stops the previous execution before starting a replacement. Current
-          work is interrupted; stored conversation history is retained.
-        </p>
-      )}
-      {controls?.cancel_mode === "runtime" &&
-        !["ended", "error"].includes(runtime?.state ?? "") && (
+        </div>
+        <ErrorText>{error || actionError}</ErrorText>
+        {canResume && forceResume && (
           <p className="notice">
-            {runtime?.stop_requested
-              ? "Stopping this runtime. New work is blocked until termination is confirmed."
-              : runtime?.protocol === "terminal"
-                ? "Stopping this terminal ends its runtime. Remote resume is not supported."
-                : "Stopping this agent ends its runtime. Continuing requires an explicit resume; Allgather will not restart it automatically."}
+            Clean up and resume stops the previous execution before starting a replacement. Current
+            work is interrupted; stored conversation history is retained.
           </p>
         )}
-      {runtime &&
-        controls &&
-        (!controls.capabilities.includes("permission_reply") ||
-          !controls.capabilities.includes("configure")) && (
-          <p className="muted small">
-            {!controls.capabilities.includes("permission_reply") &&
-              "Live permission replies are unavailable for this execution. "}
-            {!controls.capabilities.includes("configure") &&
-              "Live configuration changes are unavailable."}
-          </p>
-        )}
-      {runtime?.protocol === "terminal" && (
-        <p className="notice">
-          This is a terminal session. Allgather stores lifecycle metadata, not terminal output.
-          Prompts, permission replies, configuration, and resume are unavailable.
-          {runtime.tower_session_id && (
-            <>
-              <br />
-              On {machine?.name ?? "the development machine"}:{" "}
-              <code>tower-cli attach {runtime.tower_session_id}</code>
-            </>
+        {controls?.cancel_mode === "runtime" &&
+          !["ended", "error"].includes(runtime?.state ?? "") && (
+            <p className="notice">
+              {runtime?.stop_requested
+                ? "Stopping this runtime. New work is blocked until termination is confirmed."
+                : runtime?.protocol === "terminal"
+                  ? "Stopping this terminal ends its runtime. Remote resume is not supported."
+                  : "Stopping this agent ends its runtime. Continuing requires an explicit resume; AllGather will not restart it automatically."}
+            </p>
           )}
-        </p>
-      )}
-      {runtime?.fenced && runtime.termination === "unknown" && (
-        <p className="notice">
-          Contact with this execution was lost. Its process may still run. Controls are disabled,
-          {runtime.protocol === "terminal"
-            ? " Inspect or stop the terminal with Tower; remote replacement is unavailable."
-            : " and force resume must confirm cleanup before starting a replacement."}
-        </p>
-      )}
-      <div className="session-coverage">
-        {sources.length ? (
-          sources.map((s) => (
-            <small key={String(s.id)}>
-              {String(s.kind).replaceAll("_", " ")} · {String(s.coverage)} coverage
-            </small>
-          ))
-        ) : (
-          <small>No transcript events recorded yet.</small>
-        )}
-      </div>
-      {requests
-        .filter((q) => q.state === "pending")
-        .map((q) => (
-          <RequestCard
-            key={q.id}
-            item={q}
-            live={
-              live &&
-              !runtime?.stop_requested &&
-              !!controls?.capabilities.includes(
-                q.kind === "permission" ? "permission_reply" : "elicitation_reply",
-              ) &&
-              q.runtime_generation === runtime?.generation
-            }
-            send={async (response) => {
-              await call("session_reply", {
-                request_id: q.id,
-                expected_revision: q.revision,
-                response,
-                ...mutation(),
-              });
-              changed();
-            }}
-          />
-        ))}
-      <TranscriptStorage sessionId={session.id} changed={changed} />
-      <section className="transcript" aria-label="Session transcript">
-        {rendered.map((row) => (
-          <article className="transcript-message" key={row.key}>
-            <strong>{row.role}</strong>
-            <small>{new Date(row.at).toLocaleString()}</small>
-            <div className="message-content">
-              <Content value={row.content} />
-            </div>
-            {row.detail !== undefined && (
-              <details>
-                <summary>Details</summary>
-                <pre>{JSON.stringify(row.detail, null, 2)}</pre>
-              </details>
+        {runtime &&
+          controls &&
+          (!controls.capabilities.includes("permission_reply") ||
+            !controls.capabilities.includes("configure")) && (
+            <p className="muted small">
+              {!controls.capabilities.includes("permission_reply") &&
+                "Live permission replies are unavailable for this execution. "}
+              {!controls.capabilities.includes("configure") &&
+                "Live configuration changes are unavailable."}
+            </p>
+          )}
+        {runtime?.protocol === "terminal" && (
+          <p className="notice">
+            This is a terminal session. AllGather stores lifecycle metadata, not terminal output.
+            Prompts, permission replies, configuration, and resume are unavailable.
+            {runtime.tower_session_id && (
+              <>
+                <br />
+                On {machine?.name ?? "the development machine"}:{" "}
+                <code>tower-cli attach {runtime.tower_session_id}</code>
+              </>
             )}
-          </article>
-        ))}
-        {hasMore && (
-          <button type="button" onClick={() => setBatch((b) => b + 1)}>
-            Load more history
-          </button>
+          </p>
         )}
-      </section>
-      {runtime &&
-        canPrompt &&
-        (runtime.acp_session_id || runtime.native_session_id) &&
-        !runtime.fenced &&
-        runtime.state !== "starting" &&
-        !["ended", "error"].includes(runtime.state) && (
-          <form
-            className="session-composer"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void run(async () => {
-                await call("session_prompt", {
-                  target_session_id: session.id,
-                  content: [
-                    { type: "text", text: prompt },
-                    ...assets.map((a) => ({
-                      type: String(a.media_type).startsWith("image/") ? "image" : "resource_link",
-                      asset_id: a.id,
-                      mimeType: a.media_type,
-                      name: a.name,
-                    })),
-                  ],
+        {runtime?.fenced && runtime.termination === "unknown" && (
+          <p className="notice">
+            Contact with this execution was lost. Its process may still run. Controls are disabled,
+            {runtime.protocol === "terminal"
+              ? " Inspect or stop the terminal with Tower; remote replacement is unavailable."
+              : " and force resume must confirm cleanup before starting a replacement."}
+          </p>
+        )}
+        <div className="session-coverage">
+          {sources.length ? (
+            sources.map((s) => (
+              <small key={String(s.id)}>
+                {String(s.kind).replaceAll("_", " ")} · {String(s.coverage)} coverage
+              </small>
+            ))
+          ) : (
+            <small>No transcript events recorded yet.</small>
+          )}
+        </div>
+        {requests
+          .filter((q) => q.state === "pending")
+          .map((q) => (
+            <RequestCard
+              key={q.id}
+              item={q}
+              live={
+                live &&
+                !runtime?.stop_requested &&
+                !!controls?.capabilities.includes(
+                  q.kind === "permission" ? "permission_reply" : "elicitation_reply",
+                ) &&
+                q.runtime_generation === runtime?.generation
+              }
+              send={async (response) => {
+                await call("session_reply", {
+                  request_id: q.id,
+                  expected_revision: q.revision,
+                  response,
                   ...mutation(),
                 });
-                setPrompt("");
-                sessionStorage.removeItem("prompt:" + session.id);
-                setAssets([]);
                 changed();
-              });
-            }}
-          >
-            <label>
-              Message
-              <textarea
-                rows={4}
-                required={!assets.length}
-                value={prompt}
-                onChange={(e) => {
-                  setPrompt(e.target.value);
-                  sessionStorage.setItem("prompt:" + session.id, e.target.value);
-                }}
-                placeholder={
-                  runtime.connected
-                    ? "Ask the agent to continue…"
-                    : "Your message will wait for reconnection."
-                }
-              />
-            </label>
-            <div className="heading-actions">
-              <label className="file-control">
-                Attach file
-                <input
-                  type="file"
-                  disabled={
-                    busy ||
-                    !controls?.capabilities.some((c) =>
-                      ["image_input", "resource_input"].includes(c),
-                    )
-                  }
+              }}
+            />
+          ))}
+        <TranscriptStorage sessionId={session.id} changed={changed} />
+        <section className="transcript" aria-label="Session transcript">
+          {rendered.map((row) => (
+            <article className="transcript-message" key={row.key} data-role={row.role}>
+              <strong>{row.role}</strong>
+              <small>{new Date(row.at).toLocaleString()}</small>
+              <div className="message-content">
+                <Content value={row.content} />
+              </div>
+              {row.detail !== undefined && (
+                <details>
+                  <summary>Details</summary>
+                  <pre>{JSON.stringify(row.detail, null, 2)}</pre>
+                </details>
+              )}
+            </article>
+          ))}
+          {hasMore && (
+            <button type="button" onClick={() => setBatch((b) => b + 1)}>
+              Load more history
+            </button>
+          )}
+        </section>
+        {runtime &&
+          canPrompt &&
+          (runtime.acp_session_id || runtime.native_session_id) &&
+          !runtime.fenced &&
+          runtime.state !== "starting" &&
+          !["ended", "error"].includes(runtime.state) && (
+            <form
+              className="session-composer"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void run(async () => {
+                  await call("session_prompt", {
+                    target_session_id: session.id,
+                    content: [
+                      { type: "text", text: prompt },
+                      ...assets.map((a) => ({
+                        type: String(a.media_type).startsWith("image/") ? "image" : "resource_link",
+                        asset_id: a.id,
+                        mimeType: a.media_type,
+                        name: a.name,
+                      })),
+                    ],
+                    ...mutation(),
+                  });
+                  setPrompt("");
+                  sessionStorage.removeItem("prompt:" + session.id);
+                  setAssets([]);
+                  changed();
+                });
+              }}
+            >
+              <label>
+                Message
+                <textarea
+                  rows={4}
+                  required={!assets.length}
+                  value={prompt}
                   onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    void run(async () => {
-                      if (file.size > 20 * 1024 * 1024)
-                        throw new Error("Files must be at most 20 MiB");
-                      if (
-                        !controls?.capabilities.includes(
-                          file.type.startsWith("image/") ? "image_input" : "resource_input",
-                        )
-                      )
-                        throw new Error("This agent does not support that attachment type");
-                      const bytes = new Uint8Array(await file.arrayBuffer());
-                      let binary = "";
-                      for (let i = 0; i < bytes.length; i += 8192)
-                        binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
-                      const asset = await call<Data>("session_assets_add", {
-                        target_session_id: session.id,
-                        name: file.name,
-                        media_type: file.type || "application/octet-stream",
-                        data: btoa(binary),
-                        ...mutation(),
-                      });
-                      setAssets((old) => [...old, asset]);
-                    });
+                    setPrompt(e.target.value);
+                    sessionStorage.setItem("prompt:" + session.id, e.target.value);
                   }}
+                  placeholder={
+                    runtime.connected
+                      ? "Ask the agent to continue…"
+                      : "Your message will wait for reconnection."
+                  }
                 />
               </label>
-              {assets.map((a) => (
-                <small key={String(a.id)}>{String(a.name)}</small>
-              ))}
-              <button
-                type="submit"
-                className="primary"
-                disabled={busy || (!prompt.trim() && !assets.length)}
-              >
-                Send
-              </button>
-            </div>
-          </form>
+              <div className="heading-actions">
+                <label className="file-control">
+                  Attach file
+                  <input
+                    type="file"
+                    disabled={
+                      busy ||
+                      !controls?.capabilities.some((c) =>
+                        ["image_input", "resource_input"].includes(c),
+                      )
+                    }
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      void run(async () => {
+                        if (file.size > 20 * 1024 * 1024)
+                          throw new Error("Files must be at most 20 MiB");
+                        if (
+                          !controls?.capabilities.includes(
+                            file.type.startsWith("image/") ? "image_input" : "resource_input",
+                          )
+                        )
+                          throw new Error("This agent does not support that attachment type");
+                        const bytes = new Uint8Array(await file.arrayBuffer());
+                        let binary = "";
+                        for (let i = 0; i < bytes.length; i += 8192)
+                          binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+                        const asset = await call<Data>("session_assets_add", {
+                          target_session_id: session.id,
+                          name: file.name,
+                          media_type: file.type || "application/octet-stream",
+                          data: btoa(binary),
+                          ...mutation(),
+                        });
+                        setAssets((old) => [...old, asset]);
+                      });
+                    }}
+                  />
+                </label>
+                {assets.map((a) => (
+                  <small key={String(a.id)}>{String(a.name)}</small>
+                ))}
+                <button
+                  type="submit"
+                  className="primary"
+                  disabled={busy || (!prompt.trim() && !assets.length)}
+                >
+                  Send
+                </button>
+              </div>
+            </form>
+          )}
+        <details className="detail-section">
+          <summary>Command delivery</summary>
+          {commands.map((c) => {
+            const receipt = c.result as {
+              state?: string;
+              acceptance?: { level: string };
+              dispatch?: { state: string };
+            } | null;
+            return (
+              <div className="command-row" key={c.id}>
+                <strong>
+                  {c.kind} · {c.state}
+                </strong>
+                {receipt?.acceptance && (
+                  <p>
+                    Accepted by the {receipt.acceptance.level}. Dispatch:{" "}
+                    {receipt.dispatch?.state ?? "unknown"}. Turn completion is recorded separately.
+                  </p>
+                )}
+                {c.state === "unknown" && (
+                  <p className="notice">
+                    Acceptance is unknown. AllGather will query Tower’s receipt and will not resend
+                    this command automatically.
+                  </p>
+                )}
+                {c.result !== null && <pre>{JSON.stringify(c.result, null, 2)}</pre>}
+              </div>
+            );
+          })}
+        </details>
+      </div>
+      <aside className="session-insights" aria-label="Session insights">
+        <FeaturePlaceholder title="Files changed">
+          A live file-change summary is not collected yet. Recorded tool events remain in the
+          transcript.
+        </FeaturePlaceholder>
+        <FeaturePlaceholder title="Verification checks">
+          Automatic test and check results are not collected yet.
+        </FeaturePlaceholder>
+        {runtime?.protocol === "terminal" && (
+          <FeaturePlaceholder title="Web terminal">
+            Browser attachment is planned. Use Tower on your development machine to attach.
+          </FeaturePlaceholder>
         )}
-      <details className="detail-section">
-        <summary>Command delivery</summary>
-        {commands.map((c) => {
-          const receipt = c.result as {
-            state?: string;
-            acceptance?: { level: string };
-            dispatch?: { state: string };
-          } | null;
-          return (
-            <div className="command-row" key={c.id}>
-              <strong>
-                {c.kind} · {c.state}
-              </strong>
-              {receipt?.acceptance && (
-                <p>
-                  Accepted by the {receipt.acceptance.level}. Dispatch:{" "}
-                  {receipt.dispatch?.state ?? "unknown"}. Turn completion is recorded separately.
-                </p>
-              )}
-              {c.state === "unknown" && (
-                <p className="notice">
-                  Acceptance is unknown. Allgather will query Tower’s receipt and will not resend
-                  this command automatically.
-                </p>
-              )}
-              {c.result !== null && <pre>{JSON.stringify(c.result, null, 2)}</pre>}
-            </div>
-          );
-        })}
-      </details>
+      </aside>
     </section>
   );
 }
@@ -905,6 +921,15 @@ export function SessionsView({
     [newRole, setNewRole] = useState(""),
     [loadError, setLoadError] = useState(""),
     { busy, error, run } = useAction();
+  useEffect(() => {
+    const url = new URL(location.href),
+      action = url.searchParams.get("action");
+    if (action !== "machines" && action !== "new-session") return;
+    url.searchParams.delete("action");
+    history.replaceState(null, "", url);
+    if (action === "machines") setManage(true);
+    else setLaunch(true);
+  }, []);
   // biome-ignore lint/correctness/useExhaustiveDependencies: Refresh counters reload committed server state.
   useEffect(() => {
     let live = true;
@@ -965,7 +990,7 @@ export function SessionsView({
       launchMode === "terminal" ? chosen?.terminal_controls : chosen?.harness_controls;
   return (
     <>
-      <div className="page-heading">
+      <PageHeading>
         <div>
           <h1>Sessions</h1>
           <p>Read past work and run agents on your development machines.</p>
@@ -979,7 +1004,7 @@ export function SessionsView({
             New session
           </button>
         </div>
-      </div>
+      </PageHeading>
       <ErrorText>{loadError || error}</ErrorText>
       <details className="filter-details">
         <summary>Filter sessions</summary>

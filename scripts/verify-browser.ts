@@ -465,6 +465,7 @@ try {
   );
   await click("Connections");
   await b.until(`document.querySelector('.connections h1')?.textContent==='Agent connections'`);
+  await b.until(`!!document.querySelector('.mcp-pairing input[placeholder="ChatGPT"]')`);
   await field("Connection name", "Approved browser agent", ".mcp-pairing");
   const defaults = await b.evaluate(`(() => {
     const selected = text => Array.from(document.querySelectorAll('.mcp-pairing .permission-choice')).find(e => e.textContent.includes(text))?.querySelector('input')?.checked;

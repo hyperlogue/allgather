@@ -6,14 +6,15 @@ const event = "allgather-theme-change";
 const current = (): Theme =>
   document.documentElement.classList.contains("dark") ? "dark" : "light";
 function apply(theme: Theme) {
+  document.documentElement.dataset.theme = theme;
   document.documentElement.classList.toggle("dark", theme === "dark");
   window.dispatchEvent(new Event(event));
 }
 function restore() {
   try {
-    apply(localStorage.getItem(key) === "dark" ? "dark" : "light");
+    apply(localStorage.getItem(key) === "light" ? "light" : "dark");
   } catch {
-    apply("light");
+    apply("dark");
   }
 }
 restore();

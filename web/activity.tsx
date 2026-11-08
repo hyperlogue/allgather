@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Page } from "../shared/contracts.ts";
 import { call } from "./api.ts";
-import { ErrorText } from "./ui.tsx";
+import { ErrorText, PageHeading } from "./ui.tsx";
 
 interface Entry {
   id: string;
@@ -71,12 +71,12 @@ export function Activity({ project, refresh }: { project: string; refresh: numbe
   useEffect(() => setCursor(0), [filters]);
   return (
     <div className="history-view">
-      <div className="page-heading">
+      <PageHeading>
         <div>
           <h1>Activity</h1>
           <p>Owner and agent changes, with their recorded effects.</p>
         </div>
-      </div>
+      </PageHeading>
       <p className="muted small">
         Names are reported by clients. Access comes from the authenticated connection. Git
         collection and sign-in activity are outside this work log.

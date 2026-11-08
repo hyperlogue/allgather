@@ -14,18 +14,18 @@ body,
   font:
     14px / 1.6 system-ui,
     sans-serif;
-  color: #555;
+  color: var(--fg3);
 }
 .artifact-boot a {
-  color: #0868ce;
+  color: var(--acc);
 }
 
 .artifact-delivery {
   flex: none;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--e2);
   padding: 6px 14px;
   font: 12px / 1.6 system-ui;
-  color: #68717d;
+  color: var(--fg3);
 }
 .artifact-delivery summary {
   cursor: pointer;
@@ -35,18 +35,26 @@ body,
   max-width: 850px;
 }
 
-html.dark {
-  color-scheme: dark;
-  background: #17191d;
-  color: #edf0f4;
+html,
+body {
+  background: var(--l0);
+  color: var(--fg);
+  font-family: var(--ui);
 }
-.dark .artifact-boot,
-.dark .artifact-delivery {
-  color: #abb3bf;
+button.bg-primary-600 {
+  color: var(--on-fill);
+  background: linear-gradient(180deg, color-mix(in oklch, var(--fill), white 14%), var(--fill));
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / 0.3),
+    0 3px 10px color-mix(in oklch, var(--fill) 20%, transparent);
 }
-.dark .artifact-boot a {
-  color: #7cb7ff;
+button.bg-primary-600:hover {
+  background: var(--fill);
 }
-.dark .artifact-delivery {
-  border-color: #373e48;
+button,
+input,
+textarea,
+select,
+[role="dialog"] {
+  border-radius: 0 !important;
 }

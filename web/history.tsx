@@ -3,7 +3,7 @@ import type { IndexedCommit, Page, Repository } from "../shared/contracts.ts";
 import { call, mutation } from "./api.ts";
 import { Checkouts } from "./checkouts.tsx";
 import { ContextLink } from "./context.tsx";
-import { Dialog, ErrorText, useAction } from "./ui.tsx";
+import { Dialog, ErrorText, PageHeading, useAction } from "./ui.tsx";
 export interface Repo extends Repository {
   indexed_count: number;
   sync: {
@@ -207,7 +207,7 @@ function RepositoryEditor({
           Automatic refresh
         </label>
         <p className="muted small">
-          Allgather fetches upstream using the server’s SSH or HTTPS credentials. At the retained
+          AllGather fetches upstream using the server’s SSH or HTTPS credentials. At the retained
           limit, the oldest metadata is removed. Switching cache policy queues a rebuild.
         </p>
         <ErrorText>{error}</ErrorText>
@@ -382,7 +382,7 @@ export function HistoryView({
   const maximum = Math.max(1, ...(summary?.daily.map((d) => d.commits) ?? []));
   return (
     <div className="history-view">
-      <div className="page-heading">
+      <PageHeading>
         <div>
           <h1>Git history</h1>
           <p>Published work across your upstream repositories.</p>
@@ -395,7 +395,7 @@ export function HistoryView({
         >
           Connect upstream
         </button>
-      </div>
+      </PageHeading>
       <ErrorText>{loadError || error}</ErrorText>
       {summary && (
         <>
@@ -573,9 +573,15 @@ export function HistoryView({
         ) : null}
         <ul className="plain-list">
           {summary?.paths.slice(0, 20).map((p) => (
-            <li key={p.repository_id + p.path}>
+            <li key={p.repository_id + p.path} className="hot-path">
               <code>{p.path}</code>
               <span>{p.changes} changes</span>
+              <meter
+                min={0}
+                max={Math.max(1, ...(summary?.paths.map((path) => path.changes) ?? []))}
+                value={p.changes}
+                aria-label={`${p.path}: ${p.changes} changes`}
+              />
             </li>
           ))}
         </ul>

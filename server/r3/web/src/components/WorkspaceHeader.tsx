@@ -71,7 +71,7 @@ export function WorkspaceHeader({
           }}
           className="flex items-center self-stretch text-sm font-semibold text-neutral-800 hover:text-primary-600 max-md:min-h-9 dark:text-neutral-100 dark:hover:text-primary-400"
         >
-          Allgather
+          AllGather
         </a>
       </nav>
       {children ? (

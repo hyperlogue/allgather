@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type {
   AgentSession,
   Assignment,
@@ -13,7 +13,7 @@ import type {
 import { call, mutation } from "./api.ts";
 import { ContextLink } from "./context.tsx";
 import { TaskBlocker, TaskMarkdown } from "./task-blocker.tsx";
-import { Dialog, ErrorText, useAction } from "./ui.tsx";
+import { Dialog, ErrorText, PageHeading, useAction } from "./ui.tsx";
 
 function useDraft<T>(key: string, initial: T): [T, (value: T) => void, () => void] {
   const [value, setValue] = useState<T>(() => {
@@ -275,7 +275,9 @@ function TaskDetail({
 }) {
   const [context, setContext] = useState<TaskContext | null>(null),
     [loadError, setLoadError] = useState(""),
-    [edit, setEdit] = useState(false),
+    [edit, setEdit] = useState(
+      () => new URLSearchParams(location.search).get("action") === "edit-task",
+    ),
     [action, setAction] = useState(""),
     [actionBody, setActionBody] = useState(""),
     [target, setTarget] = useState(""),
@@ -289,6 +291,13 @@ function TaskDetail({
     [guards, setGuards] = useState({ revision: 0, sequence: 0 });
   const [comment, setComment, clearComment] = useDraft("comment-draft:" + id, ""),
     { busy, error, run } = useAction();
+  useEffect(() => {
+    const url = new URL(location.href);
+    if (url.searchParams.get("action") === "edit-task") {
+      url.searchParams.delete("action");
+      history.replaceState(null, "", url);
+    }
+  }, []);
   // biome-ignore lint/correctness/useExhaustiveDependencies: Refresh counters reload committed server state.
   useEffect(() => {
     let active = true;
@@ -333,19 +342,43 @@ function TaskDetail({
           <span>{t.status}</span>
         </div>
         <h2>{t.title}</h2>
-        <p className="muted small">
-          {assigned ? `Assigned to ${assigned}` : "Unassigned"}
-          {t.claim
-            ? ` · Claimed by ${t.claim.holder === "owner" ? "Owner" : t.claim.session_id}`
-            : ""}
-        </p>
-        <div className="labels">
-          {t.labels.map((label) => (
-            <span className="label-chip" key={label}>
-              {label}
-            </span>
-          ))}
-        </div>
+        <dl className="task-properties">
+          <dt>Status</dt>
+          <dd>
+            <span className={`state-dot ${t.status}`} aria-hidden="true" />
+            {t.status}
+          </dd>
+          <dt>Assignee</dt>
+          <dd>{assigned || "Unassigned"}</dd>
+          <dt>Claim</dt>
+          <dd>
+            {t.claim ? (
+              <span className="agent-chip">
+                {t.claim.holder === "owner" ? "Owner" : t.claim.session_id}
+              </span>
+            ) : (
+              <span className="muted">Unclaimed</span>
+            )}
+          </dd>
+          <dt>Labels</dt>
+          <dd>
+            <div className="labels">
+              {t.labels.length ? (
+                t.labels.map((label) => (
+                  <span className="label-chip" key={label}>
+                    {label}
+                  </span>
+                ))
+              ) : (
+                <span className="muted">None</span>
+              )}
+            </div>
+          </dd>
+          <dt>Priority</dt>
+          <dd>
+            <span className="unavailable-label">Not available yet</span>
+          </dd>
+        </dl>
         <div className="task-actions">
           <button type="button" onClick={() => setEdit(true)}>
             Edit
@@ -753,7 +786,7 @@ export function TasksView({
   const [page, setPage] = useState<Page<Task>>({ items: [], total: 0, next_cursor: null }),
     [selected, setSelected] = useState(new URLSearchParams(location.search).get("task") ?? ""),
     [query, setQuery] = useState(""),
-    [view, setView] = useState("open"),
+    [view, setView] = useState("all"),
     [labels, setLabels] = useState(""),
     [assignedRole, setAssignedRole] = useState(""),
     [sort, setSort] = useState("created"),
@@ -797,6 +830,31 @@ export function TasksView({
       live = false;
     };
   }, [project, refresh, query, view, labels, assignedRole, sort, before, undated, cursor]);
+  useEffect(() => {
+    const url = new URL(location.href);
+    if (url.searchParams.get("action") !== "new-task") return;
+    url.searchParams.delete("action");
+    history.replaceState(null, "", url);
+    if (project) setCreate(true);
+    else newProject();
+  }, [project, newProject]);
+  const group = (task: Task) =>
+    task.status !== "open"
+      ? task.status
+      : task.blocked
+        ? "blocked"
+        : task.claim
+          ? "in_progress"
+          : "open";
+  const groups = [
+    ["in_progress", "In progress"],
+    ["blocked", "Needs attention"],
+    ["open", "Open"],
+    ["done", "Done"],
+    ["cancelled", "Cancelled"],
+  ]
+    .map(([id, label]) => ({ id, label, items: page.items.filter((task) => group(task) === id) }))
+    .filter((group) => group.items.length);
   const select = (id: string) => {
       setSelected(id);
       const url = new URL(location.href);
@@ -810,7 +868,7 @@ export function TasksView({
     };
   return (
     <>
-      <div className="page-heading">
+      <PageHeading>
         <div>
           <h1>{title}</h1>
           <p>{page.total} tasks</p>
@@ -827,11 +885,12 @@ export function TasksView({
             New task
           </button>
         </div>
-      </div>
+      </PageHeading>
       <div className="task-toolbar">
         <fieldset className="filters">
           <legend className="sr-only">Task view</legend>
           {[
+            ["all", "All"],
             ["open", "Open"],
             ["available", "Available"],
             ["owner", "Needs owner"],
@@ -862,93 +921,113 @@ export function TasksView({
             placeholder="Search tasks"
           />
         </label>
+        <details className="filter-details">
+          <summary>More filters</summary>
+          <div className="filter-grid">
+            <label>
+              All labels
+              <input
+                value={labels}
+                onChange={(e) => {
+                  setLabels(e.target.value);
+                  setCursor(0);
+                }}
+                placeholder="backend, p0"
+              />
+            </label>
+            <label>
+              Assigned role
+              <select
+                value={assignedRole}
+                onChange={(e) => {
+                  setAssignedRole(e.target.value);
+                  setCursor(0);
+                }}
+              >
+                <option value="">Any role</option>
+                {roles.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Order
+              <select value={sort} onChange={(e) => setSort(e.target.value)}>
+                <option value="created">Created</option>
+                <option value="updated">Updated</option>
+                <option value="title">Title</option>
+              </select>
+            </label>
+            <label>
+              Defer until before
+              <input
+                type="datetime-local"
+                value={before}
+                onChange={(e) => {
+                  setBefore(e.target.value);
+                  setCursor(0);
+                }}
+              />
+            </label>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={undated}
+                onChange={(e) => setUndated(e.target.checked)}
+              />
+              Include tasks without a date
+            </label>
+          </div>
+        </details>
       </div>
-      <details className="filter-details">
-        <summary>More filters</summary>
-        <div className="filter-grid">
-          <label>
-            All labels
-            <input
-              value={labels}
-              onChange={(e) => {
-                setLabels(e.target.value);
-                setCursor(0);
-              }}
-              placeholder="backend, p0"
-            />
-          </label>
-          <label>
-            Assigned role
-            <select
-              value={assignedRole}
-              onChange={(e) => {
-                setAssignedRole(e.target.value);
-                setCursor(0);
-              }}
-            >
-              <option value="">Any role</option>
-              {roles.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Order
-            <select value={sort} onChange={(e) => setSort(e.target.value)}>
-              <option value="created">Created</option>
-              <option value="updated">Updated</option>
-              <option value="title">Title</option>
-            </select>
-          </label>
-          <label>
-            Defer until before
-            <input
-              type="datetime-local"
-              value={before}
-              onChange={(e) => {
-                setBefore(e.target.value);
-                setCursor(0);
-              }}
-            />
-          </label>
-          <label className="checkbox">
-            <input
-              type="checkbox"
-              checked={undated}
-              onChange={(e) => setUndated(e.target.checked)}
-            />
-            Include tasks without a date
-          </label>
-        </div>
-      </details>
       <ErrorText>{error}</ErrorText>
       <div className={`work-area ${selected ? "has-detail" : ""}`}>
         <section className="task-list" aria-label="Tasks">
-          {page.items.map((task) => (
-            <button
-              type="button"
-              key={task.id}
-              className={`task-row ${selected === task.id ? "selected" : ""}`}
-              onClick={() => select(task.id)}
-            >
-              <span className={`state-dot ${task.status}`} aria-hidden="true" />
-              <span className="task-row-main">
-                <strong>{task.title}</strong>
-                <small>
-                  {task.child_count ? `${task.child_count} child tasks · ` : ""}
-                  {task.blocked
-                    ? task.needs_owner
-                      ? "Needs owner"
-                      : "Blocked"
-                    : task.claim
-                      ? "Claimed"
-                      : task.status}
-                  {task.labels.length ? ` · ${task.labels.join(", ")}` : ""}
-                </small>
-              </span>
-            </button>
+          {groups.map(({ id, label, items }) => (
+            <Fragment key={id}>
+              <h2 className="task-group-heading">
+                <span className={`state-dot ${id}`} aria-hidden="true" />
+                {label}
+                <span className="count">{items.length}</span>
+              </h2>
+              {items.map((task) => (
+                <button
+                  type="button"
+                  key={task.id}
+                  className={`task-row ${selected === task.id ? "selected" : ""}`}
+                  onClick={() => select(task.id)}
+                >
+                  <span className={`state-dot ${group(task)}`} aria-hidden="true" />
+                  <code className="task-id" title={task.id}>
+                    {task.id.slice(-8)}
+                  </code>
+                  <span className="task-row-main">
+                    <strong>{task.title}</strong>
+                    {task.child_count > 0 && <small>{task.child_count} child tasks</small>}
+                  </span>
+                  <span className="task-row-labels">
+                    {task.labels.slice(0, 2).map((label) => (
+                      <span className="label-chip" key={label}>
+                        {label}
+                      </span>
+                    ))}
+                  </span>
+                  {(task.blocked || task.claim) && (
+                    <span className={`agent-chip ${task.blocked ? "waiting" : ""}`}>
+                      {task.blocked
+                        ? task.needs_owner
+                          ? "Needs owner"
+                          : "Blocked"
+                        : task.claim?.holder === "owner"
+                          ? "Owner"
+                          : "Claimed"}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </Fragment>
           ))}
           {!page.items.length && (
             <div className="empty">

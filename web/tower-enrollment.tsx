@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Machine } from "../shared/contracts.ts";
 import type { MachineScope } from "../shared/tower-acp.ts";
 import { request } from "./api.ts";
-import { ErrorText, useAction } from "./ui.tsx";
+import { Brand, ErrorText, LoginFrame, useAction } from "./ui.tsx";
 
 const labels: Record<MachineScope, string> = {
   read: "Read status and the repository catalog; report checkout observations",
@@ -249,8 +249,8 @@ export function TowerEnrollmentView() {
     };
   }, [id]);
   return (
-    <main className="login">
-      <span className="brand">allgather</span>
+    <LoginFrame>
+      <Brand />
       <h1>Tower pairing status</h1>
       <ErrorText>{error}</ErrorText>
       {info ? (
@@ -277,6 +277,6 @@ export function TowerEnrollmentView() {
       ) : (
         !error && <p>Reading pairing status…</p>
       )}
-    </main>
+    </LoginFrame>
   );
 }

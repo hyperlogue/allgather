@@ -188,7 +188,7 @@ export function McpPairing({ changed }: { changed: () => void }) {
                 {current.state === "open"
                   ? ` within ${seconds(opened.register_until)} seconds`
                   : " (registration closed)"}
-                . On the Allgather page it opens, enter:
+                . On the AllGather page it opens, enter:
               </p>
               <p>
                 <strong className="approval-value">{opened.pairing_code}</strong>

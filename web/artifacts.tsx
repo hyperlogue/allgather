@@ -3,7 +3,8 @@ import type { Artifact, ArtifactVersion } from "../server/r3/shared/artifacts.ts
 import type { Page } from "../shared/contracts.ts";
 import { call } from "./api.ts";
 import { ContextLink } from "./context.tsx";
-import { Dialog, ErrorText, useAction } from "./ui.tsx";
+import { Icon } from "./icons.tsx";
+import { Dialog, ErrorText, PageHeading, useAction } from "./ui.tsx";
 
 async function encode(file: File) {
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -297,7 +298,7 @@ export function ArtifactsView({
     );
   return (
     <>
-      <div className="page-heading">
+      <PageHeading>
         <div>
           <h1>Artifacts</h1>
           <p>Published results and the discussion that moves work forward.</p>
@@ -305,7 +306,7 @@ export function ArtifactsView({
         <button type="button" className="primary" onClick={() => setCreate(true)}>
           New artifact
         </button>
-      </div>
+      </PageHeading>
       <div className="task-toolbar">
         <fieldset className="filters">
           <legend className="sr-only">Artifact state</legend>
@@ -339,7 +340,8 @@ export function ArtifactsView({
       <section className="artifact-list">
         {page.items.map((a) => (
           <button type="button" className="artifact-row" key={a.id} onClick={() => opened(a.id)}>
-            <span className="artifact-kind">
+            <span className={`artifact-kind ${a.kind}`}>
+              <Icon name={a.kind} />
               {a.kind === "html" ? "Page" : a.kind === "files" ? "Files" : "Diff"}
             </span>
             <span>

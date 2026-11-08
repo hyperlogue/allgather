@@ -69,7 +69,7 @@ function Workspace() {
     return (
       <p className="artifact-boot">
         <a href="/" target="_top">
-          Sign in to Allgather
+          Sign in to AllGather
         </a>{" "}
         to open this artifact.
       </p>

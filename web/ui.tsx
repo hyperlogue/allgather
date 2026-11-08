@@ -1,10 +1,11 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import logoUrl from "./brand/logo-small.svg";
 export function Brand() {
   return (
     <span className="brand">
       <img alt="" className="brand-mark" src={logoUrl} />
-      allgather
+      <span className="brand-name">AllGather</span>
     </span>
   );
 }
@@ -61,5 +62,32 @@ export function Dialog({
       </div>
       {children}
     </dialog>
+  );
+}
+
+export function FeaturePlaceholder({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="feature-placeholder">
+      <h3>
+        {title}
+        <small>Not available yet</small>
+      </h3>
+      <p>{children}</p>
+    </section>
+  );
+}
+
+export function PageHeading({ children }: { children: ReactNode }) {
+  const [host, setHost] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => setHost(document.getElementById("view-heading")), []);
+  const heading = <div className="page-heading">{children}</div>;
+  return host ? createPortal(heading, host) : heading;
+}
+
+export function LoginFrame({ children }: { children: ReactNode }) {
+  return (
+    <main className="login">
+      <div className="login-card">{children}</div>
+    </main>
   );
 }

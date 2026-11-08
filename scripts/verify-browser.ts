@@ -39,6 +39,39 @@ try {
       `(()=>{const label=[...document.querySelectorAll(${JSON.stringify(selector)})].find(l=>l.childNodes[0]?.textContent.trim()===${JSON.stringify(label)});if(!label)throw new Error('Missing field '+${JSON.stringify(label)});const el=label.querySelector('input,textarea,select');const proto=el instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:el instanceof HTMLSelectElement?HTMLSelectElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value').set.call(el,${JSON.stringify(value)});el.dispatchEvent(new Event(el.tagName==='SELECT'?'change':'input',{bubbles:true}));})()`,
     );
   };
+  await b.command("Browser.grantPermissions", {
+    origin: running.settings.ownerUrl,
+    permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"],
+  });
+  await click("Copy");
+  await b.until(
+    `document.querySelector('.login [role="status"]')?.textContent==='Command copied.'`,
+  );
+  if ((await b.evaluate(`navigator.clipboard.readText()`)) !== "allgather-server auth create-token")
+    throw new Error("Login command was not copied exactly");
+  await b.evaluate(
+    `Object.defineProperty(navigator.clipboard,'writeText',{configurable:true,value:async()=>{throw new Error('Denied')}})`,
+  );
+  await click("Copy");
+  await b.until(
+    `document.querySelector('.login [role="status"]')?.textContent.includes('Select and copy')`,
+  );
+  await b.evaluate(`delete navigator.clipboard.writeText`);
+  for (const width of [375, 1440]) {
+    await b.command("Emulation.setDeviceMetricsOverride", {
+      width,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: width < 760,
+    });
+    if (await b.evaluate("document.documentElement.scrollWidth>innerWidth"))
+      throw new Error(`Login command overflow at ${width}`);
+    const shot = await b.command("Page.captureScreenshot", { format: "png" });
+    await Bun.write(
+      join(tmpdir(), `allgather-login-${width}.png`),
+      Buffer.from(shot.data as string, "base64"),
+    );
+  }
   await fill('input[type="password"]', await fixtureLoginToken(directory));
   await click("Sign in");
   await b.until(`!!document.querySelector('.app-header')`);

@@ -231,6 +231,23 @@ code.wrap {
 .login form > .primary {
   width: 100%;
 }
+.login-command {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.login-command code {
+  flex: 1;
+  min-width: 0;
+  user-select: all;
+}
+.login-command button {
+  flex-shrink: 0;
+}
 .scope-list {
   margin: 25px 0;
   padding-left: 20px;

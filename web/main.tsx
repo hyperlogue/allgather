@@ -15,6 +15,8 @@ import { Brand, Dialog, ErrorText, useAction } from "./ui.tsx";
 
 function Login({ done }: { done: () => void }) {
   const [key, setKey] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
+  const command = "allgather-server auth create-token";
   const { busy, error, run } = useAction();
   return (
     <main className="login">
@@ -46,10 +48,28 @@ function Login({ done }: { done: () => void }) {
           {busy ? "Signing in…" : "Sign in"}
         </button>
       </form>
-      <p className="muted small">
-        Create a code locally with allgather-server auth create-token. Codes expire after ten
-        minutes.
+      <p className="muted small">Run this command on your Allgather server to get a login code:</p>
+      <div className="login-command">
+        <code>{command}</code>
+        <button
+          type="button"
+          aria-label="Copy login command"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(command);
+              setCopyStatus("Command copied.");
+            } catch {
+              setCopyStatus("Could not copy. Select and copy the command above.");
+            }
+          }}
+        >
+          Copy
+        </button>
+      </div>
+      <p className="muted small" role="status">
+        {copyStatus}
       </p>
+      <p className="muted small">Codes work once and expire after ten minutes.</p>
     </main>
   );
 }

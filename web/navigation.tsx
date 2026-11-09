@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { AgentSession, Page, Project, SessionRuntime } from "../shared/contracts.ts";
 import { call } from "./api.ts";
 import { Icon, type IconName } from "./icons.tsx";
+import { ProjectIcon } from "./project-icon.tsx";
 import { Brand } from "./ui.tsx";
 
 export const views = [
@@ -151,7 +152,7 @@ export function Sidebar({
               aria-pressed={project === p.id}
               onClick={() => chooseProject(p.id)}
             >
-              <span className="project-dot" />
+              <ProjectIcon project={p} />
               <span className="sidebar-label">{p.name}</span>
             </button>
           ))}

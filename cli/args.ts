@@ -23,6 +23,7 @@ export function parse(argv: string[]) {
         "help",
         "undefer",
         "clear-labels",
+        "remove-icon",
         "needs-owner",
         "exclude-undated",
         "blocked",

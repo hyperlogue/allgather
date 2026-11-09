@@ -20,6 +20,7 @@ const artifactTables = new Set([
 const guarded = new Set([
   ...artifactTables,
   "projects",
+  "project_icons",
   "tasks",
   "operators",
   "agent_sessions",
@@ -73,6 +74,7 @@ export class Audit {
         .filter(
           (c) =>
             !(table === "task_comments" && c === "body") &&
+            !(table === "project_icons" && c === "bytes") &&
             !(table === "artifact_versions" && c === "patch_body") &&
             !(
               [
@@ -170,6 +172,7 @@ export class Audit {
                 ? `(SELECT project_id FROM artifacts WHERE id=${columns.includes("artifact_id") ? `${row}.artifact_id` : "NULL"})`
                 : `(SELECT project_id FROM tasks WHERE id=${task})`;
       const artifactEntityId: Record<string, string> = {
+        project_icons: `${row}.project_id`,
         artifact_versions: `${row}.artifact_id||'@'||${row}.seq`,
         version_files: `${row}.artifact_id||'@'||${row}.version_seq||':'||${row}.path`,
         thread_anchors: `${row}.thread_id`,

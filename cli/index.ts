@@ -9,6 +9,7 @@ import {
   type Repository,
   type Task,
 } from "../shared/contracts.ts";
+import { PROJECT_ICON_MAX_BYTES } from "../shared/project-icon.ts";
 import { parse } from "./args.ts";
 import { Client, defaultLoginScopes } from "./client.ts";
 import { currentOperator } from "./operator.ts";
@@ -17,7 +18,8 @@ export const HELP = `allgather — one work record for tasks, sessions, and evid
 
   guide
   login [HOSTNAME_OR_URL]
-  project list | create --name NAME [--slug CL] [--body TEXT] | show ID | update ID
+  project list | create --name NAME [--slug CL] [--body TEXT] [--icon-file PNG_OR_JPEG]
+  project show ID | update ID [--icon-file PNG_OR_JPEG | --remove-icon]
   task create --project ID --title TEXT [--body TEXT] [--parent ID]
   task search [QUERY] [--project ID] [--status open|blocked|closed]
   task ready [--assignee owner|session:ID|role:ID | --unassigned]
@@ -82,6 +84,7 @@ Machine pairing and credential revocation use the owner web app.
 Task fields: --label NAME (repeatable), --add-label NAME, --remove-label NAME,
   --clear-labels, --defer ISO_DATE, --undefer, --assignee owner|session:ID|role:ID|none.
 Use --body-file FILE for a multiline task body or comment.
+Project icon files: PNG/JPEG up to 1 MiB and 1024 × 1024 pixels; --remove-icon restores the default.
 Filters: --labels-all NAME / --labels-any NAME, --parent ID, --epic ID,
   --deferred-before ISO_DATE / --deferred-after ISO_DATE, --exclude-undated,
   --is-done, --blocked, --needs-owner, --sort created|updated|title.
@@ -256,6 +259,8 @@ export async function main(argv = process.argv.slice(2)) {
       "json",
       "key-file",
       "body-file",
+      "icon-file",
+      "remove-icon",
       "add-label",
       "remove-label",
       "clear-labels",
@@ -281,6 +286,22 @@ export async function main(argv = process.argv.slice(2)) {
       if (omitted.has(flag)) continue;
       const key = aliases[flag] ?? flag.replaceAll("-", "_");
       input[key] = numeric.has(key) ? (value === "unlimited" ? null : Number(value)) : value;
+    }
+    if (f["icon-file"] || f["remove-icon"]) {
+      if (!["projects_create", "projects_update"].includes(name))
+        throw new Error("Project icons require project create or update");
+      if (f["icon-file"] && f["remove-icon"])
+        throw new Error("Choose --icon-file or --remove-icon");
+      if (f["remove-icon"]) input.icon = null;
+      else {
+        const bytes = readFileSync(String(f["icon-file"]));
+        if (bytes.length > PROJECT_ICON_MAX_BYTES)
+          throw new Error("Project icons must be at most 1 MiB");
+        input.icon = {
+          media_type: bytes[0] === 255 && bytes[1] === 216 ? "image/jpeg" : "image/png",
+          base64: bytes.toString("base64"),
+        };
+      }
     }
     if (f["body-file"]) input.body = readFileSync(String(f["body-file"]), "utf8");
     if (f["clear-labels"]) input.labels = [];

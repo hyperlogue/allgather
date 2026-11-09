@@ -13,6 +13,7 @@ import type {
   Task,
   TaskComment,
 } from "../shared/contracts.ts";
+import { blueIcon, redIcon } from "./fixtures/project-icons.ts";
 
 test("CLI mutations, upstream configuration, and backup restore preserve work", async () => {
   const root = mkdtempSync(join(tmpdir(), "allgather-cli-"));
@@ -48,7 +49,28 @@ test("CLI mutations, upstream configuration, and backup restore preserve work", 
     return JSON.parse(out) as T;
   };
   try {
-    const project = await invoke<Project>("project", "create", "--name", "CLI example");
+    const iconFile = join(root, "project.png");
+    writeFileSync(iconFile, Buffer.from(redIcon, "base64"));
+    const project = await invoke<Project>(
+      "project",
+      "create",
+      "--name",
+      "CLI example",
+      "--icon-file",
+      iconFile,
+    );
+    expect(project.icon?.media_type).toBe("image/png");
+    writeFileSync(iconFile, Buffer.from(blueIcon, "base64"));
+    const replaced = await invoke<Project>(
+      "project",
+      "update",
+      project.id,
+      "--icon-file",
+      iconFile,
+    );
+    expect(replaced.icon?.hash).not.toBe(project.icon?.hash);
+    const removed = await invoke<Project>("project", "update", project.id, "--remove-icon");
+    expect(removed.icon).toBeNull();
     const task = await invoke<Task>(
       "task",
       "create",

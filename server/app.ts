@@ -341,6 +341,25 @@ export function createApp(
       ),
     });
   });
+  app.get("/api/projects/:id/icon", (c) => {
+    const principal = auth.principal(c.req.raw);
+    if (!principal) throw new AppError("unauthorized", "Sign in to view project icons", 401);
+    const project = workspace.execute(
+      "projects_get",
+      { project_id: c.req.param("id") },
+      principal,
+    ) as { id: string };
+    const icon = workspace.one<{ media_type: string; hash: string; bytes: Uint8Array }>(
+      "SELECT media_type,hash,bytes FROM project_icons WHERE project_id=?",
+      project.id,
+    );
+    if (!icon) throw new AppError("not_found", "Project has no custom icon", 404);
+    c.header("Cache-Control", "private, no-cache");
+    c.header("ETag", `"${icon.hash}"`);
+    if (c.req.header("if-none-match") === `"${icon.hash}"`) return c.body(null, 304);
+    c.header("Content-Type", icon.media_type);
+    return c.body(new Uint8Array(icon.bytes));
+  });
   app.get("/api/session-assets/:id", async (c) => {
     const p = auth.principal(c.req.raw);
     if (!p || !can(p, "transcripts:read"))

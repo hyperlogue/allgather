@@ -1414,3 +1414,59 @@ dialog::backdrop {
   border-width: 0 1px 1px 0;
   transform: rotate(45deg);
 }
+
+.project-picker {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.project-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  border-radius: 4px;
+  flex: none;
+}
+.project-icon-button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 4px;
+}
+.project-icon-field {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.project-icon-field legend {
+  margin-bottom: 8px;
+}
+.project-icon-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.project-icon-preview {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  flex: none;
+}
+.project-icon-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: inherit;
+}
+.project-icon-upload {
+  min-width: 0;
+}
+.project-icon-upload input {
+  max-width: 100%;
+}

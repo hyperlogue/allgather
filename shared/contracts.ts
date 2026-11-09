@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  PROJECT_ICON_MAX_BYTES,
+  type ProjectIconInfo,
+  projectIconMediaTypes,
+} from "./project-icon.ts";
 import type { ResourceGrants } from "./resource-grants.ts";
 import type {
   HarnessControls,
@@ -116,6 +121,7 @@ export interface EpicProgress {
   can_resolve: boolean;
 }
 export interface Project {
+  icon: ProjectIconInfo | null;
   id: string;
   slug: string;
   name: string;
@@ -289,6 +295,15 @@ const taskFields = {
   defer_until: dateTime.nullable().default(null),
   assignee: assignment.nullable().default(null),
 };
+const projectIconUpload = z
+  .object({
+    media_type: z.enum(projectIconMediaTypes),
+    base64: z
+      .string()
+      .min(1)
+      .max(4 * Math.ceil(PROJECT_ICON_MAX_BYTES / 3)),
+  })
+  .strict();
 const taskFilters = {
   project_id: id.optional(),
   query: z.string().max(300).optional(),
@@ -826,6 +841,7 @@ export const operations = {
         .regex(/^[A-Z][A-Z0-9]{0,15}$/)
         .optional(),
       body: note.default(""),
+      icon: projectIconUpload.nullable().optional(),
     }),
     "projects:write",
     "Create a project.",
@@ -838,6 +854,7 @@ export const operations = {
       slug: z.never().optional(),
       name: text.optional(),
       body: note.optional(),
+      icon: projectIconUpload.nullable().optional(),
     }),
     "projects:write",
     "Update a project with a revision guard.",

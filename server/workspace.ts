@@ -12,6 +12,7 @@ import {
   type Task,
 } from "../shared/contracts.ts";
 import { mcpOperations } from "../shared/mcp-surface.ts";
+import type { ProjectIconUpload } from "../shared/project-icon.ts";
 import { Access } from "./access.ts";
 import { Approvals } from "./approvals.ts";
 import { Artifacts } from "./artifacts.ts";
@@ -20,6 +21,7 @@ import { BlobStore, hashBytes } from "./blobs.ts";
 import { Executions } from "./executions.ts";
 import { Graph } from "./graph.ts";
 import { History } from "./history.ts";
+import { projectIcon, setProjectIcon } from "./project-icons.ts";
 import { availableProjectSlug } from "./project-slugs.ts";
 import { Sessions } from "./sessions.ts";
 import { Tasks } from "./tasks.ts";
@@ -97,7 +99,7 @@ export class Workspace {
     );
     if (!project) throw new AppError("not_found", "Project not found", 404);
     this.access.require(this.access.project(project.id));
-    return project;
+    return { ...project, icon: projectIcon(this.db, project.id) };
   }
   task(id: string): Task {
     return this.tasks.get(id);
@@ -388,7 +390,9 @@ export class Workspace {
     if (name === "projects_list")
       return this.all<Project>(
         "SELECT id,name,slug,body,revision,created_at FROM projects ORDER BY name,id",
-      ).filter((project) => this.access.project(project.id));
+      )
+        .filter((project) => this.access.project(project.id))
+        .map((project) => ({ ...project, icon: projectIcon(this.db, project.id) }));
     if (name === "projects_get") return this.project(a.project_id as string);
     if (name.startsWith("roles_") || name.startsWith("sessions_"))
       return this.sessions.read(name, a, principal);
@@ -422,6 +426,7 @@ export class Workspace {
         a.body as string,
         this.now(),
       );
+      if (a.icon !== undefined) setProjectIcon(this.db, id, a.icon as ProjectIconUpload | null);
       this.graph.ensure(id, "project", id);
       return this.project(id);
     }
@@ -440,6 +445,8 @@ export class Workspace {
         String(a.body ?? project.body),
         project.id,
       );
+      if (a.icon !== undefined)
+        setProjectIcon(this.db, project.id, a.icon as ProjectIconUpload | null);
       return this.project(project.id);
     }
     if (name.startsWith("links_")) return this.graph.write(name, a, principal);

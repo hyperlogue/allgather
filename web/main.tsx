@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { Project } from "../shared/contracts.ts";
+import type { ProjectIconUpload } from "../shared/project-icon.ts";
 import { suggestedProjectSlug } from "../shared/project-slug.ts";
 import { Activity } from "./activity.tsx";
 import { call, mutation, request } from "./api.ts";
@@ -13,6 +14,7 @@ import { Icon } from "./icons.tsx";
 import { MachineConnections } from "./machine-connections.tsx";
 import { McpPairing } from "./mcp-pairing.tsx";
 import { initialCollapsed, isEditing, readView, Sidebar, type View, views } from "./navigation.tsx";
+import { ProjectIcon, ProjectIconDialog, ProjectIconInput } from "./project-icon.tsx";
 import { SessionsView } from "./sessions.tsx";
 import { SettingsView } from "./settings.tsx";
 import { TasksView } from "./tasks.tsx";
@@ -82,15 +84,19 @@ function Login({ done }: { done: () => void }) {
 function NewProject({ close, created }: { close: () => void; created: (p: Project) => void }) {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState<string | null>(null);
+  const [icon, setIcon] = useState<ProjectIconUpload | null>(null);
+  const [iconLoading, setIconLoading] = useState(false);
   const { busy, error, run } = useAction();
   return (
     <Dialog title="New project" close={close}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
+          if (iconLoading) return;
           void run(async () => {
             const p = await call<Project>("projects_create", {
               name,
+              icon,
               slug: slug ?? suggestedProjectSlug(name),
               ...mutation(),
             });
@@ -117,12 +123,18 @@ function NewProject({ close, created }: { close: () => void; created: (p: Projec
           Task IDs start at {slug ?? suggestedProjectSlug(name)}-1. The slug cannot change after
           creation.
         </p>
+        <ProjectIconInput
+          value={icon}
+          change={setIcon}
+          pending={setIconLoading}
+          disabled={busy || iconLoading}
+        />
         <ErrorText>{error}</ErrorText>
         <div className="actions">
           <button type="button" onClick={close}>
             Cancel
           </button>
-          <button type="submit" className="primary" disabled={busy}>
+          <button type="submit" className="primary" disabled={busy || iconLoading}>
             Create project
           </button>
         </div>
@@ -243,6 +255,7 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
     [palette, setPalette] = useState(false),
     [routeRevision, setRouteRevision] = useState(0),
     [newProject, setNewProject] = useState(false),
+    [iconProject, setIconProject] = useState<Project | null>(null),
     [refresh, setRefresh] = useState(0),
     [error, setError] = useState(""),
     [connected, setConnected] = useState(true);
@@ -370,6 +383,20 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
       <div className="workspace-body">
         <header className="workspace-topbar">
           <div className="project-picker">
+            {projects
+              .filter((p) => p.id === project)
+              .map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className="quiet project-icon-button"
+                  aria-label="Change project icon"
+                  title={`Change icon for ${p.name}`}
+                  onClick={() => setIconProject(p)}
+                >
+                  <ProjectIcon project={p} />
+                </button>
+              ))}
             <label className="sr-only" htmlFor="project-select">
               Project
             </label>
@@ -470,6 +497,13 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
           chooseProject={chooseProject}
           newProject={() => setNewProject(true)}
           close={closePalette}
+        />
+      )}
+      {iconProject && (
+        <ProjectIconDialog
+          project={iconProject}
+          close={() => setIconProject(null)}
+          saved={changed}
         />
       )}
       {newProject && (

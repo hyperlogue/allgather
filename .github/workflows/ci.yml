@@ -61,6 +61,7 @@ jobs:
         run: |
           bun --no-env-file scripts/verify-browser.ts
           bun --no-env-file scripts/verify-design.ts
+          bun --no-env-file scripts/verify-project-icons.ts
           bun --no-env-file scripts/verify-artifacts.ts
           bun --no-env-file scripts/verify-tower-enrollment.ts
           bun --no-env-file scripts/verify-session-controls.ts

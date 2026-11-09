@@ -25,7 +25,7 @@ import { migrateTerminalSessions } from "./terminal-migration.ts";
 import { migrateTower } from "./tower-migration.ts";
 import { migrateTranscriptContent } from "./transcript-migration.ts";
 
-export const SCHEMA_VERSION = 37;
+export const SCHEMA_VERSION = 38;
 export function writeDatabaseSnapshot(db: Database, path: string) {
   writeFileSync(path, "", { mode: 0o600, flag: "wx" });
   db.query("VACUUM INTO ?").run(path);
@@ -230,6 +230,18 @@ export function openDatabase(path: string) {
       db.exec("PRAGMA user_version=36");
     }).immediate();
   if (version < 37) migrateTaskSchema(db);
+  if (version < 38)
+    db.transaction(() =>
+      db.exec(`
+      CREATE TABLE IF NOT EXISTS project_icons(
+        project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+        media_type TEXT NOT NULL CHECK(media_type IN ('image/png','image/jpeg')),
+        hash TEXT NOT NULL CHECK(length(hash)=64 AND hash NOT GLOB '*[^0-9a-f]*'),
+        bytes BLOB NOT NULL CHECK(length(bytes) BETWEEN 1 AND 1048576)
+      );
+      PRAGMA user_version=38;
+    `),
+    ).immediate();
   return db;
 }
 export function setting(db: Database, key: string) {

@@ -4,12 +4,14 @@ import type { AgentSession, Page, Project, Task } from "../shared/contracts.ts";
 import { call } from "./api.ts";
 import { Icon, type IconName } from "./icons.tsx";
 import { type View, views } from "./navigation.tsx";
+import { ProjectIcon } from "./project-icon.tsx";
 
 interface Result {
   id: string;
   title: string;
   group: string;
   icon: IconName;
+  project?: Project;
   hint?: string;
   run: () => void;
 }
@@ -160,6 +162,7 @@ export function CommandPalette({
     ...projects.map((p) => ({
       id: p.id,
       title: p.name,
+      project: p,
       group: "Projects",
       icon: "tasks" as const,
       run: () => {
@@ -235,7 +238,7 @@ export function CommandPalette({
               onMouseDown={(e) => e.preventDefault()}
               onClick={r.run}
             >
-              <Icon name={r.icon} />
+              {r.project ? <ProjectIcon project={r.project} /> : <Icon name={r.icon} />}
               <span>{r.title}</span>
               {r.hint && <small title={r.hint}>{r.hint}</small>}
               <kbd>↵</kbd>

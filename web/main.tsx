@@ -476,7 +476,13 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
               changed={changed}
             />
           ) : view === "history" ? (
-            <HistoryView project={project} repos={repos} refresh={refresh} changed={changed} />
+            <HistoryView
+              project={project}
+              projects={projects}
+              repos={repos}
+              refresh={refresh}
+              changed={changed}
+            />
           ) : view === "approvals" ? (
             <ApprovalsView rows={approvals} changed={changed} />
           ) : view === "settings" ? (

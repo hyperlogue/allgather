@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { IndexedCommit, Page, Repository } from "../shared/contracts.ts";
+import type { IndexedCommit, Page, Project, Repository } from "../shared/contracts.ts";
 import { call, mutation } from "./api.ts";
 import { Checkouts } from "./checkouts.tsx";
 import { ContextLink } from "./context.tsx";
@@ -223,53 +223,48 @@ function RepositoryEditor({
     </Dialog>
   );
 }
-function ProjectPathsEditor({
+function RepositoryProjectsEditor({
   repo,
   project,
+  projects,
   close,
   changed,
 }: {
   repo: Repo;
   project: string;
+  projects: Project[];
   close: () => void;
   changed: () => void;
 }) {
-  const initial =
-    repo.project_links.find((link) => link.project_id === project) ?? repo.project_links[0];
-  const [selected, setSelected] = useState(initial?.project_id ?? "");
-  const [prefixes, setPrefixes] = useState(initial?.path_prefixes.join("\n") ?? "");
-  const [names, setNames] = useState<Record<string, string>>({});
+  const initial = project || repo.project_links[0]?.project_id || projects[0]?.id || "";
+  const [selected, setSelected] = useState(initial);
+  const [prefixes, setPrefixes] = useState(
+    repo.project_links.find((l) => l.project_id === initial)?.path_prefixes.join("\n") ?? "",
+  );
   const { busy, error, run } = useAction();
-  useEffect(() => {
-    let active = true;
-    void call<{ id: string; name: string }[]>("projects_list")
-      .then((projects) => {
-        if (active)
-          setNames(Object.fromEntries(projects.map((project) => [project.id, project.name])));
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, []);
+  const link = repo.project_links.find((l) => l.project_id === selected);
+  const name = projects.find((p) => p.id === selected)?.name ?? selected;
   return (
-    <Dialog title="Project paths" close={close}>
+    <Dialog title={`Projects for ${repo.name}`} close={close}>
+      <p>
+        Link this repository to one or more projects. Each project can use multiple repositories.
+      </p>
       <form
-        onSubmit={(event) => {
-          event.preventDefault();
+        onSubmit={(e) => {
+          e.preventDefault();
           void run(async () => {
-            const link = repo.project_links.find((link) => link.project_id === selected);
-            if (!link) throw new Error("Select a linked project");
-            await call("repositories_set_paths", {
+            const input = {
               repository_id: repo.id,
               project_id: selected,
-              expected_revision: link.revision,
               path_prefixes: prefixes
                 .split("\n")
-                .map((value) => value.trim())
+                .map((p) => p.trim())
                 .filter(Boolean),
               ...mutation(),
-            });
+            };
+            if (link)
+              await call("repositories_set_paths", { ...input, expected_revision: link.revision });
+            else await call("repositories_attach", input);
             changed();
             close();
           });
@@ -280,46 +275,78 @@ function ProjectPathsEditor({
           <select
             required
             value={selected}
-            onChange={(event) => {
-              setSelected(event.target.value);
+            onChange={(e) => {
+              setSelected(e.target.value);
               setPrefixes(
                 repo.project_links
-                  .find((link) => link.project_id === event.target.value)
+                  .find((l) => l.project_id === e.target.value)
                   ?.path_prefixes.join("\n") ?? "",
               );
             }}
           >
-            {repo.project_links.map((link) => (
-              <option key={link.project_id} value={link.project_id}>
-                {names[link.project_id] ?? link.project_id}
+            {!projects.length && <option value="">Create a project first</option>}
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+                {repo.project_ids.includes(p.id) ? " (linked)" : ""}
               </option>
             ))}
           </select>
         </label>
+        <p className="muted small">
+          {link ? "This project is linked to the repository." : "This project is not linked yet."}
+        </p>
         <label>
           Path prefixes
           <textarea
             rows={5}
             value={prefixes}
-            onChange={(event) => setPrefixes(event.target.value)}
+            onChange={(e) => setPrefixes(e.target.value)}
             placeholder="apps/web/\npackages/ui/"
           />
         </label>
         <p className="muted small">
-          One repository-relative prefix per line. The longest match wins for each changed file. Use
-          . for the repository root. Leave empty for no attribution hint.
+          Optional, one repository-relative prefix per line. A repository linked to one project uses
+          that project directly. For shared repositories, the longest matching prefix selects the
+          project; . covers the repository root.
         </p>
         <p className="muted small">
-          A repository linked to only one project uses that project directly. Changes to these paths
-          immediately update history views without another Git fetch.
+          Changing a mapping keeps the repository and its indexed history. No new Git fetch is
+          needed.
         </p>
         <ErrorText>{error}</ErrorText>
         <div className="actions">
+          {link && (
+            <button
+              type="button"
+              className="danger"
+              disabled={busy}
+              onClick={() => {
+                if (
+                  confirm(
+                    `Unlink ${repo.name} from ${name}? The repository and its indexed history will be kept.`,
+                  )
+                )
+                  void run(async () => {
+                    await call("repositories_attach", {
+                      repository_id: repo.id,
+                      project_id: selected,
+                      remove: true,
+                      ...mutation(),
+                    });
+                    changed();
+                    close();
+                  });
+              }}
+            >
+              Unlink project
+            </button>
+          )}
           <button type="button" onClick={close}>
             Cancel
           </button>
           <button type="submit" className="primary" disabled={busy || !selected}>
-            Save project paths
+            {link ? "Save project paths" : "Link project"}
           </button>
         </div>
       </form>
@@ -328,11 +355,13 @@ function ProjectPathsEditor({
 }
 export function HistoryView({
   project,
+  projects,
   repos,
   refresh,
   changed,
 }: {
   project: string;
+  projects: Project[];
   repos: Repo[];
   refresh: number;
   changed: () => void;
@@ -347,7 +376,7 @@ export function HistoryView({
     [query, setQuery] = useState(""),
     [cursor, setCursor] = useState(0),
     [connection, setConnection] = useState<Repo | "new" | null>(null),
-    [projectPaths, setProjectPaths] = useState<Repo | null>(null),
+    [projectMapping, setProjectMapping] = useState<Repo | null>(null),
     [selected, setSelected] = useState<IndexedCommit | null>(null),
     [backfill, setBackfill] = useState<Repo | null>(null),
     [count, setCount] = useState(10000),
@@ -433,22 +462,34 @@ export function HistoryView({
           </p>
         </>
       )}
-      {projectPaths && (
-        <ProjectPathsEditor
-          repo={projectPaths}
+      {projectMapping && (
+        <RepositoryProjectsEditor
+          repo={projectMapping}
           project={project}
-          close={() => setProjectPaths(null)}
+          projects={projects}
+          close={() => setProjectMapping(null)}
           changed={changed}
         />
       )}
       <section className="history-section">
         <h2>Repositories</h2>
+        {project && (
+          <p className="muted small">
+            Showing repositories linked to the selected project. Select All projects in the sidebar
+            to link an existing repository.
+          </p>
+        )}
         {repos.map((r) => (
           <article className="repo-row" key={r.id}>
             <div className="section-line">
               <div>
                 <strong>{r.name}</strong>
                 <code>{r.upstream_url}</code>
+                <small className="repo-projects">
+                  {r.project_links.length
+                    ? `Projects: ${r.project_links.map((link) => projects.find((p) => p.id === link.project_id)?.name ?? link.project_id).join(", ")}`
+                    : "No projects linked"}
+                </small>
               </div>
               <div className="heading-actions">
                 <button
@@ -460,18 +501,18 @@ export function HistoryView({
                 </button>
                 <button
                   type="button"
-                  disabled={busy || !r.project_links.length}
+                  disabled={busy}
                   onClick={() =>
                     void run(async () => {
                       const current = (await call<Repo[]>("repositories_list")).find(
                         (repo) => repo.id === r.id,
                       );
                       if (!current) throw new Error("Repository is no longer available");
-                      setProjectPaths(current);
+                      setProjectMapping(current);
                     })
                   }
                 >
-                  Project paths
+                  Manage projects
                 </button>
                 <button type="button" onClick={() => setConnection(r)}>
                   Settings

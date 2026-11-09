@@ -350,7 +350,7 @@ try {
   const connected = running.workspace.history.repositories()[0];
   if (connected.initial_fetch_limit !== 100 || connected.sync_enabled || connected.last_attempt_at)
     throw new Error("Paused repository configuration was not respected");
-  await click("Project paths");
+  await click("Manage projects");
   await b.until(`document.querySelector('dialog textarea')?.value==='apps'`);
   await field("Path prefixes", "apps/web/\npackages/ui", "dialog");
   await b.evaluate(`(()=>{
@@ -362,7 +362,7 @@ try {
   })()`);
   await click("Save project paths");
   await b.until(`!document.querySelector('dialog')`);
-  await click("Project paths");
+  await click("Manage projects");
   await b.evaluate(`window.releaseRepositoryReads()`);
   await b.until(`document.querySelector('dialog textarea')?.value==='apps/web\\npackages/ui'`);
   for (const width of [1440, 390]) {

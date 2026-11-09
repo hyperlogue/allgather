@@ -13,6 +13,7 @@ import type {
 } from "../shared/contracts.ts";
 import { call, mutation } from "./api.ts";
 import { ContextLink } from "./context.tsx";
+import { scopeFilter, singleProject } from "./project-scope.ts";
 import { TaskBlocker, TaskMarkdown } from "./task-blocker.tsx";
 import { Dialog, ErrorText, PageHeading, useAction } from "./ui.tsx";
 
@@ -768,20 +769,21 @@ function TaskDetail({
   );
 }
 export function TasksView({
-  project,
+  scope,
   title,
   repos,
   refresh,
   changed,
   newProject,
 }: {
-  project: string;
+  scope: string[];
   title: string;
   repos: Repository[];
   refresh: number;
   changed: () => void;
   newProject: () => void;
 }) {
+  const project = singleProject(scope);
   const [page, setPage] = useState<Page<Task>>({ items: [], total: 0, next_cursor: null }),
     [selected, setSelected] = useState(new URLSearchParams(location.search).get("task") ?? ""),
     [query, setQuery] = useState(""),
@@ -799,7 +801,7 @@ export function TasksView({
     [plan, setPlan] = useState(false),
     [loadedKey, setLoadedKey] = useState("");
   const viewKey = JSON.stringify([
-    project,
+    scope,
     query,
     view,
     labels,
@@ -815,7 +817,7 @@ export function TasksView({
     let live = true;
     void Promise.all([
       call<Page<Task>>(view === "available" ? "tasks_ready" : "tasks_search", {
-        project_id: project || undefined,
+        ...scopeFilter(scope),
         query,
         status: ["open", "blocked", "closed"].includes(view) ? view : undefined,
         needs_owner: view === "owner" ? true : undefined,
@@ -853,8 +855,8 @@ export function TasksView({
     url.searchParams.delete("action");
     history.replaceState(null, "", url);
     if (project) setCreate(true);
-    else newProject();
-  }, [project, newProject]);
+    else if (!scope.length) newProject();
+  }, [project, scope, newProject]);
   const group = (task: Task) => task.status;
   const groups = [
     ["blocked", "Blocked"],
@@ -886,12 +888,19 @@ export function TasksView({
           <p>{loading ? "Loading tasks…" : `${page.total} tasks`}</p>
         </div>
         <div className="heading-actions">
-          <button type="button" onClick={() => (project ? setPlan(true) : newProject())}>
+          <button
+            type="button"
+            disabled={scope.length > 1}
+            title={scope.length > 1 ? "Choose one project to add a plan" : undefined}
+            onClick={() => (project ? setPlan(true) : newProject())}
+          >
             Add a plan
           </button>
           <button
             type="button"
             className="primary"
+            disabled={scope.length > 1}
+            title={scope.length > 1 ? "Choose one project to add a task" : undefined}
             onClick={() => (project ? setCreate(true) : newProject())}
           >
             New task

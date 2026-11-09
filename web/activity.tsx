@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { type ConnectionIdentity, connectionActorLabel } from "../shared/client-access.ts";
 import type { Page } from "../shared/contracts.ts";
 import { call } from "./api.ts";
+import { scopeFilter } from "./project-scope.ts";
 import { ErrorText, PageHeading } from "./ui.tsx";
 
 interface Entry {
@@ -24,7 +25,7 @@ interface Entry {
     after: Record<string, unknown> | null;
   }[];
 }
-export function Activity({ project, refresh }: { project: string; refresh: number }) {
+export function Activity({ scope, refresh }: { scope: string[]; refresh: number }) {
   const [operator, setOperator] = useState(""),
     [task, setTask] = useState(""),
     [run, setRun] = useState(""),
@@ -37,7 +38,7 @@ export function Activity({ project, refresh }: { project: string; refresh: numbe
     [cursor, setCursor] = useState(0),
     [error, setError] = useState("");
   const filters = JSON.stringify({
-    project_id: project || undefined,
+    ...scopeFilter(scope),
     operator_id: operator || undefined,
     task_id: task || undefined,
     run_id: run || undefined,

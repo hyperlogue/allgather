@@ -148,9 +148,70 @@
   background: var(--tint);
   outline: 0;
 }
-.scope-option[aria-selected="true"] {
+.scope-option[aria-current="true"] {
   color: var(--fg);
   background: var(--tint2);
+}
+.scope-option > span:not(.scope-swatch) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scope-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.scope-list li {
+  display: flex;
+  align-items: center;
+}
+.scope-list li:hover {
+  background: var(--tint);
+}
+.scope-list .scope-option {
+  flex: 1;
+  min-width: 0;
+  padding-right: 6px;
+}
+.scope-list li:focus-within {
+  background: var(--tint);
+}
+.scope-list .scope-option:hover,
+.scope-list .scope-option:focus-visible {
+  background: transparent;
+}
+.scope-check {
+  appearance: none;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  min-height: 14px;
+  margin: 0 12px 0 4px;
+  padding: 0;
+  border: 1px solid var(--e4);
+  background: transparent;
+  cursor: pointer;
+}
+.scope-check:checked {
+  border-color: var(--acc);
+  background: var(--acc);
+}
+.scope-check:checked::after {
+  content: "";
+  width: 7px;
+  height: 4px;
+  margin-top: -2px;
+  border: solid var(--on-fill);
+  border-width: 0 0 1.5px 1.5px;
+  transform: rotate(-45deg);
+}
+.scope-check:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: 2px;
 }
 .scope-option small {
   margin-left: auto;

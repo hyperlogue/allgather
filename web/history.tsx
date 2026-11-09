@@ -3,6 +3,7 @@ import type { IndexedCommit, Page, Project, Repository } from "../shared/contrac
 import { call, mutation } from "./api.ts";
 import { Checkouts } from "./checkouts.tsx";
 import { ContextLink } from "./context.tsx";
+import { scopeFilter, singleProject } from "./project-scope.ts";
 import { Dialog, ErrorText, PageHeading, useAction } from "./ui.tsx";
 export interface Repo extends Repository {
   indexed_count: number;
@@ -354,18 +355,19 @@ function RepositoryProjectsEditor({
   );
 }
 export function HistoryView({
-  project,
+  scope,
   projects,
   repos,
   refresh,
   changed,
 }: {
-  project: string;
+  scope: string[];
   projects: Project[];
   repos: Repo[];
   refresh: number;
   changed: () => void;
 }) {
+  const project = singleProject(scope);
   const [summary, setSummary] = useState<Summary | null>(null),
     [page, setPage] = useState<Page<IndexedCommit>>({
       items: [],
@@ -386,8 +388,8 @@ export function HistoryView({
   useEffect(() => {
     let live = true;
     void Promise.all([
-      call<Summary>("history_summary", { project_id: project || undefined }),
-      call<typeof page>("history_search", { project_id: project || undefined, query, cursor }),
+      call<Summary>("history_summary", scopeFilter(scope)),
+      call<typeof page>("history_search", { ...scopeFilter(scope), query, cursor }),
       call<Storage>("storage_get"),
     ])
       .then(([s, p, d]) => {
@@ -402,7 +404,7 @@ export function HistoryView({
     return () => {
       live = false;
     };
-  }, [project, refresh, query, cursor]);
+  }, [scope, refresh, query, cursor]);
   const action = (name: "repositories_sync" | "repositories_clear_cache", id: string) =>
     void run(async () => {
       await call(name, { repository_id: id, ...mutation() });
@@ -473,9 +475,9 @@ export function HistoryView({
       )}
       <section className="history-section">
         <h2>Repositories</h2>
-        {project && (
+        {!!scope.length && (
           <p className="muted small">
-            Showing repositories linked to the selected project. Select All projects in the sidebar
+            Showing repositories linked to the selected projects. Select All projects in the sidebar
             to link an existing repository.
           </p>
         )}
@@ -550,7 +552,7 @@ export function HistoryView({
           <p className="muted">Connect an SSH or HTTPS upstream to collect commits.</p>
         )}
       </section>
-      <Checkouts repositories={repos} filtered={!!project} refresh={refresh} />
+      <Checkouts repositories={repos} filtered={!!scope.length} refresh={refresh} />
       <section className="history-section">
         <div className="section-line">
           <h2>Commits</h2>

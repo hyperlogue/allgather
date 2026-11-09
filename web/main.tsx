@@ -25,7 +25,7 @@ import {
   views,
 } from "./navigation.tsx";
 import { ProjectIcon, ProjectIconDialog, ProjectIconInput } from "./project-icon.tsx";
-import { projectColor } from "./project-scope.ts";
+import { projectColor, scopeFilter, scopeName } from "./project-scope.ts";
 import { SessionsView } from "./sessions.tsx";
 import { SettingsView } from "./settings.tsx";
 import { TasksView } from "./tasks.tsx";
@@ -296,7 +296,6 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
     if (Object.keys(params).length) setRouteRevision((value) => value + 1);
     if (matchMedia("(max-width: 760px)").matches) setCollapsed(true);
   }, []);
-  const project = scope[0] ?? "";
   const choose = useCallback((ids: string[]) => {
     const url = new URL(location.href);
     url.searchParams.set("project", ids.join(","));
@@ -365,7 +364,7 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
     let live = true;
     void Promise.all([
       call<Project[]>("projects_list"),
-      call<Repo[]>("repositories_list", { project_id: project || undefined }),
+      call<Repo[]>("repositories_list", scopeFilter(scope)),
     ])
       .then(([ps, rs]) => {
         if (!live) return;
@@ -387,7 +386,7 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
     return () => {
       live = false;
     };
-  }, [project, refresh]);
+  }, [scope, refresh]);
   useEffect(() => {
     const events = new EventSource("/api/events");
     events.addEventListener("ready", () => {
@@ -484,31 +483,23 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
           <ErrorText>{error}</ErrorText>
           {view === "tasks" ? (
             <TasksView
-              key={`${project}:${routeRevision}`}
-              project={project}
-              title={projects.find((p) => p.id === project)?.name ?? "All tasks"}
+              key={`${scope.join(",")}:${routeRevision}`}
+              scope={scope}
+              title={
+                scope.length ? scopeName(projects.filter((p) => scope.includes(p.id))) : "All tasks"
+              }
               repos={repos}
               refresh={refresh}
               changed={changed}
               newProject={() => setNewProject(true)}
             />
           ) : view === "artifacts" ? (
-            <ArtifactsView
-              key={routeRevision}
-              project={project}
-              refresh={refresh}
-              changed={changed}
-            />
+            <ArtifactsView key={routeRevision} scope={scope} refresh={refresh} changed={changed} />
           ) : view === "sessions" ? (
-            <SessionsView
-              key={routeRevision}
-              project={project}
-              refresh={refresh}
-              changed={changed}
-            />
+            <SessionsView key={routeRevision} scope={scope} refresh={refresh} changed={changed} />
           ) : view === "history" ? (
             <HistoryView
-              project={project}
+              scope={scope}
               projects={projects}
               repos={repos}
               refresh={refresh}
@@ -519,7 +510,7 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
           ) : view === "settings" ? (
             <SettingsView />
           ) : view === "activity" ? (
-            <Activity project={project} refresh={refresh} />
+            <Activity scope={scope} refresh={refresh} />
           ) : (
             <Connections
               mcp={mcp}
@@ -531,7 +522,7 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
       </div>
       {palette && (
         <CommandPalette
-          project={project}
+          scope={scope}
           projects={projects}
           navigate={navigate}
           chooseProject={chooseProject}

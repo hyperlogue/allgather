@@ -41,3 +41,9 @@ export function scopeName(projects: Pick<Project, "name">[]) {
   if (projects.length === 2) return `${projects[0].name} + ${projects[1].name}`;
   return `${projects.length} projects`;
 }
+export function scopeFilter(scope: string[]) {
+  return scope.length ? { project_ids: scope } : {};
+}
+export function singleProject(scope: string[]) {
+  return scope.length === 1 ? scope[0] : "";
+}

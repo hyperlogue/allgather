@@ -14,6 +14,7 @@ import { hasManagedProtocol, hasTerminalProtocol, intersectControls } from "../s
 import type { CheckoutObservation } from "../shared/tower-catalog.ts";
 import { call, mutation, request } from "./api.ts";
 import { ContextLink } from "./context.tsx";
+import { scopeFilter, singleProject } from "./project-scope.ts";
 import { TowerPairing } from "./tower-enrollment.tsx";
 import { TranscriptStorage } from "./transcript-storage.tsx";
 import { Dialog, ErrorText, FeaturePlaceholder, PageHeading, useAction } from "./ui.tsx";
@@ -931,14 +932,15 @@ function MachineManager({
   );
 }
 export function SessionsView({
-  project,
+  scope,
   refresh,
   changed,
 }: {
-  project: string;
+  scope: string[];
   refresh: number;
   changed: () => void;
 }) {
+  const project = singleProject(scope);
   const [page, setPage] = useState<Page<AgentSession>>({ items: [], total: 0, next_cursor: null }),
     [machines, setMachines] = useState<Machine[]>([]),
     [roles, setRoles] = useState<Role[]>([]),
@@ -977,7 +979,7 @@ export function SessionsView({
       call<Page<AgentSession>>("sessions_search", {
         query,
         cursor,
-        project_id: project || undefined,
+        ...scopeFilter(scope),
         task_id: taskFilter || undefined,
         machine_id: machineFilter || undefined,
         since: since ? new Date(since).toISOString() : undefined,
@@ -998,7 +1000,7 @@ export function SessionsView({
     return () => {
       live = false;
     };
-  }, [query, cursor, refresh, project, taskFilter, machineFilter, since, until]);
+  }, [query, cursor, refresh, scope, taskFilter, machineFilter, since, until]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: Keep direct session links and current selection independent of result-page membership.
   useEffect(() => {
     let active = true;

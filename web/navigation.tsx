@@ -4,7 +4,7 @@ import { call } from "./api.ts";
 import logoUrl from "./brand/logo-small.svg";
 import { Icon, type IconName } from "./icons.tsx";
 import { ProjectIcon } from "./project-icon.tsx";
-import { projectColor, scopeName, scopeRail } from "./project-scope.ts";
+import { projectColor, scopeFilter, scopeName, scopeRail } from "./project-scope.ts";
 
 export const scopedViews = [
   ["tasks", "Tasks"],
@@ -103,7 +103,10 @@ function ProjectSwitcher({
       : selected.map((p) => p.name).join(", ");
   useEffect(() => {
     if (!open) return;
-    root.current?.querySelector<HTMLElement>('[role="option"][aria-selected="true"]')?.focus();
+    (
+      root.current?.querySelector<HTMLElement>('.scope-option[aria-current="true"]') ??
+      root.current?.querySelector<HTMLElement>(".scope-option")
+    )?.focus();
     const outside = (e: PointerEvent) => {
       if (!root.current?.contains(e.target as Node)) setOpen(false);
     };
@@ -114,7 +117,10 @@ function ProjectSwitcher({
         root.current?.querySelector<HTMLElement>(".scope-switch")?.focus();
       }
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        const options = [...(root.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])];
+        const options = [
+          ...(root.current?.querySelectorAll<HTMLElement>(".scope-popover button, .scope-check") ??
+            []),
+        ];
         const index = options.indexOf(document.activeElement as HTMLElement);
         options[
           (index + (e.key === "ArrowDown" ? 1 : -1) + options.length) % options.length
@@ -138,7 +144,7 @@ function ProjectSwitcher({
       <button
         type="button"
         className="scope-switch"
-        aria-haspopup="listbox"
+        aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={`Project filter: ${name}`}
         title={collapsed ? `Project filter: ${name}` : undefined}
@@ -154,36 +160,50 @@ function ProjectSwitcher({
         </span>
       </button>
       {open && (
-        <div className="scope-popover">
-          <div role="listbox" aria-label="Projects">
-            <button
-              type="button"
-              role="option"
-              aria-selected={!scope.length}
-              className="scope-option"
-              onClick={() => pick([])}
-            >
-              <img className="scope-swatch" src={logoUrl} alt="" />
-              <span className="sidebar-label">All projects</span>
-              <small>{projects.length}</small>
-            </button>
-            <hr />
-            {projects.map((p) => (
-              <button
-                type="button"
-                role="option"
-                key={p.id}
-                aria-selected={scope.includes(p.id)}
-                className="scope-option"
-                title={`View only ${p.name}`}
-                onClick={() => pick([p.id])}
-              >
-                <span className="scope-swatch" style={{ background: projectColor(p) }} />
-                <span className="sidebar-label">{p.name}</span>
-                <small>{p.slug}</small>
-              </button>
-            ))}
-          </div>
+        <div className="scope-popover" role="dialog" aria-label="Project filter">
+          <button
+            type="button"
+            className="scope-option"
+            aria-current={!scope.length}
+            onClick={() => pick([])}
+          >
+            <img className="scope-swatch" src={logoUrl} alt="" />
+            <span>All projects</span>
+            <small>{projects.length}</small>
+          </button>
+          <hr />
+          <ul className="scope-list" aria-label="Projects">
+            {projects.map((p) => {
+              const included = scope.includes(p.id);
+              return (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    className="scope-option"
+                    aria-current={included && scope.length === 1}
+                    title={`View only ${p.name}`}
+                    onClick={() => pick([p.id])}
+                  >
+                    <span className="scope-swatch" style={{ background: projectColor(p) }} />
+                    <span>{p.name}</span>
+                    <small>{p.slug}</small>
+                  </button>
+                  <input
+                    type="checkbox"
+                    className="scope-check"
+                    checked={included}
+                    aria-label={`Include ${p.name}`}
+                    title={
+                      included ? `Remove ${p.name} from the filter` : `Add ${p.name} to the filter`
+                    }
+                    onChange={() =>
+                      choose(included ? scope.filter((id) => id !== p.id) : [...scope, p.id])
+                    }
+                  />
+                </li>
+              );
+            })}
+          </ul>
           <hr />
           <button
             type="button"
@@ -214,7 +234,7 @@ function useRecentSessions(scope: string[], refresh: number) {
     let active = true;
     void call<Page<AgentSession>>("sessions_search", {
       limit: 5,
-      project_id: scope[0] || undefined,
+      ...scopeFilter(scope),
     })
       .then((page) =>
         Promise.all(

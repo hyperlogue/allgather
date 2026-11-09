@@ -4,6 +4,7 @@ import type { Page } from "../shared/contracts.ts";
 import { call } from "./api.ts";
 import { ContextLink } from "./context.tsx";
 import { Icon } from "./icons.tsx";
+import { scopeFilter, singleProject } from "./project-scope.ts";
 import { Dialog, ErrorText, PageHeading, useAction } from "./ui.tsx";
 
 async function encode(file: File) {
@@ -171,14 +172,15 @@ function Publication({
   );
 }
 export function ArtifactsView({
-  project,
+  scope,
   refresh,
   changed,
 }: {
-  project: string;
+  scope: string[];
   refresh: number;
   changed: () => void;
 }) {
+  const project = singleProject(scope);
   const [page, setPage] = useState<Page<Artifact>>({ items: [], total: 0, next_cursor: null }),
     [state, setState] = useState("active"),
     [query, setQuery] = useState(""),
@@ -197,9 +199,9 @@ export function ArtifactsView({
     const request = query
       ? call<{ artifacts: Artifact[]; total: number; nextOffset: number | null }>(
           "artifacts_search",
-          { query, project_id: project || undefined, state, cursor },
+          { query, ...scopeFilter(scope), state, cursor },
         ).then((r) => ({ items: r.artifacts, total: r.total, next_cursor: r.nextOffset }))
-      : call<Page<Artifact>>("artifacts_list", { project_id: project || undefined, state, cursor });
+      : call<Page<Artifact>>("artifacts_list", { ...scopeFilter(scope), state, cursor });
     void request
       .then((p) => {
         if (live) {
@@ -211,7 +213,7 @@ export function ArtifactsView({
     return () => {
       live = false;
     };
-  }, [project, state, query, cursor, refresh]);
+  }, [scope, state, query, cursor, refresh]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: Refresh counters reload committed server state.
   useEffect(() => {
     let live = true;

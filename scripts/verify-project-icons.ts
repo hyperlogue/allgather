@@ -72,16 +72,16 @@ try {
   await browser.until(
     "!document.querySelector('dialog') && document.querySelector('.scope-switch img.project-icon')?.naturalWidth===128",
   );
-  await browser.evaluate(
-    "document.querySelector('[aria-label=\"Search or jump\"]').click()",
-  );
+  await browser.evaluate("document.querySelector('[aria-label=\"Search or jump\"]').click()");
   await browser.until("document.querySelector('.palette-result img')?.naturalWidth===128");
   await browser.evaluate("document.querySelector('[aria-label=\"Close search\"]').click()");
   const first = await browser.evaluate<string>(
     "document.querySelector('.scope-switch img.project-icon').src",
   );
   await browser.command("Page.reload");
-  await browser.until("document.querySelector('.scope-switch img.project-icon')?.naturalWidth===128");
+  await browser.until(
+    "document.querySelector('.scope-switch img.project-icon')?.naturalWidth===128",
+  );
   if (
     (await browser.evaluate<string>(
       "document.querySelector('.scope-switch img.project-icon').src",

@@ -177,6 +177,31 @@ try {
     `document.querySelector('.session-insights')?.textContent.includes('Not available yet')`,
   );
   await shot("sessions");
+  await nav("Tasks");
+  await b.evaluate(`(async()=>{
+    const op=async(name,input)=>{const r=await fetch('/api/operations/'+name,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...input,operation_key:crypto.randomUUID()})});const d=await r.json();if(!r.ok)throw new Error(JSON.stringify(d));return d.result;};
+    const p=await op('projects_create',{name:'Second workspace'});
+    await op('tasks_create',{project_id:p.id,title:'Second project task'});
+  })()`);
+  const scopeOption = (text: string) =>
+    `[...document.querySelectorAll('.scope-popover .scope-option')].find(e=>e.textContent.includes(${JSON.stringify(text)}))`;
+  await b.evaluate(`document.querySelector('.scope-switch').click()`);
+  await b.until(`!!document.querySelector('[aria-label="Include Second workspace"]')`);
+  await b.evaluate(`document.querySelector('[aria-label="Include Second workspace"]').click()`);
+  await b.until(
+    `new URLSearchParams(location.search).get('project')?.split(',').length===2 && !!document.querySelector('.scope-popover') && !!document.querySelector('.sidebar-scope.railed') && document.querySelector('.app-main')?.textContent.includes('Second project task') && document.querySelector('.app-main')?.textContent.includes('Verify the workspace design')`,
+  );
+  await shot("multi-project");
+  await b.evaluate(`${scopeOption("All projects")}.click()`);
+  await b.until(
+    `!document.querySelector('.scope-popover') && !document.querySelector('.sidebar-scope.railed') && document.querySelector('.scope-switch')?.getAttribute('aria-label')==='Project filter: All projects'`,
+  );
+  await b.evaluate(`document.querySelector('.scope-switch').click()`);
+  await b.until(`!!${scopeOption("Example workspace")}`);
+  await b.evaluate(`${scopeOption("Example workspace")}.click()`);
+  await b.until(
+    `!document.querySelector('.scope-popover') && document.querySelector('.scope-switch')?.getAttribute('aria-label')==='Project filter: Example workspace' && !document.querySelector('.app-main')?.textContent.includes('Second project task')`,
+  );
   for (const label of [
     "Artifacts",
     "Git history",
@@ -219,7 +244,7 @@ try {
   await shot("mobile-palette");
   await key("Escape", "Escape");
   console.log(
-    "Design browser passed: Midnight/light, sidebar rail and persistence, scoped search, keyboard selection, task creation, recorded session placeholders, eight views and mobile layouts.",
+    "Design browser passed: Midnight/light, sidebar rail and persistence, project scope and multi-project selection, scoped search, keyboard selection, task creation, recorded session placeholders, eight views and mobile layouts.",
   );
 } catch (error) {
   if (browser)

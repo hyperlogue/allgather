@@ -5,6 +5,7 @@ import { call } from "./api.ts";
 import { Icon, type IconName } from "./icons.tsx";
 import { type View, views } from "./navigation.tsx";
 import { ProjectIcon } from "./project-icon.tsx";
+import { scopeFilter, scopeName, singleProject } from "./project-scope.ts";
 
 interface Result {
   id: string;
@@ -16,20 +17,21 @@ interface Result {
   run: () => void;
 }
 export function CommandPalette({
-  project,
+  scope,
   projects,
   navigate,
   chooseProject,
   newProject,
   close,
 }: {
-  project: string;
+  scope: string[];
   projects: Project[];
   navigate: (view: View, params?: Record<string, string>) => void;
   chooseProject: (id: string) => void;
   newProject: () => void;
   close: () => void;
 }) {
+  const project = singleProject(scope);
   const dialog = useRef<HTMLDialogElement>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
@@ -58,17 +60,17 @@ export function CommandPalette({
       void Promise.all([
         call<Page<Task>>("tasks_search", {
           query: text,
-          project_id: project || undefined,
+          ...scopeFilter(scope),
           limit: 6,
         }),
         call<Page<AgentSession>>("sessions_search", {
           query: text,
-          project_id: project || undefined,
+          ...scopeFilter(scope),
           limit: 4,
         }),
         call<{ artifacts: Artifact[] }>("artifacts_search", {
           query: text,
-          project_id: project || undefined,
+          ...scopeFilter(scope),
           limit: 4,
         }),
       ])
@@ -113,7 +115,7 @@ export function CommandPalette({
       active = false;
       clearTimeout(timer);
     };
-  }, [query, project, go]);
+  }, [query, scope, go]);
   const selection = new URLSearchParams(location.search);
   const selectedTask = selection.get("view") === "tasks" ? selection.get("task") : null;
   const actions: Result[] = [
@@ -135,13 +137,17 @@ export function CommandPalette({
           },
         ]
       : []),
-    {
-      id: "new-task",
-      title: "New task",
-      group: "Actions",
-      icon: "plus",
-      run: () => (project ? go("tasks", { action: "new-task" }) : (close(), newProject())),
-    },
+    ...(scope.length > 1
+      ? []
+      : [
+          {
+            id: "new-task",
+            title: "New task",
+            group: "Actions",
+            icon: "plus" as const,
+            run: () => (project ? go("tasks", { action: "new-task" }) : (close(), newProject())),
+          },
+        ]),
     {
       id: "new-project",
       title: "New project",
@@ -218,7 +224,7 @@ export function CommandPalette({
         </button>
       </div>
       <div className="palette-scope">
-        {projects.find((p) => p.id === project)?.name ?? "All projects"}
+        {scopeName(projects.filter((p) => scope.includes(p.id)))}
         <span>Search scope</span>
       </div>
       <div id="palette-results" role="listbox" aria-label="Workspace results">

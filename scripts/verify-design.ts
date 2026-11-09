@@ -115,6 +115,8 @@ try {
     `document.querySelector('.task-detail h2')?.textContent==='Verify the workspace design'`,
   );
   await shot("tasks");
+  if (await b.evaluate("document.documentElement.scrollHeight>innerHeight"))
+    throw new Error("Short task view overflows the window vertically");
   await b.evaluate(`document.querySelector('[aria-label="Collapse sidebar"]').click()`);
   await b.until(`document.querySelector('.app-header').getBoundingClientRect().width===48`);
   await shot("rail");

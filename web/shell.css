@@ -524,6 +524,8 @@ kbd {
 }
 .workspace-body {
   position: relative;
+  display: flex;
+  flex-direction: column;
   margin-left: var(--sidebar-width);
   min-height: 100dvh;
   min-width: 0;
@@ -557,6 +559,7 @@ kbd {
 }
 .app-main {
   position: relative;
+  flex: 1;
   padding: 20px;
   min-width: 0;
 }
@@ -1430,6 +1433,8 @@ dialog::backdrop {
   white-space: nowrap;
 }
 .app-main[data-view="tasks"] {
+  display: flex;
+  flex-direction: column;
   padding: 0;
 }
 .app-main[data-view="tasks"] .task-toolbar {
@@ -1468,7 +1473,7 @@ dialog::backdrop {
 .work-area.has-detail {
   border: 0;
   grid-template-columns: minmax(0, 1.7fr) minmax(320px, 1fr);
-  min-height: calc(100dvh - 85px);
+  flex: 1;
 }
 .detail-top {
   margin-bottom: 8px;

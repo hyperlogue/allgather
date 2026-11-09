@@ -1,6 +1,9 @@
 * {
   box-sizing: border-box;
 }
+html {
+  scrollbar-gutter: stable;
+}
 body {
   margin: 0;
   font: 13px / 1.5 var(--ui);
@@ -1212,6 +1215,7 @@ textarea {
   padding: 1rem;
   background: var(--surface);
   overflow: auto;
+  scrollbar-gutter: stable;
   max-height: 55vh;
   white-space: pre-wrap;
   overflow-wrap: anywhere;

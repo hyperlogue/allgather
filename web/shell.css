@@ -77,6 +77,7 @@ kbd {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  scrollbar-gutter: stable;
 }
 .app-header nav {
   display: flex;
@@ -896,6 +897,7 @@ dialog::backdrop {
 }
 #palette-results {
   overflow-y: auto;
+  scrollbar-gutter: stable;
   max-height: min(440px, 55dvh);
   padding-bottom: 6px;
 }

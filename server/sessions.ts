@@ -137,9 +137,9 @@ export class Sessions {
         ? this.w.all<Role>("SELECT * FROM roles ORDER BY name,id")
         : [];
     if (name === "sessions_get") return this.get(String(a.target_session_id));
-    if ((a.project_id || a.task_id) && !can(p, "tasks:read"))
+    if ((a.project_id || a.project_ids || a.task_id) && !can(p, "tasks:read"))
       throw new AppError("forbidden", "Work filters require tasks:read", 403);
-    const project = a.project_id ? this.w.project(String(a.project_id)).id : null,
+    const projects = this.w.projectScope(a),
       task = a.task_id ? this.w.task(String(a.task_id)).id : null;
     if (a.machine_id) this.w.executions.machine(String(a.machine_id));
     if (a.since && a.until && String(a.since) > String(a.until))
@@ -168,12 +168,12 @@ export class Sessions {
       );
     if (a.since) filter("s.created_at>=?", String(a.since));
     if (a.until) filter("s.created_at<=?", String(a.until));
-    if (project)
+    if (projects)
       filter(
-        `(EXISTS(SELECT 1 FROM session_project_scopes ps JOIN session_members sm ON sm.member_id=ps.session_id WHERE sm.session_id=s.id AND ps.project_id=?) OR EXISTS(SELECT 1 FROM relations r JOIN entities e ON e.id=CASE WHEN r.source_id IN (SELECT member_id FROM session_members WHERE session_id=s.id) THEN r.target_id ELSE r.source_id END WHERE (r.source_id IN (SELECT member_id FROM session_members WHERE session_id=s.id) OR r.target_id IN (SELECT member_id FROM session_members WHERE session_id=s.id)) AND e.project_id=?) OR EXISTS(SELECT 1 FROM audit_operations o JOIN audit_changes c ON c.operation_id=o.id WHERE o.session_id IN (SELECT member_id FROM session_members WHERE session_id=s.id) AND c.project_id=?))`,
-        project,
-        project,
-        project,
+        `(EXISTS(SELECT 1 FROM session_project_scopes ps JOIN session_members sm ON sm.member_id=ps.session_id WHERE sm.session_id=s.id AND ps.project_id IN (SELECT value FROM json_each(?))) OR EXISTS(SELECT 1 FROM relations r JOIN entities e ON e.id=CASE WHEN r.source_id IN (SELECT member_id FROM session_members WHERE session_id=s.id) THEN r.target_id ELSE r.source_id END WHERE (r.source_id IN (SELECT member_id FROM session_members WHERE session_id=s.id) OR r.target_id IN (SELECT member_id FROM session_members WHERE session_id=s.id)) AND e.project_id IN (SELECT value FROM json_each(?))) OR EXISTS(SELECT 1 FROM audit_operations o JOIN audit_changes c ON c.operation_id=o.id WHERE o.session_id IN (SELECT member_id FROM session_members WHERE session_id=s.id) AND c.project_id IN (SELECT value FROM json_each(?))))`,
+        JSON.stringify(projects),
+        JSON.stringify(projects),
+        JSON.stringify(projects),
       );
     if (task)
       filter(

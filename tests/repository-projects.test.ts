@@ -194,6 +194,26 @@ test("project history search, pagination, and summaries agree with explicit look
         summary.paths.every((file) => f.match([file.path]).project_ids.includes(project)),
       ).toBe(true);
     }
+    const union = commits
+      .filter((commit) =>
+        f
+          .match(
+            commit.files.map((file) => file.path),
+            commit.files_complete,
+          )
+          .project_ids.some((id) => id === f.a || id === f.c),
+      )
+      .map((commit) => commit.id)
+      .sort();
+    const combined = f.read<Page<IndexedCommit>>("history_search", {
+      project_ids: [f.a, f.c],
+      query: "Delivery",
+      limit: 100,
+    });
+    expect(combined.items.map((commit) => commit.id).sort()).toEqual(union);
+    expect(f.read<{ total: number }>("history_summary", { project_ids: [f.a, f.c] }).total).toBe(
+      union.length,
+    );
     for (const commit of all().items)
       expect(commit.project_attribution).toEqual(
         f.match(

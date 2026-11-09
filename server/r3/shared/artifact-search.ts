@@ -11,6 +11,7 @@ export interface ArtifactSearchOptions {
   state?: ArtifactState;
   kind?: ArtifactKind;
   project?: string;
+  projects?: string[];
   attention?: boolean;
   history?: "latest" | "all";
   type?: "all" | "content" | "conversation";

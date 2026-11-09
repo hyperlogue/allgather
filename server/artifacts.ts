@@ -242,8 +242,7 @@ export class Artifacts {
         this.store.list({
           state: a.state as "active" | "archived" | undefined,
           kind: a.kind as "files" | "html" | "diff" | undefined,
-          projectId:
-            a.project_id === undefined ? undefined : this.w.project(String(a.project_id)).id,
+          projectIds: this.w.projectScope(a) ?? undefined,
         }),
         a,
       );
@@ -269,7 +268,7 @@ export class Artifacts {
     if (name === "artifacts_search")
       return this.search.search({
         q: String(a.query),
-        project: a.project_id as string | undefined,
+        projects: this.w.projectScope(a) ?? undefined,
         kind: a.kind as "files" | "html" | "diff" | undefined,
         state: a.state as "active" | "archived" | undefined,
         history: a.history as "latest" | "all",

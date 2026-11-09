@@ -274,3 +274,42 @@ test("bulk plan keys are opaque strings, including inherited object names", () =
   ).toThrow("unique");
   expect(w.all("SELECT id FROM tasks")).toHaveLength(3);
 });
+test("project_ids filters list operations to the union of the selected projects", () => {
+  const { call, project } = setup();
+  const second = call<Project>("projects_create", { name: "Second" });
+  const third = call<Project>("projects_create", { name: "Third" });
+  for (const [p, label] of [
+    [project, "first"],
+    [second, "second"],
+    [third, "third"],
+  ] as const) {
+    call<Task>("tasks_create", { project_id: p.id, title: `Task ${label}`, labels: [label] });
+    call("sessions_declare", { target_session_id: `session-${label}`, project_id: p.id });
+  }
+  const scope = { project_ids: [project.id, third.id] };
+  const titles = call<{ items: Task[] }>("tasks_search", scope).items.map((t) => t.title);
+  expect(titles.sort()).toEqual(["Task first", "Task third"]);
+  expect(
+    call<{ name: string }[]>("tasks_labels", scope)
+      .map((l) => l.name)
+      .sort(),
+  ).toEqual(["first", "third"]);
+  expect(
+    call<{ items: { id: string }[] }>("sessions_search", scope)
+      .items.map((s) => s.id)
+      .sort(),
+  ).toEqual(["session-first", "session-third"]);
+  expect(
+    call<{ items: { operation: string }[] }>("audit_list", {
+      ...scope,
+      operation: "tasks_create",
+    }).items,
+  ).toHaveLength(2);
+  expect(call<{ items: Task[] }>("tasks_search", { project_ids: [second.id] }).items).toHaveLength(
+    1,
+  );
+  expect(() => call("tasks_search", { project_id: project.id, project_ids: [second.id] })).toThrow(
+    "not both",
+  );
+  expect(() => call("tasks_search", { project_ids: ["missing"] })).toThrow("Project not found");
+});

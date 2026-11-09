@@ -335,17 +335,13 @@ export class Tasks {
       requestedAssignee?.kind === "session"
         ? { ...requestedAssignee, id: this.w.sessions.resolve(requestedAssignee.id) }
         : requestedAssignee;
-    const project = a.project_id ? this.w.project(String(a.project_id)).id : null,
+    const scope = this.w.projectScopeSql("project_id", this.w.projectScope(a)),
       desc = a.epic_id ? new Set(this.descendants(String(a.epic_id))) : null,
       q = String(a.query ?? "")
         .trim()
         .toLowerCase(),
       rows = this.w
-        .all<{ id: string }>(
-          "SELECT id FROM tasks WHERE (? IS NULL OR project_id=?)",
-          project,
-          project,
-        )
+        .all<{ id: string }>(`SELECT id FROM tasks WHERE ${scope.sql}`, ...scope.args)
         .filter((r) => this.w.access.task(r.id))
         .map((r) => this.get(r.id))
         .filter((t) => {
@@ -401,23 +397,21 @@ export class Tasks {
     if (name === "tasks_context") return this.context(String(a.task_id), p);
     if (name === "task_comments_list") return this.comments(String(a.task_id), a);
     if (name === "tasks_labels") {
-      const prj = a.project_id ? this.w.project(String(a.project_id)).id : null;
+      const scope = this.w.projectScopeSql("t.project_id", this.w.projectScope(a));
       const access = this.w.access.projectSql("t.project_id");
       return this.w.all(
-        `SELECT j.value name,COUNT(*) count FROM tasks t,json_each(t.labels) j WHERE (? IS NULL OR t.project_id=?) AND ${access.sql} GROUP BY j.value ORDER BY j.value`,
-        prj,
-        prj,
+        `SELECT j.value name,COUNT(*) count FROM tasks t,json_each(t.labels) j WHERE ${scope.sql} AND ${access.sql} GROUP BY j.value ORDER BY j.value`,
+        ...scope.args,
         ...access.args,
       );
     }
     if (name === "tasks_progress") {
       if (a.epic_id) return [this.progress(String(a.epic_id))];
-      const prj = a.project_id ? this.w.project(String(a.project_id)).id : null;
+      const scope = this.w.projectScopeSql("project_id", this.w.projectScope(a));
       return this.w
         .all<{ id: string }>(
-          "SELECT id FROM tasks t WHERE EXISTS(SELECT 1 FROM tasks c WHERE c.parent_id=t.id) AND (? IS NULL OR project_id=?) ORDER BY title,id",
-          prj,
-          prj,
+          `SELECT id FROM tasks t WHERE EXISTS(SELECT 1 FROM tasks c WHERE c.parent_id=t.id) AND ${scope.sql} ORDER BY title,id`,
+          ...scope.args,
         )
         .filter((r) => this.w.access.task(r.id))
         .map((r) => this.progress(r.id));

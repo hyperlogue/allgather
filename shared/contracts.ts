@@ -317,8 +317,12 @@ const projectIconUpload = z
       .max(4 * Math.ceil(PROJECT_ICON_MAX_BYTES / 3)),
   })
   .strict();
-const taskFilters = {
+const projectScope = {
   project_id: id.optional(),
+  project_ids: z.array(id).min(1).max(100).optional(),
+};
+const taskFilters = {
+  ...projectScope,
   query: z.string().max(300).optional(),
   status: z.enum(taskStates).optional(),
   labels_all: labels.optional(),
@@ -445,7 +449,7 @@ export const operations = {
     z.object({
       state: z.enum(["active", "archived"]).optional(),
       kind: z.enum(["files", "html", "diff"]).optional(),
-      project_id: id.optional(),
+      ...projectScope,
       ...paging,
     }),
     "artifacts:read",
@@ -533,7 +537,7 @@ export const operations = {
       type: z.enum(["all", "content", "conversation"]).default("all"),
       state: z.enum(["active", "archived"]).optional(),
       kind: z.enum(["files", "html", "diff"]).optional(),
-      project_id: id.optional(),
+      ...projectScope,
       attention: z.boolean().default(false),
       ...paging,
     }),
@@ -995,12 +999,12 @@ export const operations = {
     true,
   ),
   tasks_labels: spec(
-    z.object({ project_id: id.optional() }),
+    z.object({ ...projectScope }),
     "tasks:read",
     "List ordinary labels and their task counts. Priority-like names have no special effects.",
   ),
   tasks_progress: spec(
-    z.object({ project_id: id.optional(), epic_id: id.optional() }),
+    z.object({ ...projectScope, epic_id: id.optional() }),
     "tasks:read",
     "Count descendant leaf tasks, separating completed work from closure without completion.",
   ),
@@ -1056,7 +1060,7 @@ export const operations = {
     z.object({
       query: z.string().max(300).optional(),
       role_id: id.optional(),
-      project_id: id.optional(),
+      ...projectScope,
       task_id: id.optional(),
       machine_id: id.optional(),
       since: dateTime.optional(),
@@ -1122,7 +1126,7 @@ export const operations = {
   ),
   audit_list: spec(
     z.object({
-      project_id: id.optional(),
+      ...projectScope,
       task_id: id.optional(),
       operator_id: id.optional(),
       connection_id: id.optional(),
@@ -1137,7 +1141,7 @@ export const operations = {
     "Read operator mutations and their transactional changes.",
   ),
   repositories_list: spec(
-    z.object({ project_id: id.optional() }),
+    z.object({ ...projectScope }),
     "repositories:read",
     "List shared repositories and collection coverage.",
   ),
@@ -1220,7 +1224,7 @@ export const operations = {
   storage_get: spec(z.object({}), "admin", "Read measured storage use and sample time."),
   history_search: spec(
     z.object({
-      project_id: id.optional(),
+      ...projectScope,
       repository_id: id.optional(),
       query: z.string().max(300).optional(),
       ...paging,
@@ -1235,7 +1239,7 @@ export const operations = {
   ),
   history_summary: spec(
     z.object({
-      project_id: id.optional(),
+      ...projectScope,
       repository_id: id.optional(),
       days: z.number().int().min(1).max(366).default(30),
       timezone: z.string().max(100).default("UTC"),

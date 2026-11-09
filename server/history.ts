@@ -67,13 +67,13 @@ export class History {
     }
     return aliases;
   }
-  repositories(project?: string) {
-    const p = project ? this.w.project(project).id : null;
+  repositories(projects: string[] | null = null) {
+    const scope = this.w.projectScopeSql("pr.project_id", projects);
     return this.w
       .all<{ id: string }>(
-        "SELECT id FROM repositories WHERE (? IS NULL OR EXISTS(SELECT 1 FROM project_repositories pr WHERE pr.repository_id=repositories.id AND pr.project_id=?)) ORDER BY name,id",
-        p,
-        p,
+        `SELECT id FROM repositories WHERE (? IS NULL OR EXISTS(SELECT 1 FROM project_repositories pr WHERE pr.repository_id=repositories.id AND ${scope.sql})) ORDER BY name,id`,
+        scope.args[0],
+        ...scope.args,
       )
       .filter(({ id }) => this.w.access.repository(id))
       .map(({ id }) => {
@@ -159,13 +159,13 @@ export class History {
     return c ? this.unpack(c) : null;
   }
   private selection(a: Input) {
-    const project = a.project_id ? this.w.project(String(a.project_id)).id : null;
+    const projects = this.w.projectScope(a);
     const args: (string | number | null)[] = [
       (a.repository_id as string) ?? null,
       (a.repository_id as string) ?? null,
     ];
-    let match = project ? ` AND ${RepositoryProjects.commitFilter}` : "";
-    if (project) args.push(project);
+    let match = projects ? ` AND ${RepositoryProjects.commitFilter}` : "";
+    if (projects) args.push(JSON.stringify(projects));
     if (a.query) {
       const terms = String(a.query).trim().split(/\s+/).filter(Boolean).slice(0, 16);
       if (terms.length) {
@@ -217,7 +217,7 @@ export class History {
   }
 
   read(name: Operation, a: Input, p: Principal): unknown {
-    if (name === "repositories_list") return this.repositories(a.project_id as string | undefined);
+    if (name === "repositories_list") return this.repositories(this.w.projectScope(a));
     if (name === "repositories_match_projects") {
       const repository = this.repository(String(a.repository_id));
       return this.projects.resolve(repository.id, a.paths as string[], a.paths_complete as boolean);
@@ -295,7 +295,7 @@ export class History {
       })),
       paths = new Map<string, { repository_id: string; path: string; changes: number }>();
     const resolve = this.projects.resolver();
-    const projectId = a.project_id ? this.w.project(String(a.project_id)).id : null;
+    const projects = this.w.projectScope(a);
     for (const c of all) {
       const day = daily.find((d) => d.date === date(c.committed_at));
       if (day) {
@@ -303,7 +303,10 @@ export class History {
         if (c.parents.length > 1) day.merges++;
       }
       for (const f of c.files) {
-        if (projectId && !resolve(c.repository_id, [f.path]).project_ids.includes(projectId))
+        if (
+          projects &&
+          !resolve(c.repository_id, [f.path]).project_ids.some((id) => projects.includes(id))
+        )
           continue;
         const key = c.repository_id + "\0" + f.path,
           item = paths.get(key) ?? { repository_id: c.repository_id, path: f.path, changes: 0 };
@@ -333,7 +336,7 @@ export class History {
         .sort((a, b) => b.changes - a.changes || a.path.localeCompare(b.path))
         .slice(0, 100),
       commits_with_partial_files: all.filter((c) => !c.files_complete).length,
-      repositories: this.repositories(a.project_id as string | undefined).filter(
+      repositories: this.repositories(projects).filter(
         (r) => !a.repository_id || r.id === a.repository_id,
       ),
       coverage_note:

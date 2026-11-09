@@ -113,6 +113,7 @@ export interface ArtifactFilter {
   state?: ArtifactState;
   kind?: ArtifactKind;
   projectId?: string;
+  projectIds?: string[];
   meta?: Record<string, string>;
 }
 
@@ -310,6 +311,10 @@ export class ArtifactStore {
         clauses.push(`${column} = ?`);
         args.push(value);
       }
+    }
+    if (filter.projectIds) {
+      clauses.push("project_id IN (SELECT value FROM json_each(?))");
+      args.push(JSON.stringify(filter.projectIds));
     }
     for (const [key, value] of Object.entries(filter.meta ?? {})) {
       clauses.push("EXISTS (SELECT 1 FROM json_each(meta_json) WHERE key = ? AND value = ?)");

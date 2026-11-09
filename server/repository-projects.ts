@@ -65,9 +65,9 @@ export class RepositoryProjects {
       .run(JSON.stringify(prefixes), repository, project);
   }
 
-  // Embed in a commit query with alias c and bind the requested project once.
+  // Embed in a commit query with alias c and bind the requested project ids as one JSON array.
   static commitFilter = `EXISTS (
-    SELECT 1 FROM project_repositories p WHERE p.repository_id=c.repository_id AND p.project_id=?
+    SELECT 1 FROM project_repositories p WHERE p.repository_id=c.repository_id AND p.project_id IN (SELECT value FROM json_each(?))
     AND ((SELECT count(*) FROM project_repositories all_links WHERE all_links.repository_id=p.repository_id)=1
       OR EXISTS (SELECT 1 FROM json_each(c.files) file WHERE ${winningPath("json_extract(file.value,'$.path')")}))
   )`;

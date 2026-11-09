@@ -102,6 +102,24 @@ export class Workspace {
     this.access.require(this.access.project(project.id));
     return { ...project, icon: projectIcon(this.db, project.id) };
   }
+  projectScope(a: Input): string[] | null {
+    if (a.project_id !== undefined && a.project_ids !== undefined)
+      throw new AppError("invalid_filter", "Use either project_id or project_ids, not both");
+    const ids =
+      a.project_ids !== undefined
+        ? (a.project_ids as string[])
+        : a.project_id
+          ? [String(a.project_id)]
+          : null;
+    return ids && [...new Set(ids.map((id) => this.project(id).id))];
+  }
+  projectScopeSql(column: string, projects: string[] | null) {
+    const json = projects && JSON.stringify(projects);
+    return {
+      sql: `(? IS NULL OR ${column} IN (SELECT value FROM json_each(?)))`,
+      args: [json, json],
+    };
+  }
   task(id: string): Task {
     return this.tasks.get(id);
   }
@@ -488,7 +506,7 @@ export class Workspace {
     return this.tasks.write(name, a, principal);
   }
   private auditList(a: Input) {
-    const project = a.project_id ? this.project(a.project_id as string).id : null;
+    const projects = this.projectScope(a);
     const entity = a.entity_id ? this.sessions.resolve(String(a.entity_id)) : null;
     const rows = this.all<Record<string, unknown>>(
       "SELECT * FROM audit_operations ORDER BY at DESC,rowid DESC",
@@ -510,11 +528,11 @@ export class Workspace {
             entity,
             entity,
           )) &&
-        (!project ||
+        (!projects ||
           this.one(
-            "SELECT 1 FROM audit_changes WHERE operation_id=? AND project_id=?",
+            "SELECT 1 FROM audit_changes WHERE operation_id=? AND project_id IN (SELECT value FROM json_each(?))",
             op.id as string,
-            project,
+            JSON.stringify(projects),
           )) &&
         (!a.task_id ||
           this.one(

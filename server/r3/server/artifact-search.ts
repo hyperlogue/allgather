@@ -330,7 +330,12 @@ export class ArtifactSearch {
   }
   private filtered(options: ArtifactSearchOptions): Artifact[] {
     return this.store
-      .list({ state: options.state, kind: options.kind, projectId: options.project })
+      .list({
+        state: options.state,
+        kind: options.kind,
+        projectId: options.project,
+        projectIds: options.projects,
+      })
       .filter(
         (artifact) =>
           !options.attention || (artifact.state === "active" && artifact.unhandledCount > 0),

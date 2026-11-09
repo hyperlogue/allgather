@@ -407,3 +407,32 @@ test("parallel artifact preparation keeps each audit/receipt atomic and rolls ba
     rmSync(root, { recursive: true, force: true });
   }
 }, 30000);
+test("artifact lists and search accept several projects", async () => {
+  const root = mkdtempSync(join(tmpdir(), "allgather-artifact-projects-")),
+    db = openDatabase(":memory:");
+  const w = new Workspace(db, undefined, undefined, { dataDir: root });
+  const call = <T>(name: Operation, input: Record<string, unknown>) =>
+    w.dispatch(
+      name,
+      { ...(operations[name].write ? { operation_key: randomUUID() } : {}), ...input },
+      owner,
+    ) as Promise<T>;
+  try {
+    const projects = await Promise.all(
+      ["One", "Two", "Three"].map((name) => call<Project>("projects_create", { name })),
+    );
+    for (const p of projects)
+      await call("artifacts_create", { kind: "html", title: `Review ${p.name}`, project_id: p.id });
+    const project_ids = [projects[0].id, projects[2].id];
+    const listed = await call<{ items: Artifact[] }>("artifacts_list", { project_ids });
+    expect(listed.items.map((a) => a.title).sort()).toEqual(["Review One", "Review Three"]);
+    const found = await call<{ artifacts: Artifact[] }>("artifacts_search", {
+      query: "Review",
+      project_ids,
+    });
+    expect(found.artifacts.map((a) => a.title).sort()).toEqual(["Review One", "Review Three"]);
+  } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

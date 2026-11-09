@@ -483,6 +483,40 @@ function SessionDetail({
   return (
     <section className="session-detail">
       <div className="session-detail-main">
+        {!!session.identity_warnings?.length && (
+          <section className="notice session-identity-warnings" role="alert">
+            <h3>Session identity needs review</h3>
+            <p>Some session identity information needs review. Conflicting values were retained.</p>
+            {session.identity_warnings.map((warning) => (
+              <details key={warning.id}>
+                <summary>{warning.field.replaceAll("_", " ")}</summary>
+                <p>{warning.message}</p>
+                <pre>{JSON.stringify(warning.values, null, 2)}</pre>
+              </details>
+            ))}
+          </section>
+        )}
+        {session.native_session_id && (
+          <p className="muted small session-native-identity">
+            Native identity:{" "}
+            <code>
+              {session.native_provider ?? session.agent_type}:{session.native_session_id}
+            </code>
+          </p>
+        )}
+        {!!session.aliases?.length && (
+          <details className="session-aliases">
+            <summary>Other recorded IDs ({session.aliases.length})</summary>
+            <ul>
+              {session.aliases.map((id) => (
+                <li key={id}>
+                  <code>{id}</code>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+
         <div className="section-line">
           <div>
             <h2>{session.label ?? session.id}</h2>
@@ -516,7 +550,13 @@ function SessionDetail({
               {session.agent_type} ·{" "}
               {runtime
                 ? `${runtime.state}${runtime.connected ? "" : " · disconnected"}`
-                : "Stored history"}
+                : session.identity_warnings?.some((w) => w.field === "execution")
+                  ? "Multiple executions · Controls unavailable"
+                  : session.observations?.some((o) => o.record)
+                    ? "Observed by Tower · Not managed"
+                    : sources.length
+                      ? "Stored history"
+                      : "Recorded activity · Not managed"}
             </p>
           </div>
           {runtime &&
@@ -968,7 +1008,15 @@ export function SessionsView({
     }
     void call<AgentSession>("sessions_get", { target_session_id: selected })
       .then((s) => {
-        if (active) setSelectedRecord(s);
+        if (active) {
+          setSelectedRecord(s);
+          if (s.id !== selected) {
+            const url = new URL(location.href);
+            url.searchParams.set("session", s.id);
+            history.replaceState(null, "", url);
+            setSelected(s.id);
+          }
+        }
       })
       .catch((e) => active && setLoadError(e.message));
     return () => {
@@ -1083,6 +1131,11 @@ export function SessionsView({
             >
               <span>
                 <strong>{s.label ?? s.id}</strong>
+                {!!s.identity_warnings?.length && (
+                  <span className="agent-chip waiting">
+                    {s.identity_warnings.length} identity warnings
+                  </span>
+                )}
                 <small>
                   {s.agent_type}
                   {s.role_id

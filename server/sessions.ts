@@ -6,25 +6,28 @@ import {
   type Principal,
   type Role,
 } from "../shared/contracts.ts";
-import { uid, type Workspace } from "./workspace.ts";
+import { inferredSessionIdentity, SessionIdentity, sessionProvider } from "./session-identity.ts";
+import { digest, uid, type Workspace } from "./workspace.ts";
 
 type Input = Record<string, unknown>;
 export class Sessions {
-  constructor(private w: Workspace) {}
-  resolve(id: string) {
-    return (
-      this.w.one<{ session_id: string }>("SELECT session_id FROM session_aliases WHERE alias=?", id)
-        ?.session_id ?? id
+  readonly identity: SessionIdentity;
+  constructor(private w: Workspace) {
+    this.identity = new SessionIdentity(
+      w.db,
+      () => w.now(),
+      (id) => w.access.require(w.access.session(id)),
     );
   }
+  resolve(id: string) {
+    return this.identity.resolve(id);
+  }
   get(id: string): AgentSession {
-    const row = this.w.one<AgentSession>(
-      "SELECT * FROM agent_sessions WHERE id=?",
-      this.resolve(id),
-    );
-    if (!row) throw new AppError("not_found", "Session not found", 404);
-    this.w.access.require(this.w.access.session(row.id));
-    return row;
+    const canonical = this.resolve(id);
+    if (!this.w.one("SELECT 1 FROM agent_sessions WHERE id=?", canonical))
+      throw new AppError("not_found", "Session not found", 404);
+    this.w.access.require(this.w.access.session(canonical));
+    return this.identity.describe(canonical)!;
   }
   role(id: string) {
     const r = this.w.one<Role>("SELECT * FROM roles WHERE id=?", id);
@@ -32,24 +35,83 @@ export class Sessions {
     return r;
   }
   ensure(id: string, harness = "unknown", label?: string, projectId: string | null = null) {
+    const original = id;
     id = this.resolve(id);
     const existing = this.w.one<AgentSession>("SELECT * FROM agent_sessions WHERE id=?", id);
-    if (existing) {
-      this.w.access.require(this.w.access.session(existing.id));
-      return existing;
+    if (existing) this.w.access.require(this.w.access.session(id));
+    else {
+      this.w.access.require(this.w.access.project(projectId));
+      this.w.graph.ensure(id, "session", projectId);
+      this.w.run(
+        "INSERT INTO agent_sessions(id,agent_type,label,created_at,updated_at,project_id) VALUES(?,?,?,?,?,?)",
+        id,
+        harness,
+        label ?? null,
+        this.w.now(),
+        this.w.now(),
+        projectId,
+      );
     }
-    this.w.access.require(this.w.access.project(projectId));
-    this.w.graph.ensure(id, "session", projectId);
-    this.w.run(
-      "INSERT INTO agent_sessions(id,agent_type,label,created_at,updated_at,project_id) VALUES(?,?,?,?,?,?)",
-      id,
+    const native = inferredSessionIdentity(original, harness);
+    if (native) id = this.identity.register(id, native.provider, native.native_id);
+    if (projectId !== null) this.w.access.require(this.w.access.project(projectId));
+    this.identity.enrich(id, {
       harness,
-      label ?? null,
-      this.w.now(),
-      this.w.now(),
-      projectId,
-    );
+      label,
+      ...(projectId !== null ? { project_id: projectId } : {}),
+    });
+    if (original !== id && !this.w.one("SELECT 1 FROM agent_sessions WHERE id=?", original))
+      this.w.run(
+        "INSERT OR IGNORE INTO session_aliases(alias,session_id) VALUES(?,?)",
+        original,
+        id,
+      );
     return this.get(id);
+  }
+  observe(machine: string, towerId: string, record: Record<string, unknown>) {
+    const provider = sessionProvider(record.harness),
+      native = record.native_session_id;
+    if (!provider || typeof native !== "string" || !native || native.length > 160) return;
+    const fingerprint = digest(JSON.stringify([provider, native, record.display_name ?? null]));
+    const linked = this.w.one<{ session_id: string; fingerprint: string }>(
+      "SELECT session_id,fingerprint FROM session_tower_links WHERE machine_id=? AND tower_id=?",
+      machine,
+      towerId,
+    );
+    if (linked?.fingerprint === fingerprint) return;
+    this.w.recordSessionObservation(machine, () => {
+      const known = this.w.one<{ session_id: string }>(
+        "SELECT session_id FROM session_identities WHERE provider=? AND native_id=?",
+        provider,
+        native,
+      );
+      const id =
+        linked?.session_id ??
+        known?.session_id ??
+        this.ensure(
+          uid("session"),
+          String(record.harness),
+          typeof record.display_name === "string" ? record.display_name : undefined,
+        ).id;
+      const canonical = this.identity.register(id, provider, native);
+      const binding = this.w.one<{ provider: string; native_id: string }>(
+        "SELECT provider,native_id FROM session_identities WHERE session_id=?",
+        canonical,
+      );
+      if (binding?.provider === provider && binding.native_id === native)
+        this.identity.enrich(id, {
+          label: typeof record.display_name === "string" ? record.display_name : undefined,
+          harness: String(record.harness),
+        });
+      this.w.run(
+        "INSERT INTO session_tower_links VALUES(?,?,?,?) ON CONFLICT(machine_id,tower_id) DO UPDATE SET fingerprint=excluded.fingerprint",
+        machine,
+        towerId,
+        canonical,
+        fingerprint,
+      );
+      return { session_id: canonical };
+    });
   }
   private bind(id: string, role: string) {
     const s = this.get(id);
@@ -82,7 +144,7 @@ export class Sessions {
     if (a.machine_id) this.w.executions.machine(String(a.machine_id));
     if (a.since && a.until && String(a.since) > String(a.until))
       throw new AppError("invalid_range", "The start time must precede the end time");
-    const where = ["1=1"],
+    const where = ["s.merged_into IS NULL"],
       args: (string | number)[] = [];
     const filter = (sql: string, ...values: (string | number)[]) => {
       where.push(sql);
@@ -90,27 +152,32 @@ export class Sessions {
     };
     if (a.query)
       filter(
-        "instr(lower(s.id||' '||COALESCE(s.label,'')||' '||s.agent_type),?)>0",
+        "(EXISTS(SELECT 1 FROM agent_sessions sm WHERE (sm.id=s.id OR sm.merged_into=s.id) AND instr(lower(sm.id||' '||COALESCE(sm.label,'')||' '||sm.agent_type||' '||COALESCE(sm.native_provider,'')||':'||COALESCE(sm.native_session_id,'')),?)>0) OR EXISTS(SELECT 1 FROM session_aliases sa WHERE sa.session_id=s.id AND instr(lower(sa.alias),?)>0))",
+        String(a.query).toLowerCase(),
         String(a.query).toLowerCase(),
       );
-    if (a.role_id) filter("s.role_id=?", String(a.role_id));
+    if (a.role_id)
+      filter(
+        "EXISTS(SELECT 1 FROM agent_sessions sm WHERE (sm.id=s.id OR sm.merged_into=s.id) AND sm.role_id=?)",
+        String(a.role_id),
+      );
     if (a.machine_id)
       filter(
-        "EXISTS(SELECT 1 FROM session_runtimes r WHERE r.session_id=s.id AND r.machine_id=?)",
+        "EXISTS(SELECT 1 FROM (SELECT session_id,machine_id FROM session_runtimes UNION SELECT session_id,machine_id FROM session_tower_links) r JOIN session_members sm ON sm.member_id=r.session_id WHERE sm.session_id=s.id AND r.machine_id=?)",
         String(a.machine_id),
       );
     if (a.since) filter("s.created_at>=?", String(a.since));
     if (a.until) filter("s.created_at<=?", String(a.until));
     if (project)
       filter(
-        `(s.project_id=? OR EXISTS(SELECT 1 FROM relations r JOIN entities e ON e.id=CASE WHEN r.source_id=s.id THEN r.target_id ELSE r.source_id END WHERE (r.source_id=s.id OR r.target_id=s.id) AND e.project_id=?) OR EXISTS(SELECT 1 FROM audit_operations o JOIN audit_changes c ON c.operation_id=o.id WHERE o.session_id=s.id AND c.project_id=?))`,
+        `(EXISTS(SELECT 1 FROM session_project_scopes ps JOIN session_members sm ON sm.member_id=ps.session_id WHERE sm.session_id=s.id AND ps.project_id=?) OR EXISTS(SELECT 1 FROM relations r JOIN entities e ON e.id=CASE WHEN r.source_id IN (SELECT member_id FROM session_members WHERE session_id=s.id) THEN r.target_id ELSE r.source_id END WHERE (r.source_id IN (SELECT member_id FROM session_members WHERE session_id=s.id) OR r.target_id IN (SELECT member_id FROM session_members WHERE session_id=s.id)) AND e.project_id=?) OR EXISTS(SELECT 1 FROM audit_operations o JOIN audit_changes c ON c.operation_id=o.id WHERE o.session_id IN (SELECT member_id FROM session_members WHERE session_id=s.id) AND c.project_id=?))`,
         project,
         project,
         project,
       );
     if (task)
       filter(
-        `(EXISTS(SELECT 1 FROM relations r WHERE (r.source_id=s.id AND r.target_id=?) OR (r.target_id=s.id AND r.source_id=?)) OR EXISTS(SELECT 1 FROM task_comments c WHERE c.session_id=s.id AND c.task_id=?) OR EXISTS(SELECT 1 FROM audit_operations o JOIN audit_changes c ON c.operation_id=o.id WHERE o.session_id=s.id AND c.task_id=?))`,
+        `(EXISTS(SELECT 1 FROM relations r WHERE (r.source_id IN (SELECT member_id FROM session_members WHERE session_id=s.id) AND r.target_id=?) OR (r.target_id IN (SELECT member_id FROM session_members WHERE session_id=s.id) AND r.source_id=?)) OR EXISTS(SELECT 1 FROM task_comments c WHERE c.session_id IN (SELECT member_id FROM session_members WHERE session_id=s.id) AND c.task_id=?) OR EXISTS(SELECT 1 FROM audit_operations o JOIN audit_changes c ON c.operation_id=o.id WHERE o.session_id IN (SELECT member_id FROM session_members WHERE session_id=s.id) AND c.task_id=?))`,
         task,
         task,
         task,
@@ -123,12 +190,14 @@ export class Sessions {
       cursor = Number(a.cursor ?? 0),
       limit = Number(a.limit ?? 50);
     return {
-      items: this.w.all<AgentSession>(
-        `SELECT s.* ${sql} ORDER BY s.created_at DESC,s.id LIMIT ? OFFSET ?`,
-        ...args,
-        limit,
-        cursor,
-      ),
+      items: this.w
+        .all<AgentSession>(
+          `SELECT s.* ${sql} ORDER BY s.created_at DESC,s.id LIMIT ? OFFSET ?`,
+          ...args,
+          limit,
+          cursor,
+        )
+        .map((row) => this.get(row.id)),
       total,
       next_cursor: cursor + limit < total ? cursor + limit : null,
     };
@@ -192,74 +261,43 @@ export class Sessions {
         throw new AppError("revision_conflict", "Read the current session revision", 409);
       return this.bind(id, String(a.role_id));
     }
-    if (this.w.one("SELECT 1 FROM session_runtimes WHERE session_id=?", id))
-      throw new AppError(
-        "session_managed",
-        "Tower-launched sessions take identity and metadata from launch; declare is for external sessions",
-        409,
+    if (
+      this.w.one(
+        "SELECT 1 FROM session_runtimes WHERE session_id IN (SELECT member_id FROM session_members WHERE session_id=?)",
+        id,
+      )
+    ) {
+      const native = this.w.one<{ provider: string; native_id: string }>(
+        "SELECT provider,native_id FROM session_identities WHERE session_id=?",
+        id,
       );
-    const s = this.ensure(
-      id,
-      String(a.harness),
-      a.label as string | undefined,
-      this.w.access.initialProject(a),
-    );
-    if (a.project_id !== undefined && s.project_id !== this.w.access.initialProject(a))
-      throw new AppError(
-        "session_project_conflict",
-        "An existing session's project cannot be replaced",
-        409,
-      );
-    if (a.source_namespace || a.native_session_id) {
-      if (!a.source_namespace || !a.native_session_id)
-        throw new AppError(
-          "invalid_identity",
-          "Supply both source_namespace and native_session_id",
-        );
-      const match = this.w.one<{ id: string }>(
-        "SELECT id FROM agent_sessions WHERE source_namespace=? AND native_session_id=?",
-        String(a.source_namespace),
-        String(a.native_session_id),
-      );
-      if (match && match.id !== id)
-        throw new AppError(
-          "session_identity_conflict",
-          "This native session is already declared",
-          409,
-          { session_id: match.id },
-        );
       if (
-        s.native_session_id &&
-        (s.native_session_id !== a.native_session_id || s.source_namespace !== a.source_namespace)
+        !native ||
+        native.native_id !== a.native_session_id ||
+        native.provider !== sessionProvider(a.harness)
       )
         throw new AppError(
-          "session_identity_conflict",
-          "A session identity cannot be replaced",
+          "session_managed",
+          "Managed session declarations must match the recorded provider and native identity",
           409,
         );
-      if (!s.native_session_id)
-        this.w.run(
-          "UPDATE agent_sessions SET source_namespace=?,native_session_id=?,revision=revision+1,updated_at=? WHERE id=?",
-          String(a.source_namespace),
-          String(a.native_session_id),
-          this.w.now(),
-          id,
-        );
     }
-    if (s.agent_type === "unknown" && a.harness !== "unknown")
-      this.w.run(
-        "UPDATE agent_sessions SET agent_type=?,revision=revision+1,updated_at=? WHERE id=?",
-        String(a.harness),
-        this.w.now(),
-        id,
-      );
-    if (a.label && !s.label)
-      this.w.run(
-        "UPDATE agent_sessions SET label=?,revision=revision+1,updated_at=? WHERE id=?",
-        String(a.label),
-        this.w.now(),
-        id,
-      );
-    return a.role_id ? this.bind(id, String(a.role_id)) : this.get(id);
+    if (
+      (a.source_namespace || a.native_session_id) &&
+      (!a.source_namespace || !a.native_session_id)
+    )
+      throw new AppError("invalid_identity", "Supply both source_namespace and native_session_id");
+    const session = this.ensure(id, String(a.harness), undefined, this.w.access.initialProject(a));
+    const canonical = a.native_session_id
+      ? this.identity.register(session.id, String(a.harness), String(a.native_session_id))
+      : session.id;
+    this.identity.enrich(session.id, {
+      harness: String(a.harness),
+      label: a.label as string | undefined,
+      role_id: a.role_id as string | undefined,
+      source_namespace: a.source_namespace as string | undefined,
+      ...(a.project_id ? { project_id: this.w.access.initialProject(a)! } : {}),
+    });
+    return this.get(canonical);
   }
 }

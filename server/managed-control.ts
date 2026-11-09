@@ -166,7 +166,7 @@ export class ManagedControl {
           !r.active_prompt_id ||
           !r.connected ||
           ["ended", "error"].includes(r.state) ||
-          this.w.executions.runtime(r.session_id)?.id !== r.id
+          this.w.executions.physicalRuntime(r.session_id)?.id !== r.id
         )
           throw new AppError("stale_request", "The private request has no live durable owner", 409);
         const fingerprint = this.w.executions.privateFingerprint({
@@ -539,7 +539,7 @@ export class ManagedControl {
         if (
           !r.fenced &&
           !["ended", "error"].includes(r.state) &&
-          this.w.executions.runtime(r.session_id)?.id === r.id &&
+          this.w.executions.physicalRuntime(r.session_id)?.id === r.id &&
           a.state === "failed" &&
           a.error?.may_have_effect === false &&
           a.dispatch.state === "not_started"

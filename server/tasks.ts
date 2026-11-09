@@ -62,12 +62,14 @@ export class Tasks {
   get(id: string): Task {
     const t = this.raw(id),
       blockers = this.blockers(id).filter((b) => !b.satisfied);
+    const assignment = t.assignee ? JSON.parse(t.assignee) : null;
+    if (assignment?.kind === "session") assignment.id = this.w.sessions.resolve(assignment.id);
     return {
       ...t,
       status: t.closed_at ? "closed" : blockers.length ? "blocked" : "open",
       is_done: !!t.is_done,
       labels: JSON.parse(t.labels),
-      assignee: t.assignee ? JSON.parse(t.assignee) : null,
+      assignee: assignment,
       blocked: !t.closed_at && blockers.length > 0,
       needs_owner: !t.closed_at && blockers.some((b) => b.waiting_on === "human"),
       dependencies: this.dependencies(id).filter((id) => this.w.access.task(id)),
@@ -328,6 +330,11 @@ export class Tasks {
   private search(a: Input, mode: Operation) {
     if (a.unassigned && a.assignee)
       throw new AppError("invalid_filter", "Use either assignee or unassigned, not both");
+    const requestedAssignee = a.assignee as Assignment | undefined;
+    const assignee =
+      requestedAssignee?.kind === "session"
+        ? { ...requestedAssignee, id: this.w.sessions.resolve(requestedAssignee.id) }
+        : requestedAssignee;
     const project = a.project_id ? this.w.project(String(a.project_id)).id : null,
       desc = a.epic_id ? new Set(this.descendants(String(a.epic_id))) : null,
       q = String(a.query ?? "")
@@ -364,7 +371,7 @@ export class Tasks {
           if (a.is_done !== undefined && t.is_done !== a.is_done) return false;
           if (a.blocked !== undefined && t.blocked !== a.blocked) return false;
           if (a.needs_owner !== undefined && t.needs_owner !== a.needs_owner) return false;
-          if (a.assignee && JSON.stringify(t.assignee) !== JSON.stringify(a.assignee)) return false;
+          if (assignee && JSON.stringify(t.assignee) !== JSON.stringify(assignee)) return false;
           if (a.unassigned && t.assignee) return false;
           if (
             q &&

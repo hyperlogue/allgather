@@ -21,6 +21,7 @@ import { migrateCredentials, migratePasskeys } from "./credential-migration.ts";
 import { migrateDesign } from "./design-migration.ts";
 import { migrateGraphTombstones } from "./graph-migration.ts";
 import { migrateNotifications } from "./notification-migration.ts";
+import { migrateSessionIdentity } from "./session-identity-migration.ts";
 import { migrateSessions } from "./session-migration.ts";
 import { migrateTaskWorkflow } from "./task-migration.ts";
 import { migrateTaskSchema } from "./task-schema-migration.ts";
@@ -225,6 +226,7 @@ export function openDatabase(path: string) {
   let migrationBackupNeeded = version >= SCHEMA_VERSION && path !== ":memory:";
   for (const [needed, migrate] of [
     [!hasTable("cli_pairings"), migrateCliPairings],
+    [!hasTable("session_identities"), migrateSessionIdentity],
     [!hasTable("client_activity"), migrateClientActivity],
     [
       !db

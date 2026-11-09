@@ -444,6 +444,7 @@ export class Tower {
             JSON.stringify(projection),
             this.w.now(),
           );
+          this.w.sessions.observe(socket.data.machineId, id.data, projection);
         }
         this.w.run(
           "UPDATE machines SET last_seen_at=? WHERE id=?",
@@ -538,7 +539,7 @@ export class Tower {
             socket.data.machineId,
             id,
           );
-        for (const u of d.upserts)
+        for (const u of d.upserts) {
           this.w.run(
             "INSERT INTO tower_records VALUES(?,?,?,?) ON CONFLICT(machine_id,tower_id) DO UPDATE SET record=excluded.record,observed_at=excluded.observed_at",
             socket.data.machineId,
@@ -546,6 +547,8 @@ export class Tower {
             JSON.stringify(records.get(u.id)),
             this.w.now(),
           );
+          this.w.sessions.observe(socket.data.machineId, u.id, records.get(u.id)!);
+        }
         this.w.run(
           "UPDATE machines SET last_seen_at=? WHERE id=?",
           this.w.now(),
@@ -590,6 +593,7 @@ export class Tower {
             "SELECT cursor FROM transcript_sources WHERE id=?",
             sourceId,
           )!;
+        const previousNativeId = runtime.native_session_id;
         let cursor = source.cursor;
         let boundControls = runtime.controls;
         let ready = false;
@@ -663,7 +667,7 @@ export class Tower {
               if (
                 !runtime.fenced &&
                 !["ended", "error"].includes(runtime.state) &&
-                this.w.executions.runtime(runtime.session_id)?.id === runtime.id &&
+                this.w.executions.physicalRuntime(runtime.session_id)?.id === runtime.id &&
                 !this.w.executions.replacementClean(runtime)
               )
                 throw new AppError(
@@ -733,6 +737,19 @@ export class Tower {
           runtime.owner_id,
           runtime.id,
         );
+        if (runtime.native_session_id && runtime.native_session_id !== previousNativeId) {
+          const owner = this.w.one<{ agent_type: string }>(
+            "SELECT agent_type FROM agent_sessions WHERE id=?",
+            runtime.session_id,
+          )!;
+          this.w.recordSessionObservation(socket.data.machineId, () => ({
+            session_id: this.w.sessions.identity.register(
+              runtime.session_id,
+              owner.agent_type,
+              runtime.native_session_id!,
+            ),
+          }));
+        }
         return {
           ...appended,
           cursor,
@@ -1054,7 +1071,7 @@ export class Tower {
       );
       for (const row of rows) {
         const command = this.w.executions.command(row.id),
-          runtime = this.w.executions.runtime(command.session_id);
+          runtime = this.w.executions.physicalRuntime(command.session_id);
         if (
           !runtime ||
           runtime.id !== command.runtime_id ||

@@ -55,7 +55,7 @@ test("session discovery combines work evidence, machine history, roles and dates
     expect(first).toMatchObject({ agent_type: "fixture", label: "First run", role_id: role.id });
     expect(() =>
       call("sessions_declare", { target_session_id: first.id, label: "Overwrite" }),
-    ).toThrow("declare is for external sessions");
+    ).toThrow("Managed session declarations must match");
     expect(call<AgentSession>("sessions_get", { target_session_id: first.id }).label).toBe(
       "First run",
     );

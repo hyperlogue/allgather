@@ -8,6 +8,8 @@ import {
   resourceGrantsSchema,
 } from "../shared/resource-grants.ts";
 
+import { resolveSession } from "./session-identity.ts";
+
 type Input = Record<string, unknown>;
 export class Access {
   private context = new AsyncLocalStorage<Principal>();
@@ -67,19 +69,11 @@ export class Access {
     return rows.length ? rows.every((row) => this.project(row.project_id)) : this.project(null);
   }
   session(id: string) {
-    const resolved =
-      this.row<{ session_id: string }>("SELECT session_id FROM session_aliases WHERE alias=?", id)
-        ?.session_id ?? id;
-    const row = this.row<{ project_id: string | null }>(
-      "SELECT project_id FROM agent_sessions WHERE id=?",
-      resolved,
-    );
-    if (!row || !this.project(row.project_id)) return false;
-    return (
-      this.db
-        .query("SELECT DISTINCT machine_id FROM session_runtimes WHERE session_id=?")
-        .all(resolved) as { machine_id: string }[]
-    ).every((r) => this.machine(r.machine_id));
+    const resolved = resolveSession(this.db, id),
+      scope = this.sessionSql("s");
+    return !!this.db
+      .query(`SELECT 1 FROM agent_sessions s WHERE s.id=? AND (${scope.sql})`)
+      .get(resolved, ...scope.args);
   }
   artifact(id: string) {
     const row = this.row<{ project_id: string | null }>(
@@ -89,6 +83,7 @@ export class Access {
     return !!row && this.project(row.project_id);
   }
   entity(id: string) {
+    id = resolveSession(this.db, id);
     const entity = this.row<{ kind: string; project_id: string | null }>(
       "SELECT kind,project_id FROM entities WHERE id=?",
       id,
@@ -118,12 +113,12 @@ export class Access {
   }
   towerRecord(machine: string, record: Record<string, unknown>) {
     if (!this.machine(machine)) return false;
-    const session = this.db
+    const sessions = this.db
       .query(
-        "SELECT session_id FROM session_runtimes WHERE machine_id=? AND tower_session_id=? ORDER BY rowid DESC LIMIT 1",
+        "SELECT session_id FROM session_runtimes WHERE machine_id=? AND tower_session_id=? UNION SELECT session_id FROM session_tower_links WHERE machine_id=? AND tower_id=?",
       )
-      .get(machine, String(record.id)) as { session_id: string } | null;
-    if (session) return this.session(session.session_id);
+      .all(machine, String(record.id), machine, String(record.id)) as { session_id: string }[];
+    if (sessions.length) return sessions.every((row) => this.session(row.session_id));
     const checkout =
       typeof record.checkout_id === "string"
         ? (this.db
@@ -173,10 +168,11 @@ export class Access {
     };
   }
   sessionSql(alias: string) {
-    const project = this.projectSql(`${alias}.project_id`),
-      machine = this.machineSql("gr.machine_id");
+    const project = this.projectSql("sp.project_id"),
+      machine = this.machineSql("gr.machine_id"),
+      canonical = `COALESCE(${alias}.merged_into,${alias}.id)`;
     return {
-      sql: `${project.sql} AND NOT EXISTS(SELECT 1 FROM session_runtimes gr WHERE gr.session_id=${alias}.id AND NOT (${machine.sql}))`,
+      sql: `NOT EXISTS(SELECT 1 FROM session_project_scopes sp JOIN session_members sm ON sm.member_id=sp.session_id WHERE sm.session_id=${canonical} AND NOT (${project.sql})) AND NOT EXISTS(SELECT 1 FROM (SELECT session_id,machine_id FROM session_runtimes UNION SELECT session_id,machine_id FROM session_tower_links) gr JOIN session_members sm ON sm.member_id=gr.session_id WHERE sm.session_id=${canonical} AND NOT (${machine.sql}))`,
       args: [...project.args, ...machine.args],
     };
   }

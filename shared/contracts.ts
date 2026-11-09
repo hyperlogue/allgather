@@ -64,6 +64,18 @@ export interface Role {
   created_at: string;
 }
 export interface AgentSession {
+  native_provider?: string | null;
+  aliases?: string[];
+  project_ids?: (string | null)[];
+  identity_warnings?: {
+    id: string;
+    field: string;
+    message: string;
+    values: unknown[];
+    session_ids: string[];
+    created_at: string;
+  }[];
+  observations?: { machine_id: string; tower_id: string; record: Record<string, unknown> | null }[];
   project_id: string | null;
   id: string;
   agent_type: string;
@@ -381,6 +393,7 @@ export interface SessionRuntime {
 export interface SessionEvent {
   id: string;
   session_id: string;
+  source_session_id?: string;
   sequence: number;
   source_id: string;
   source_event_key: string;
@@ -1070,7 +1083,7 @@ export const operations = {
       role_id: id.optional(),
     }),
     "sessions:identity",
-    "Register or enrich an external session. Tower-launched sessions take metadata from launch and cannot be declared here. Does not start a process or grant execution authority.",
+    "Register or reconcile session metadata by provider and native ID. Managed identities must match recorded execution identity. Does not start a process or grant execution authority.",
     true,
   ),
   sessions_bind_role: spec(

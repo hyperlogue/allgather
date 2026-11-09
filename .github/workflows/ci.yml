@@ -67,6 +67,7 @@ jobs:
           bun --no-env-file scripts/verify-artifacts.ts
           bun --no-env-file scripts/verify-tower-enrollment.ts
           bun --no-env-file scripts/verify-session-controls.ts
+          bun --no-env-file scripts/verify-session-identity.ts
           bun --no-env-file scripts/verify-client-access.ts
           bun --no-env-file scripts/verify-approvals.ts
 

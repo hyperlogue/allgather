@@ -112,6 +112,12 @@ test("Tower authentication, durable command receipts, transcript replay, and liv
       }),
     ).toThrow("advertise");
     socket = await connect(credential.access_key);
+    call("sessions_declare", {
+      target_session_id: "cli-before-managed",
+      harness: "test-agent",
+      source_namespace: "cli",
+      native_session_id: "native-managed",
+    });
     const launched = call<{ runtime: SessionRuntime; command: SessionCommand }>("session_launch", {
       machine_id: machine.id,
       harness: "test-agent",
@@ -156,6 +162,7 @@ test("Tower authentication, durable command receipts, transcript replay, and liv
                 owner_id: "owner-fixture",
                 tower_session_id: "tower-session",
                 acp_session_id: "acp-session",
+                native_session_id: "native-managed",
               },
             },
           ],
@@ -163,6 +170,11 @@ test("Tower authentication, durable command receipts, transcript replay, and liv
       }),
     );
     await until(() => w.executions.runtime(launched.runtime.session_id)?.state === "idle");
+    expect(w.sessions.get(launched.runtime.session_id).id).toBe("cli-before-managed");
+    expect(w.executions.runtime("cli-before-managed")?.session_id).toBe(
+      launched.runtime.session_id,
+    );
+
     expect(() =>
       call("session_prompt", {
         target_session_id: launched.runtime.session_id,
@@ -174,6 +186,11 @@ test("Tower authentication, durable command receipts, transcript replay, and liv
       content: [{ type: "text", text: "Inspect this task" }],
     });
     await until(() => received.some((m) => m.id === first.id));
+    expect(
+      (received.find((m) => m.id === first.id)?.params as Record<string, unknown> | undefined)
+        ?.session_id,
+    ).toBe(launched.runtime.session_id);
+
     socket.close();
     await until(() => w.executions.command(first.id).state === "unknown");
     received.length = 0;

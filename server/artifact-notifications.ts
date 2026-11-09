@@ -6,6 +6,7 @@ import type { Artifacts } from "./artifacts.ts";
 import { artifactNudgeText } from "./r3/shared/artifact-prompt.ts";
 import type { ArtifactActor, ArtifactNudge, ArtifactWatcher } from "./r3/shared/artifacts.ts";
 import type { WorkerSubscription } from "./r3/shared/worker-protocol.ts";
+import { sessionProvider } from "./session-identity.ts";
 import { digest, uid, type Workspace } from "./workspace.ts";
 export class ArtifactNotifications {
   constructor(
@@ -98,6 +99,7 @@ export class ArtifactNotifications {
     });
   }
   target(sessionId: string) {
+    if (this.w.sessions.identity.runtimeNamespaces(sessionId).length > 1) return null;
     const session = this.w.sessions.get(sessionId),
       runtime = this.w.executions.runtime(sessionId);
     if (
@@ -137,7 +139,7 @@ export class ArtifactNotifications {
           data.native_session_id === native &&
           (!session.agent_type ||
             session.agent_type === "unknown" ||
-            data.harness === session.agent_type) &&
+            sessionProvider(data.harness) === sessionProvider(session.agent_type)) &&
           !["exited", "lost"].includes(data.status) &&
           data.caps?.message !== "none"
         );

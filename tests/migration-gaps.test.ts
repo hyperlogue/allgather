@@ -21,7 +21,7 @@ test("later task schemas backfill missing access and identity migrations without
     db = openDatabase(path);
     const backups = readdirSync(root).filter((name) => name.includes(".before-v38-"));
     expect(backups).toHaveLength(1);
-    for (const name of ["cli_pairings", "client_activity", "passkeys"])
+    for (const name of ["cli_pairings", "session_identities", "client_activity", "passkeys"])
       expect(
         db.query("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name),
       ).toBeTruthy();

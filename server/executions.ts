@@ -96,7 +96,28 @@ export class Executions {
         ) ?? null,
     };
   }
+  assertUnambiguous(session: string) {
+    this.w.sessions.get(session);
+    if (this.w.sessions.identity.runtimeNamespaces(session).length > 1)
+      throw new AppError(
+        "session_merge_conflict",
+        "Merged session records have unresolved executions in different control namespaces. Stop those executions through Tower before issuing new session controls.",
+        409,
+      );
+  }
   runtime(session: string): SessionRuntime | null {
+    const canonical = this.w.sessions.get(session).id;
+    const namespaces = this.w.sessions.identity.runtimeNamespaces(canonical);
+    if (namespaces.length > 1) return null;
+    const physical =
+      namespaces[0] ??
+      this.w.one<{ session_id: string }>(
+        "SELECT session_id FROM session_runtimes WHERE session_id IN (SELECT member_id FROM session_members WHERE session_id=?) ORDER BY rowid DESC LIMIT 1",
+        canonical,
+      )?.session_id;
+    return physical ? this.physicalRuntime(physical) : null;
+  }
+  physicalRuntime(session: string): SessionRuntime | null {
     this.w.sessions.get(session);
     const r = this.w.one<Stored<SessionRuntime, "controls"> & { observed_checkout_id: unknown }>(
       "SELECT r.*,json_extract(t.record,'$.checkout_id') observed_checkout_id FROM session_runtimes r LEFT JOIN tower_records t ON t.machine_id=r.machine_id AND t.tower_id=r.tower_session_id WHERE r.session_id=? ORDER BY r.rowid DESC LIMIT 1",
@@ -115,7 +136,7 @@ export class Executions {
     return {
       ...runtime,
       stop_requested: this.stopping(runtime),
-      resume_requires_force: this.unresolved(session).length > 0,
+      resume_requires_force: this.unresolved(session, "", true).length > 0,
     };
   }
   stopping(runtime: SessionRuntime): boolean {
@@ -129,7 +150,10 @@ export class Executions {
   }
   controls(runtime: SessionRuntime): SessionControls | null {
     const machine = this.machine(runtime.machine_id),
-      harness = this.w.sessions.get(runtime.session_id).agent_type;
+      harness = this.w.one<{ agent_type: string }>(
+        "SELECT agent_type FROM agent_sessions WHERE id=?",
+        runtime.session_id,
+      )!.agent_type;
     if (!machine.managed_enabled) return null;
     if (runtime.protocol === "terminal")
       return hasTerminalProtocol(machine.capabilities)
@@ -167,7 +191,7 @@ export class Executions {
       )
     );
   }
-  private unresolved(sessionId: string, exclude = "") {
+  private unresolved(sessionId: string, exclude = "", physical = false) {
     return this.w.all<
       Pick<
         SessionRuntime,
@@ -180,8 +204,8 @@ export class Executions {
         | "acp_session_id"
       >
     >(
-      "SELECT id,generation,machine_id,state,owner_id,native_session_id,acp_session_id FROM session_runtimes WHERE session_id=? AND (termination!='confirmed' OR state NOT IN ('ended','error')) AND id!=? ORDER BY rowid",
-      sessionId,
+      `SELECT id,generation,machine_id,state,owner_id,native_session_id,acp_session_id FROM session_runtimes WHERE ${physical ? "session_id=?" : "session_id IN (SELECT member_id FROM session_members WHERE session_id=?)"} AND (termination!='confirmed' OR state NOT IN ('ended','error')) AND id!=? ORDER BY rowid`,
+      physical ? sessionId : this.w.sessions.resolve(sessionId),
       exclude,
     );
   }
@@ -190,7 +214,7 @@ export class Executions {
       "SELECT 1 FROM session_commands WHERE runtime_id=? AND kind='resume' AND json_extract(payload,'$.force')=1",
       runtime.id,
     );
-    return !force || this.unresolved(runtime.session_id, runtime.id).length === 0;
+    return !force || this.unresolved(runtime.session_id, runtime.id, true).length === 0;
   }
   replacementError(command: SessionCommand, target: SessionRuntime) {
     const { force, cleanup, takeover } = command.payload;
@@ -205,7 +229,7 @@ export class Executions {
     if (!["launch", "resume"].includes(command.kind)) return null;
     if (command.runtime_id !== target.id || command.session_id !== target.session_id)
       return "cleanup_target_conflict";
-    const unresolved = this.unresolved(command.session_id, target.id);
+    const unresolved = this.unresolved(command.session_id, target.id, true);
     if (force !== true) return unresolved.length ? "cleanup_unconfirmed" : null;
     const parsed = resumeCleanupSchema.safeParse(cleanup);
     if (!parsed.success) return "cleanup_target_conflict";
@@ -294,6 +318,20 @@ export class Executions {
     payload: Input,
     key: string,
   ) {
+    const binding = this.w.one<{ session_id: string }>(
+      "SELECT session_id FROM session_runtimes WHERE id=?",
+      runtime,
+    );
+    if (
+      !binding ||
+      this.w.sessions.resolve(binding.session_id) !== this.w.sessions.resolve(session)
+    )
+      throw new AppError(
+        "runtime_conflict",
+        "Command execution belongs to another logical session",
+        409,
+      );
+    session = binding.session_id;
     const encoded = JSON.stringify(
       kind === "reply"
         ? {
@@ -329,6 +367,7 @@ export class Executions {
     return this.command(id);
   }
   private bound(session: string) {
+    this.assertUnambiguous(session);
     const runtime = this.runtime(session);
     if (!runtime || runtime.fenced || ["ended", "error"].includes(runtime.state))
       throw new AppError("session_not_live", "This session has no live execution", 409);
@@ -503,7 +542,7 @@ export class Executions {
     const session = this.w.sessions.get(String(a.target_session_id));
     if (name === "session_assets_list")
       return this.w.all(
-        "SELECT * FROM session_assets WHERE session_id=? ORDER BY created_at,id",
+        "SELECT * FROM session_assets WHERE session_id IN (SELECT member_id FROM session_members WHERE session_id=?) ORDER BY created_at,id",
         session.id,
       );
     if (name === "session_runtime_get") {
@@ -519,25 +558,32 @@ export class Executions {
     }
     if (name === "session_transcript_sources")
       return this.w.all(
-        "SELECT * FROM transcript_sources WHERE session_id=? ORDER BY created_at,id",
+        "SELECT * FROM transcript_sources WHERE session_id IN (SELECT member_id FROM session_members WHERE session_id=?) ORDER BY created_at,id",
         session.id,
       );
     if (name === "session_transcript_events") {
-      const rows = this.w.all<Stored<SessionEvent, "payload"> & { payload_hash: string }>(
-          "SELECT e.*,c.payload,c.deleted_at FROM session_events e JOIN session_event_content c ON c.id=e.id WHERE e.session_id=? AND e.sequence>? ORDER BY e.sequence LIMIT ?",
+      const rows = this.w.all<
+          Stored<SessionEvent, "payload"> & { payload_hash: string; timeline_sequence: number }
+        >(
+          "SELECT e.*,t.sequence timeline_sequence,c.payload,c.deleted_at FROM session_timeline t JOIN session_events e ON e.id=t.event_id JOIN session_event_content c ON c.id=e.id WHERE t.session_id=? AND t.sequence>? ORDER BY t.sequence LIMIT ?",
           session.id,
           Number(a.after),
           Number(a.limit) + 1,
         ),
         more = rows.length > Number(a.limit),
-        items = rows.slice(0, Number(a.limit)).map(({ payload_hash: _hash, ...r }) => ({
-          ...r,
-          payload: r.payload
-            ? JSON.parse(r.payload)
-            : { deleted: true, message: "Captured content deleted" },
-        }));
+        items = rows
+          .slice(0, Number(a.limit))
+          .map(({ payload_hash: _hash, timeline_sequence, ...r }) => ({
+            ...r,
+            sequence: timeline_sequence,
+            source_session_id: r.session_id,
+            session_id: session.id,
+            payload: r.payload
+              ? JSON.parse(r.payload)
+              : { deleted: true, message: "Captured content deleted" },
+          }));
       const deletion = this.w.one<{ content_revision: number; last_deleted_at: string | null }>(
-        "SELECT COALESCE(MAX(sequence),0) content_revision,MAX(created_at) last_deleted_at FROM transcript_deletions WHERE session_id=?",
+        "SELECT COALESCE(MAX(sequence),0) content_revision,MAX(created_at) last_deleted_at FROM transcript_deletions WHERE session_id IN (SELECT member_id FROM session_members WHERE session_id=?)",
         session.id,
       )!;
       return {
@@ -545,12 +591,18 @@ export class Executions {
         has_more: more,
         next_sequence: items.at(-1)?.sequence ?? Number(a.after),
         ...deletion,
+        content_revision:
+          deletion.content_revision +
+          this.w.one<{ timeline_revision: number }>(
+            "SELECT timeline_revision FROM agent_sessions WHERE id=?",
+            session.id,
+          )!.timeline_revision,
       };
     }
     if (name === "session_requests")
       return this.w
         .all<Record<string, unknown>>(
-          "SELECT * FROM session_requests WHERE session_id=? ORDER BY rowid",
+          "SELECT * FROM session_requests WHERE session_id IN (SELECT member_id FROM session_members WHERE session_id=?) ORDER BY rowid",
           session.id,
         )
         .map((r) => ({
@@ -568,7 +620,7 @@ export class Executions {
       return this.w.page(
         this.w
           .all<{ id: string }>(
-            "SELECT id FROM session_commands WHERE session_id=? ORDER BY created_at DESC,id",
+            "SELECT id FROM session_commands WHERE session_id IN (SELECT member_id FROM session_members WHERE session_id=?) ORDER BY created_at DESC,id",
             session.id,
           )
           .map((r) => {
@@ -609,6 +661,7 @@ export class Executions {
       const machine = this.machine(String(a.machine_id)),
         prior = name === "session_resume" ? this.w.sessions.get(String(a.target_session_id)) : null,
         harness = prior?.agent_type ?? String(a.harness);
+      if (prior) this.assertUnambiguous(prior.id);
       if (prior && this.runtime(prior.id)?.protocol === "terminal")
         throw new AppError("unsupported_control", "Remote terminal resume is not supported", 409);
       const controls = this.supports(machine, harness, !!prior, a.mode === "terminal");
@@ -659,8 +712,9 @@ export class Executions {
             native_session_id: string | null;
             acp_session_id: string | null;
             machine_id: string;
+            session_id: string;
           }>(
-            "SELECT * FROM session_runtimes WHERE session_id=? AND (native_session_id IS NOT NULL OR acp_session_id IS NOT NULL) ORDER BY rowid DESC LIMIT 1",
+            "SELECT * FROM session_runtimes WHERE session_id IN (SELECT member_id FROM session_members WHERE session_id=?) AND (native_session_id IS NOT NULL OR acp_session_id IS NOT NULL) ORDER BY CASE WHEN termination!='confirmed' THEN 0 ELSE 1 END,rowid DESC LIMIT 1",
             prior.id,
           )
         : null;
@@ -736,7 +790,7 @@ export class Executions {
       this.w.run(
         "INSERT INTO session_runtimes(id,session_id,machine_id,cwd,protocol,generation,state,connected,last_seen_at,controls) VALUES(?,?,?,?,?,?,'starting',?,?,?)",
         runtime,
-        session.id,
+        previousRuntime?.session_id ?? session.id,
         machine.id,
         String(a.cwd),
         controls.protocol,
@@ -907,14 +961,28 @@ export class Executions {
     const session = this.w.sessions.get(String(a.target_session_id));
     if (name === "session_transcript_import") {
       const source = this.source(
-        session.id,
+        this.w.sessions.identity.physical(String(a.target_session_id)),
         null,
         "native_import",
         String(a.source_key),
         String(a.format_version),
         String(a.coverage),
       );
-      return this.append(source, a.events as Input[], false);
+      const result = this.append(source, a.events as Input[], false);
+      if (session.native_provider && session.native_session_id)
+        this.w.sessions.identity.register(
+          session.id,
+          session.native_provider,
+          session.native_session_id,
+        );
+      return {
+        ...result,
+        session_id: session.id,
+        last_sequence: this.w.one<{ n: number }>(
+          "SELECT COALESCE(MAX(sequence),0) n FROM session_timeline WHERE session_id=?",
+          session.id,
+        )!.n,
+      };
     }
     const runtime = this.bound(session.id);
     if (name === "session_prompt") {
@@ -929,7 +997,7 @@ export class Executions {
         if (
           block.asset_id &&
           !this.w.one(
-            "SELECT 1 FROM session_assets a LEFT JOIN transcript_sources s ON s.id=a.source_id WHERE a.id=? AND a.session_id=? AND (a.source_id IS NULL OR (s.runtime_id=? AND s.source_key=?))",
+            "SELECT 1 FROM session_assets a LEFT JOIN transcript_sources s ON s.id=a.source_id WHERE a.id=? AND a.session_id IN (SELECT member_id FROM session_members WHERE session_id=?) AND (a.source_id IS NULL OR (s.runtime_id=? AND s.source_key=?))",
             String(block.asset_id),
             session.id,
             runtime.id,
@@ -1102,7 +1170,7 @@ export class Executions {
       if (event.kind === "gap")
         this.w.run("UPDATE transcript_sources SET coverage='partial' WHERE id=?", sourceId);
       if (live && source.runtime_id) {
-        const runtime = this.runtime(source.session_id)!;
+        const runtime = this.physicalRuntime(source.session_id)!;
         if (
           runtime.id !== source.runtime_id ||
           runtime.fenced ||
@@ -1155,6 +1223,7 @@ export class Executions {
     media: string,
     name: string | null,
   ) {
+    session = this.w.sessions.identity.physical(session);
     const id = `asset-${digest(`${session}\0${source ?? ""}\0${hash}\0${media}\0${name ?? ""}`).slice(0, 32)}`;
     if (
       this.w.one("SELECT 1 FROM session_asset_identity WHERE id=? AND deleted_at IS NOT NULL", id)
@@ -1174,6 +1243,7 @@ export class Executions {
     name: string | null,
   ) {
     this.w.sessions.get(session);
+    session = this.w.sessions.identity.physical(session);
     const id = this.assetIdentity(session, source, blob.hash, media, name);
     this.w.run("INSERT OR IGNORE INTO session_asset_identity(id) VALUES(?)", id);
     this.w.run(

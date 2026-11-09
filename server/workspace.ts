@@ -123,12 +123,10 @@ export class Workspace {
     const session = agent && a.session_id ? this.sessions.resolve(String(a.session_id)) : null;
     if (session && this.one("SELECT 1 FROM agent_sessions WHERE id=?", session))
       this.access.require(this.access.session(session));
-    const known = session
-      ? this.one<{ role_id: string | null; label: string | null; agent_type: string }>(
-          "SELECT role_id,label,agent_type FROM agent_sessions WHERE id=?",
-          session,
-        )
-      : null;
+    const known =
+      session && this.one("SELECT 1 FROM agent_sessions WHERE id=?", session)
+        ? this.sessions.get(session)
+        : null;
     const role = known?.role_id ? this.sessions.role(known.role_id) : null;
     return {
       id: agent
@@ -280,6 +278,27 @@ export class Workspace {
       throw new AppError("forbidden", "Artifact write access is required", 403);
     return this.recordWrite("artifact_notification_queue", input, principal, work);
   }
+  recordSessionObservation(machineId: string, work: () => unknown) {
+    if (!this.one("SELECT 1 FROM machines WHERE id=?", machineId))
+      throw new AppError("not_found", "Machine not found", 404);
+    return this.recordWrite(
+      "session_identity_observed",
+      {
+        operation_key: uid("observation"),
+        operator_kind: "agent",
+        operator_name: "Tower",
+        agent_type: "tower",
+      },
+      {
+        id: `tower:${machineId}`,
+        kind: "owner",
+        inlet: "tower",
+        machine_id: machineId,
+        scopes: [],
+      },
+      work,
+    );
+  }
   private recordWrite(name: string, a: Input, principal: Principal, work: () => unknown): unknown {
     const inputHash =
       name === "session_reply" ? this.executions.privateFingerprint(a) : digest(canonical(a));
@@ -348,8 +367,23 @@ export class Workspace {
             const plan = value as { tasks: Task[]; mapping: Record<string, string> };
             final = { ...plan, tasks: plan.tasks.map((t) => this.task(t.id)) };
           }
-          if (final && typeof final === "object" && !Array.isArray(final))
-            final = { ...final, audit_id: auditId };
+          if (final && typeof final === "object" && !Array.isArray(final)) {
+            const annotated = { ...final, audit_id: auditId };
+            final = annotated;
+            if (operator.session_id && name.startsWith("tasks_")) {
+              const identity = this.sessions.get(operator.session_id);
+              if (identity.identity_warnings?.length)
+                final = {
+                  ...annotated,
+                  warnings: identity.identity_warnings.map((warning) => ({
+                    code: "session_merge_conflict",
+                    session_id: identity.id,
+                    field: warning.field,
+                    message: warning.message,
+                  })),
+                };
+            }
+          }
           this.run(
             "INSERT INTO operations VALUES(?,?,?,?,?)",
             principal.id,
@@ -455,6 +489,7 @@ export class Workspace {
   }
   private auditList(a: Input) {
     const project = a.project_id ? this.project(a.project_id as string).id : null;
+    const entity = a.entity_id ? this.sessions.resolve(String(a.entity_id)) : null;
     const rows = this.all<Record<string, unknown>>(
       "SELECT * FROM audit_operations ORDER BY at DESC,rowid DESC",
     ).filter(
@@ -462,14 +497,18 @@ export class Workspace {
         (!a.operator_id || op.operator_id === a.operator_id) &&
         (!a.connection_id || op.connection_id === a.connection_id) &&
         (!a.operation || op.operation === a.operation) &&
-        (!a.run_id || op.session_id === a.run_id) &&
+        (!a.run_id ||
+          (op.session_id &&
+            this.sessions.resolve(String(op.session_id)) ===
+              this.sessions.resolve(String(a.run_id)))) &&
         (!a.since || String(op.at) >= String(a.since)) &&
         (!a.until || String(op.at) <= String(a.until)) &&
         (!a.entity_id ||
           this.one(
-            "SELECT 1 FROM audit_changes WHERE operation_id=? AND entity_id=?",
+            "SELECT 1 FROM audit_changes WHERE operation_id=? AND (entity_id=? OR entity_id IN (SELECT member_id FROM session_members WHERE session_id=?))",
             op.id as string,
-            a.entity_id as string,
+            entity,
+            entity,
           )) &&
         (!project ||
           this.one(

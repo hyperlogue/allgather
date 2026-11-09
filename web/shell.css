@@ -1414,6 +1414,22 @@ dialog::backdrop {
   border-width: 0 1px 1px 0;
   transform: rotate(45deg);
 }
+.session-native-identity {
+  overflow-wrap: anywhere;
+  margin-bottom: 8px;
+}
+.session-aliases {
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+}
+.session-identity-warnings h3 {
+  margin-bottom: 6px;
+}
+.session-identity-warnings pre {
+  max-height: 220px;
+  overflow: auto;
+}
+
 .registered-clients > li {
   flex-wrap: wrap;
   gap: 1rem;

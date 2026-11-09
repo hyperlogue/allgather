@@ -16,6 +16,7 @@ export function commitReference(id: string) {
 export class Graph {
   constructor(private w: Workspace) {}
   entity(id: string): Entity {
+    id = this.w.sessions.resolve(id);
     const e = this.w.one<Entity>("SELECT * FROM entities WHERE id=?", id);
     if (e) {
       if (e.kind === "session_event") {
@@ -90,8 +91,8 @@ export class Graph {
     );
   }
   add(type: string, source: string, target: string, reason = "") {
-    this.entity(source);
-    this.entity(target);
+    source = this.entity(source).id;
+    target = this.entity(target).id;
     const old = this.w.one<Relation>(
       "SELECT * FROM relations WHERE type=? AND source_id=? AND target_id=?",
       type,
@@ -121,10 +122,16 @@ export class Graph {
     return r;
   }
   relations(id: string) {
+    const entity = this.entity(id);
+    const ids = JSON.stringify(
+      entity.kind === "session"
+        ? this.w.sessions.identity.members(entity.id).map((row) => row.id)
+        : [entity.id],
+    );
     return this.w.all<Relation>(
-      "SELECT * FROM relations WHERE source_id=? OR target_id=? ORDER BY created_at,id",
-      id,
-      id,
+      "SELECT * FROM relations WHERE source_id IN (SELECT value FROM json_each(?)) OR target_id IN (SELECT value FROM json_each(?)) ORDER BY created_at,id",
+      ids,
+      ids,
     );
   }
   describe(e: Entity) {
@@ -153,14 +160,20 @@ export class Graph {
     const entity = this.entity(String(a.entity_id));
     if (!this.canRead(entity, p))
       throw new AppError("forbidden", "Access to this entity is not granted", 403);
-    const rows = this.relations(entity.id).filter(
-      (r) =>
-        (!a.relation_type || a.relation_type === r.type) &&
-        (a.direction === "both" ||
-          (a.direction === "incoming" ? r.target_id === entity.id : r.source_id === entity.id)) &&
-        this.canRead(this.entity(r.source_id), p) &&
-        this.canRead(this.entity(r.target_id), p),
-    );
+    const rows = this.relations(entity.id)
+      .map((row) => ({
+        ...row,
+        source_id: this.entity(row.source_id).id,
+        target_id: this.entity(row.target_id).id,
+      }))
+      .filter(
+        (r) =>
+          (!a.relation_type || a.relation_type === r.type) &&
+          (a.direction === "both" ||
+            (a.direction === "incoming" ? r.target_id === entity.id : r.source_id === entity.id)) &&
+          this.canRead(this.entity(r.source_id), p) &&
+          this.canRead(this.entity(r.target_id), p),
+      );
     const page = this.w.page(rows, a);
     return {
       entity: this.describe(entity),

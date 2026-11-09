@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fixtureApiToken, fixtureResources } from "../scripts/fixture-auth.ts";
+import { fixtureBrowserCookie } from "../scripts/fixture-passkey.ts";
 import { createApp, Updates } from "../server/app.ts";
 import { approvalWait } from "../server/approvals.ts";
 import { Auth } from "../server/auth.ts";
@@ -17,7 +18,7 @@ async function fixture() {
     w = new Workspace(db, undefined, undefined, { dataDir: root }),
     auth = new Auth(db, "https://owner.example");
   let app = createApp(w, auth, new Updates());
-  const cookie = auth.signIn(auth.createLoginToken("Approval fixture").token).split(";")[0];
+  const cookie = fixtureBrowserCookie(db);
   const owner = () => auth.principal(new Request(auth.baseUrl, { headers: { cookie } }))!;
   const project = w.execute(
     "projects_create",

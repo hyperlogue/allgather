@@ -55,3 +55,13 @@ export const scopes = Object.keys(permissions) as Scope[];
 
 export type PermissionMode = "allow" | "approval";
 export type PermissionModes = Partial<Record<Scope, PermissionMode>>;
+
+export function effectiveScopes(issued: readonly string[], granted: readonly string[]): Scope[] {
+  const candidates = issued.includes("admin") && !granted.includes("admin") ? granted : issued;
+  return candidates.filter(
+    (scope): scope is Scope =>
+      scopes.includes(scope as Scope) &&
+      (issued.includes(scope) || (scope !== "admin" && issued.includes("admin"))) &&
+      (granted.includes(scope) || (scope !== "admin" && granted.includes("admin"))),
+  );
+}

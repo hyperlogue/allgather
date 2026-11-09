@@ -18,6 +18,7 @@ import { Approvals } from "./approvals.ts";
 import { Artifacts } from "./artifacts.ts";
 import { Audit } from "./audit.ts";
 import { BlobStore, hashBytes } from "./blobs.ts";
+import { connectionIdentity } from "./client-access.ts";
 import { Executions } from "./executions.ts";
 import { Graph } from "./graph.ts";
 import { History } from "./history.ts";
@@ -489,6 +490,7 @@ export class Workspace {
       ...page,
       items: page.items.map((op) => ({
         ...op,
+        connection: connectionIdentity(this.db, String(op.connection_id)),
         details: JSON.parse(String(op.details)),
         changes: this.all<
           { before_value: string | null; after_value: string | null } & Record<string, unknown>

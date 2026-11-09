@@ -73,7 +73,7 @@ export function config(
   );
   const hostname = overrides.hostname ?? env.ALLGATHER_BIND ?? saved.hostname ?? "127.0.0.1";
   const ownerUrl = origin(
-    overrides.ownerUrl ?? env.ALLGATHER_OWNER_URL ?? saved.ownerUrl ?? `http://127.0.0.1:${port}`,
+    overrides.ownerUrl ?? env.ALLGATHER_OWNER_URL ?? saved.ownerUrl ?? `http://localhost:${port}`,
     "Owner URL",
   );
   if (

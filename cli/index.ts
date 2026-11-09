@@ -11,8 +11,9 @@ import {
 } from "../shared/contracts.ts";
 import { PROJECT_ICON_MAX_BYTES } from "../shared/project-icon.ts";
 import { parse } from "./args.ts";
-import { Client, defaultLoginScopes } from "./client.ts";
+import { Client } from "./client.ts";
 import { currentOperator } from "./operator.ts";
+import { readPairingCode } from "./pairing-code.ts";
 
 export const HELP = `allgather — one work record for tasks, sessions, and evidence
 
@@ -75,11 +76,9 @@ export const HELP = `allgather — one work record for tasks, sessions, and evid
   api OPERATION --input FILE
 
 Use --json for compact output. Mutations accept --key and --expected-revision.
-Default login scopes: ${defaultLoginScopes.join(" ")}
-Administrative scopes are opt-in: login HOST --scope "admin offline_access".
-Repository configuration only: login HOST --scope "repositories:read repositories:write offline_access".
-An explicit --scope replaces the defaults. Login always requires browser consent.
-Local lifecycle, browser login tokens, and backups use the allgather-server executable.
+Create a CLI pairing code in the owner web app, then paste it at the hidden login prompt.
+Permissions are chosen in the web app. Use --pairing-code-stdin for noninteractive login.
+Local lifecycle, browser passkey registration, and backups use the allgather-server executable.
 Machine pairing and credential revocation use the owner web app.
 Task fields: --label NAME (repeatable), --add-label NAME, --remove-label NAME,
   --clear-labels, --defer ISO_DATE, --undefer, --assignee owner|session:ID|role:ID|none.
@@ -115,7 +114,7 @@ export async function main(argv = process.argv.slice(2)) {
       workflow: "ready → context → comment/update → resolve",
       guidance: [
         "Log in with allgather login <hostname-or-url>.",
-        "Default login excludes admin and repositories:write. Administrative access needs explicit login scopes and browser consent.",
+        "Create a CLI pairing code and choose its permissions in the owner web app. Paste the code at the login prompt.",
         "Use task ready --project PROJECT --unassigned, or filter with --assignee session:ID / role:ID / owner. Read task context TASK before starting work.",
         "Assign work with task update TASK --assignee session:ID or role:ID. Keep work and evidence current.",
         "Use task resolve only when the requested work is complete.",
@@ -154,7 +153,14 @@ export async function main(argv = process.argv.slice(2)) {
     operator,
   );
   if (p[0] === "login") {
-    await client.loginOAuth(string("scope"));
+    if (f.scope !== undefined)
+      throw new Error(
+        "Choose CLI permissions when creating the pairing code in the web app; --scope is no longer supported.",
+      );
+    console.error(
+      `Open ${client.url}/?view=connections and choose Connect CLI to create a pairing code.`,
+    );
+    await client.loginPairing(await readPairingCode(f["pairing-code-stdin"] === true));
     print({ authenticated: true, server: client.url });
     return;
   }

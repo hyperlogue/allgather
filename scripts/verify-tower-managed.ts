@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { startServer } from "../server/index.ts";
 import type { Machine, SessionCommand, SessionRuntime } from "../shared/contracts.ts";
 import { receiptSchema } from "../shared/tower-acp.ts";
-import { fixtureApiToken, fixtureLoginToken, fixtureResources } from "./fixture-auth.ts";
+import { fixtureApiToken, fixtureLogin, fixtureResources } from "./fixture-auth.ts";
 import { stopFixturePool, towerFixture } from "./tower-fixture.ts";
 
 // Real Tower/Allgather transport and runtime owner, with a synthetic shared Codex host.
@@ -42,7 +42,7 @@ const env = {
 let running = await startServer({
   dataDir: join(root, "server"),
   port: 0,
-  ownerUrl: "http://127.0.0.1:0",
+  ownerUrl: "http://localhost:0",
   gitSyncSeconds: 0,
 });
 const origin = running.settings.ownerUrl;
@@ -147,14 +147,7 @@ try {
     running.settings.managedSessions,
     "Managed sessions are disabled; this runner verifies the normal enabled path",
   );
-  const signIn = await fetch(origin + "/api/login", {
-    method: "POST",
-    headers: { origin, "content-type": "application/json" },
-    body: JSON.stringify({ key: await fixtureLoginToken(join(root, "server")) }),
-  });
-  assert(signIn.ok, "Synthetic owner login failed");
-  await signIn.arrayBuffer();
-  cookie = signIn.headers.get("set-cookie")!.split(";")[0]!;
+  cookie = await fixtureLogin(join(root, "server"), origin);
   const invitation = await request("/api/tower/invitations", {
     node_label: "Managed fixture",
     scopes: ["read", "send", "acp:control"],

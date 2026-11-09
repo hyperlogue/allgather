@@ -1121,9 +1121,6 @@ textarea {
     height: calc(100dvh - 132px);
   }
 }
-.consent {
-  max-width: 42rem;
-}
 .permission-tree {
   margin: 1.5rem 0;
 }
@@ -1307,4 +1304,11 @@ textarea {
   min-height: 16px;
   margin: 0;
   accent-color: var(--primary);
+}
+
+.login-enter {
+  width: 100%;
+  min-height: 3.5rem;
+  font-size: 1.1rem;
+  margin: 1rem 0;
 }

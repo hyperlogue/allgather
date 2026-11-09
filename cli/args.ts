@@ -19,6 +19,7 @@ export function parse(argv: string[]) {
         "include-removed",
         "apply",
         "json",
+        "pairing-code-stdin",
         "remove",
         "help",
         "undefer",

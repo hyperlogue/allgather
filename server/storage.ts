@@ -7,14 +7,17 @@ import { migrateArtifacts } from "./artifact-migration.ts";
 import {
   migrateApprovals,
   migrateAuthentication,
+  migrateClientActivity,
   migrateClientAudiences,
+  migrateClientTombstones,
+  migrateCliPairings,
   migrateGranularScopes,
   migrateMcpPairings,
   migrateResourceGrants,
   migrateTowerInvitations,
 } from "./auth-migration.ts";
 import { migrateCatalog } from "./catalog-migration.ts";
-import { migrateCredentials } from "./credential-migration.ts";
+import { migrateCredentials, migratePasskeys } from "./credential-migration.ts";
 import { migrateDesign } from "./design-migration.ts";
 import { migrateGraphTombstones } from "./graph-migration.ts";
 import { migrateNotifications } from "./notification-migration.ts";
@@ -217,6 +220,32 @@ export function openDatabase(path: string) {
   if (version < 28) migrateGraphTombstones(db);
   if (version < 29) migrateTranscriptContent(db);
   if (version < 30) migrateMcpPairings(db);
+  const hasTable = (name: string) =>
+    !!db.query("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name);
+  let migrationBackupNeeded = version >= SCHEMA_VERSION && path !== ":memory:";
+  for (const [needed, migrate] of [
+    [!hasTable("cli_pairings"), migrateCliPairings],
+    [!hasTable("client_activity"), migrateClientActivity],
+    [
+      !db
+        .query<{ name: string }, []>("PRAGMA table_info(oauth_clients)")
+        .all()
+        .some((column) => column.name === "deleted_at"),
+      migrateClientTombstones,
+    ],
+    [!hasTable("passkeys"), migratePasskeys],
+  ] as const) {
+    if (!needed) continue;
+    if (migrationBackupNeeded) {
+      const backup = `${path}.before-v${version}-${Date.now()}.sqlite`;
+      writeFileSync(backup, snapshotDatabase(db), { mode: 0o600, flag: "wx" });
+      migrationBackupNeeded = false;
+    }
+    migrate(db);
+    const migrated = (db.query("PRAGMA user_version").get() as { user_version: number })
+      .user_version;
+    if (version > migrated) db.exec(`PRAGMA user_version=${version}`);
+  }
   if (version < 36)
     db.transaction(() => {
       if (!hasProjectSlug)

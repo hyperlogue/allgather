@@ -192,7 +192,7 @@ export async function startServer(overrides: Partial<Config> = {}) {
     control = startLocalControl(settings, workspace, stop, () => gateways!.status());
     gateways.start();
     console.log(
-      `Allgather: ${settings.ownerUrl}\nSign in with a one-time code from: allgather-server auth create-token --data-dir ${settings.dataDir}`,
+      `Allgather: ${settings.ownerUrl}\nRegister your passkey with: allgather-server login --data-dir ${settings.dataDir}`,
     );
     return { server, mcpServer, workspace, stop, settings };
   } catch (error) {

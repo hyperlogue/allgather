@@ -1,11 +1,13 @@
 import { expect, test } from "bun:test";
-import { createHash } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fixtureApiToken } from "../scripts/fixture-auth.ts";
+import { fixtureBrowserCookie } from "../scripts/fixture-passkey.ts";
 import { createApp, Updates } from "../server/app.ts";
 import { Auth } from "../server/auth.ts";
+import { CliPairings } from "../server/cli-pairing.ts";
 import { openDatabase } from "../server/storage.ts";
 import { Workspace } from "../server/workspace.ts";
 import type { Operation, Principal } from "../shared/contracts.ts";
@@ -25,7 +27,7 @@ async function setup() {
         },
       }),
   });
-  const cookie = auth.signIn(auth.createLoginToken("Grants fixture").token).split(";")[0];
+  const cookie = fixtureBrowserCookie(db);
   const owner = auth.principal(new Request(auth.baseUrl, { headers: { cookie } }))!;
   let n = 0;
   const call = (name: Operation, input: Record<string, unknown> = {}, p = owner) =>
@@ -257,7 +259,7 @@ test("artifact search and raw HTTP reads cannot escape resource grants or concur
     expect((await first.request("/api/backup")).status).toBe(403);
     expect((await first.request("/api/clients")).status).toBe(403);
     expect((await first.request("/api/tower/credentials")).status).toBe(403);
-    expect((await first.request("/api/oauth/request")).status).toBe(403);
+    expect((await first.request("/api/cli/pairings")).status).toBe(403);
     expect((await first.request("/api/library-summary")).status).toBe(403);
     const reader = { ...first.p, scopes: ["artifacts:read"] } as Principal;
     await expect(
@@ -317,36 +319,25 @@ test("a shared repository requires every project grant even when path attributio
 test("refresh retains the exact grant and explicit token revocation retires pending command authority", async () => {
   const f = await setup();
   try {
-    const client = f.auth.register(
-      { redirect_uris: ["https://connector.example/callback"] },
-      "api",
-    );
-    const verifier = "a".repeat(43),
-      resources = { project_ids: [f.a.id], machine_ids: [f.machines[0].id], unassigned: false };
-    const approved = await f.auth.authorize(
-      new Request(f.auth.baseUrl + "/api/oauth/authorize", {
-        headers: { cookie: f.cookie, origin: f.auth.baseUrl },
-      }),
+    const resources = { project_ids: [f.a.id], machine_ids: [f.machines[0].id], unassigned: false };
+    const pairings = new CliPairings(f.w.db, f.auth);
+    const owner = f.auth.principal(new Request(f.auth.baseUrl, { headers: { cookie: f.cookie } }))!;
+    const opened = pairings.open(
       {
-        client_id: client.client_id,
-        redirect_uri: "https://connector.example/callback",
-        response_type: "code",
-        scope: "sessions:launch",
-        resource: f.auth.apiResource,
-        code_challenge: createHash("sha256").update(verifier).digest("base64url"),
-        code_challenge_method: "S256",
-        resource_grants: JSON.stringify(resources),
+        name: "Scoped CLI",
+        scopes: ["sessions:launch"],
+        resource_grants: resources,
+        permission_modes: {},
       },
+      owner,
     );
-    const tokenRequest = new Request(f.auth.baseUrl + "/oauth/token", { method: "POST" });
-    const tokens = await f.auth.exchange(tokenRequest, {
-      grant_type: "authorization_code",
-      client_id: client.client_id,
-      redirect_uri: "https://connector.example/callback",
-      code: new URL(approved.redirect_uri).searchParams.get("code")!,
-      code_verifier: verifier,
-      resource: f.auth.apiResource,
+    const tokens = pairings.claim({
+      pairing_code: opened.pairing_code,
+      request_id: randomBytes(32).toString("base64url"),
     });
+    pairings.confirm(opened.pairing_id, tokens.access_token);
+    const client = { client_id: tokens.client_id };
+    const tokenRequest = new Request(f.auth.baseUrl + "/oauth/token", { method: "POST" });
     const principal = (token: unknown) =>
       f.auth.principal(
         new Request(f.auth.baseUrl, { headers: { authorization: `Bearer ${token}` } }),

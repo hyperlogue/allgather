@@ -4,8 +4,11 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Auth } from "../server/auth.ts";
+import { fixtureBrowserCookie } from "../scripts/fixture-passkey.ts";
+import { Auth, secret } from "../server/auth.ts";
+import { CliPairings } from "../server/cli-pairing.ts";
 import { openDatabase } from "../server/storage.ts";
+import { restoreSessionSchema31 } from "./fixtures/session-schema.ts";
 import { restoreTaskSchema36 } from "./fixtures/task-schema.ts";
 
 test("client audience is assigned by the endpoint and cannot be supplied in client metadata", () => {
@@ -19,13 +22,24 @@ test("client audience is assigned by the endpoint and cannot be supplied in clie
       scope: "admin",
       trusted: true,
     };
-    expect(() => auth.register(input, "mcp")).toThrow("Open MCP pairing");
     db.query(
       "INSERT INTO mcp_pairings(id,code_hash,name,scopes,resources,permissions,owner,created_at,register_until,expires_at) VALUES('pairing-test','hash','Owner-chosen name','[]','{}','{}','owner','2000-01-01','2099-01-01','2099-01-01')",
     ).run();
-    const external = auth.register(input, "mcp", { id: "pairing-test", name: "Owner-chosen name" });
+    const external = auth.register(input, { id: "pairing-test", name: "Owner-chosen name" });
     expect(external.client_name).toBe("Owner-chosen name");
-    const local = auth.register(input, "api");
+    const pairings = new CliPairings(db, auth);
+    const cookie = fixtureBrowserCookie(db);
+    const owner = auth.principal(new Request(auth.baseUrl, { headers: { cookie } }))!;
+    const opened = pairings.open(
+      {
+        name: "CLI",
+        scopes: ["tasks:read"],
+        resource_grants: { project_ids: [], machine_ids: [], unassigned: false },
+        permission_modes: {},
+      },
+      owner,
+    );
+    const local = pairings.claim({ pairing_code: opened.pairing_code, request_id: secret() });
     const params = (client: string, resource: string, scope: string) => ({
       client_id: client,
       resource,
@@ -35,27 +49,19 @@ test("client audience is assigned by the endpoint and cannot be supplied in clie
       code_challenge_method: "S256",
       code_challenge: createHash("sha256").update("a".repeat(43)).digest("base64url"),
     });
+    expect(
+      auth.authorizationClient(params(external.client_id, auth.resource, "tasks:read")).audience,
+    ).toBe("mcp");
     expect(() =>
-      auth.authorizeInfo(params(external.client_id, auth.resource, "tasks:read")),
-    ).toThrow("MCP pairing");
-    expect(() => auth.authorizeInfo(params(external.client_id, auth.apiResource, "admin"))).toThrow(
-      "not registered",
-    );
-    expect(auth.authorizeInfo(params(local.client_id, auth.apiResource, "admin")).audience).toBe(
-      "api",
-    );
-    expect(() => auth.authorizeInfo(params(local.client_id, auth.resource, "tasks:read"))).toThrow(
-      "not registered",
-    );
-    expect(auth.metadata("public").registration_endpoint).toBe(
-      "https://mcp.example/oauth/register",
-    );
-    expect(auth.metadata("public").authorization_endpoint).toBe(
-      "https://mcp.example/oauth/authorize",
-    );
-    expect(auth.metadata("private").registration_endpoint).toBe(
-      "https://owner.example/oauth/register-cli",
-    );
+      auth.authorizationClient(params(external.client_id, auth.apiResource, "admin")),
+    ).toThrow("not registered");
+    expect(auth.client(local.client_id)?.audience).toBe("api");
+    expect(() =>
+      auth.authorizationClient(params(local.client_id, auth.apiResource, "admin")),
+    ).toThrow("CLI pairing");
+    expect(auth.metadata().registration_endpoint).toBe("https://mcp.example/oauth/register");
+    expect(auth.metadata().authorization_endpoint).toBe("https://mcp.example/oauth/authorize");
+    expect(auth.metadata().registration_endpoint).not.toContain("register-cli");
   } finally {
     db.close();
   }
@@ -67,16 +73,17 @@ test("upgrading unknown client registrations revokes grants instead of inferring
   let db = openDatabase(path);
   try {
     const auth = new Auth(db, "https://owner.example");
-    const old = auth.register(
-      { client_name: "Allgather CLI", redirect_uris: ["https://connector.example/callback"] },
-      "api",
-    );
+    const old = { client_id: "legacy-client" };
+    db.query(
+      "INSERT INTO oauth_clients(id,name,redirects,method,created_at,audience) VALUES(?,'Legacy','[]','none',?,'api')",
+    ).run(old.client_id, new Date().toISOString());
     db.query(
       "INSERT INTO oauth_tokens(hash,client_id,scopes,expires,refresh_expires,resource) VALUES('old',?,'[\"admin\"]','2099-01-01','2099-01-01',?)",
     ).run(old.client_id, auth.apiResource);
+    restoreSessionSchema31(db);
     restoreTaskSchema36(db);
     db.exec(
-      "DROP TABLE oauth_requests; ALTER TABLE oauth_clients DROP COLUMN pairing_id; DROP TABLE mcp_pairings; DROP TRIGGER session_events_immutable; UPDATE session_events SET payload_hash=(SELECT payload FROM session_event_content WHERE id=session_events.id); ALTER TABLE session_events RENAME COLUMN payload_hash TO payload; CREATE TRIGGER session_events_immutable BEFORE UPDATE ON session_events BEGIN SELECT RAISE(ABORT,'Session events are append-only'); END; DROP TABLE session_event_content; DROP TRIGGER session_asset_retired; DROP TRIGGER session_asset_no_revival; DROP TABLE session_asset_identity; DROP TABLE transcript_deletions; DROP TRIGGER artifact_context_cleanup; DROP TRIGGER artifact_thread_context_cleanup; CREATE TRIGGER artifact_context_cleanup BEFORE DELETE ON artifacts BEGIN SELECT 1; END; CREATE TRIGGER artifact_thread_context_cleanup BEFORE DELETE ON threads BEGIN SELECT 1; END; DROP TRIGGER entity_tombstone_immutable; DROP TRIGGER artifact_comment_context_cleanup; DROP TRIGGER artifact_lifecycle_comment_context_cleanup; DROP TRIGGER artifact_version_context_cleanup; ALTER TABLE entities DROP COLUMN deleted_at; ALTER TABLE entities DROP COLUMN label; ALTER TABLE task_blockers DROP COLUMN resolved_comment_id; DROP TABLE tower_invitations; DROP TABLE approval_requests; ALTER TABLE oauth_tokens DROP COLUMN grant_id; DROP TABLE oauth_grants; ALTER TABLE agent_sessions DROP COLUMN project_id; ALTER TABLE oauth_clients DROP COLUMN audience; PRAGMA user_version=21",
+      "DROP TABLE cli_pairings; DROP TABLE oauth_requests; ALTER TABLE oauth_clients DROP COLUMN pairing_id; DROP TABLE mcp_pairings; DROP TRIGGER session_events_immutable; UPDATE session_events SET payload_hash=(SELECT payload FROM session_event_content WHERE id=session_events.id); ALTER TABLE session_events RENAME COLUMN payload_hash TO payload; CREATE TRIGGER session_events_immutable BEFORE UPDATE ON session_events BEGIN SELECT RAISE(ABORT,'Session events are append-only'); END; DROP TABLE session_event_content; DROP TRIGGER session_asset_retired; DROP TRIGGER session_asset_no_revival; DROP TABLE session_asset_identity; DROP TABLE transcript_deletions; DROP TRIGGER artifact_context_cleanup; DROP TRIGGER artifact_thread_context_cleanup; CREATE TRIGGER artifact_context_cleanup BEFORE DELETE ON artifacts BEGIN SELECT 1; END; CREATE TRIGGER artifact_thread_context_cleanup BEFORE DELETE ON threads BEGIN SELECT 1; END; DROP TRIGGER entity_tombstone_immutable; DROP TRIGGER artifact_comment_context_cleanup; DROP TRIGGER artifact_lifecycle_comment_context_cleanup; DROP TRIGGER artifact_version_context_cleanup; ALTER TABLE entities DROP COLUMN deleted_at; ALTER TABLE entities DROP COLUMN label; ALTER TABLE task_blockers DROP COLUMN resolved_comment_id; DROP TABLE tower_invitations; DROP TABLE approval_requests; ALTER TABLE oauth_tokens DROP COLUMN grant_id; DROP TABLE oauth_grants; ALTER TABLE agent_sessions DROP COLUMN project_id; ALTER TABLE oauth_clients DROP COLUMN audience; PRAGMA user_version=21",
     );
     db.close();
     db = openDatabase(path);

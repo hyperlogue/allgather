@@ -40,14 +40,13 @@ async function buildAssets(bundle: HTMLBundle) {
       html = html.replaceAll(`${quote}${filename}${quote}`, `${quote}${path}${quote}`);
     }
   }
-  // OAuth uses a nested document URL; all bundled resources resolve from the app root.
   index = { ...index, body: new Blob([html]) };
   return { assets, index };
 }
 export async function loadAssets(
   bundle: HTMLBundle,
   documentRoute: (path: string) => boolean = (path) =>
-    ["/", "/oauth/authorize", "/sign-in"].includes(path) ||
+    ["/", "/sign-in", "/welcome"].includes(path) ||
     /^\/tower\/enroll\/enrollment-[a-zA-Z0-9]+$/.test(path),
 ) {
   let pending = builds.get(bundle);

@@ -12,7 +12,7 @@ const dataDir = join(root, "allgather");
 let running = await startServer({
   dataDir,
   port: 0,
-  ownerUrl: "http://127.0.0.1:0",
+  ownerUrl: "http://localhost:0",
   gitSyncSeconds: 0,
 });
 const owner: Principal = { id: "owner", kind: "owner", scopes: ["admin"], inlet: "browser" };

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fixtureBrowserCookie } from "../scripts/fixture-passkey.ts";
 import { Auth } from "../server/auth.ts";
 import { config } from "../server/config.ts";
 import { startServer } from "../server/index.ts";
@@ -38,7 +39,7 @@ test("normal handshake exposes support without granting control, and opt-out sup
       const running = await startServer({
         dataDir: root,
         port: 0,
-        ownerUrl: "http://127.0.0.1:0",
+        ownerUrl: "http://localhost:0",
         gitSyncSeconds: 0,
         ...(enabled ? {} : { managedSessions: false }),
       });
@@ -46,7 +47,7 @@ test("normal handshake exposes support without granting control, and opt-out sup
       try {
         const w = running.workspace,
           auth = new Auth(w.db, running.settings.ownerUrl);
-        const cookie = auth.signIn(auth.createLoginToken("Fixture").token).split(";")[0];
+        const cookie = fixtureBrowserCookie(w.db);
         const principal = auth.principal(new Request(auth.baseUrl, { headers: { cookie } }))!;
         const machine = w.execute(
           "machines_create",

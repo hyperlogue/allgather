@@ -76,6 +76,7 @@ export interface AgentSession {
   updated_at: string;
 }
 export interface TaskComment {
+  connection?: import("./client-access.ts").ConnectionIdentity | null;
   id: string;
   sequence: number;
   task_id: string;

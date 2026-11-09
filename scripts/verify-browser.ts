@@ -3,13 +3,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server/index.ts";
-import { browserSession } from "./browser.ts";
-import { fixtureLogin, fixtureLoginToken, fixtureTowerEnrollment } from "./fixture-auth.ts";
+import { browserPasskeyLogin, browserSession } from "./browser.ts";
+import { fixtureLogin, fixtureLoginLink, fixtureTowerEnrollment } from "./fixture-auth.ts";
 
 const executable = process.env.ALLGATHER_TEST_BROWSER;
 if (!executable) throw new Error("Set ALLGATHER_TEST_BROWSER to a Chromium executable");
 const directory = mkdtempSync(join(tmpdir(), "allgather-ui-"));
-const running = await startServer({ dataDir: directory, port: 0, ownerUrl: "http://127.0.0.1:0" });
+const running = await startServer({ dataDir: directory, port: 0, ownerUrl: "http://localhost:0" });
 let browser: Awaited<ReturnType<typeof browserSession>> | undefined;
 let checkoutSocket: WebSocket | undefined;
 let lastAction = "Open login";
@@ -23,7 +23,7 @@ try {
     mobile: false,
   });
   await b.command("Page.navigate", { url: running.settings.ownerUrl });
-  await b.until(`!!document.querySelector('input[type="password"]')`);
+  await b.until(`!!document.querySelector('.login-enter')`);
   const fill = async (selector: string, text: string) => {
     await b.evaluate(`document.querySelector(${JSON.stringify(selector)}).focus()`);
     await b.evaluate(`document.querySelector(${JSON.stringify(selector)}).select()`);
@@ -42,10 +42,20 @@ try {
     );
     await b.command("Page.reload");
     await b.until(`performance.timeOrigin!==${previous}`);
-    if (project)
-      await b.until(
-        `document.querySelector("#project-select")?.value===${JSON.stringify(project)}`,
-      );
+    if (project) {
+      try {
+        await b.until(
+          `document.querySelector("#project-select")?.value===${JSON.stringify(project)}`,
+        );
+      } catch (error) {
+        console.error(
+          await b.evaluate(
+            `({url: location.pathname + location.search, selected: document.querySelector('#project-select')?.value, signedIn: !!document.querySelector('.app-header'), error: document.querySelector('.error')?.textContent})`,
+          ),
+        );
+        throw error;
+      }
+    }
   };
   const field = async (label: string, value: string, scope = "") => {
     const selector = `${scope} label`;
@@ -61,7 +71,7 @@ try {
   await b.until(
     `document.querySelector('.login [role="status"]')?.textContent==='Command copied.'`,
   );
-  if ((await b.evaluate(`navigator.clipboard.readText()`)) !== "allgather-server auth create-token")
+  if ((await b.evaluate(`navigator.clipboard.readText()`)) !== "allgather-server login")
     throw new Error("Login command was not copied exactly");
   await b.evaluate(
     `Object.defineProperty(navigator.clipboard,'writeText',{configurable:true,value:async()=>{throw new Error('Denied')}})`,
@@ -86,8 +96,7 @@ try {
       Buffer.from(shot.data as string, "base64"),
     );
   }
-  await fill('input[type="password"]', await fixtureLoginToken(directory));
-  await click("Sign in");
+  await browserPasskeyLogin(b, await fixtureLoginLink(directory));
   await b.until(`!!document.querySelector('.app-header')`);
   if (
     await b.evaluate(
@@ -514,7 +523,7 @@ try {
   await field("Connection name", "Approved browser agent", ".mcp-pairing");
   const defaults = await b.evaluate(`(() => {
     const selected = text => Array.from(document.querySelectorAll('.mcp-pairing .permission-choice')).find(e => e.textContent.includes(text))?.querySelector('input')?.checked;
-    return selected('Read machines') && selected('Read retained') && selected('Read artifacts') && document.querySelector('[aria-label="Launch a coding agent on a machine"]')?.value==='approval' && document.querySelector('[aria-label="Send work to a running coding agent"]')?.value==='approval';
+    return selected('Read machines') && selected('Read retained') && selected('Read artifacts') && document.querySelector('.mcp-pairing [aria-label="Launch a coding agent on a machine"]')?.value==='approval' && document.querySelector('.mcp-pairing [aria-label="Send work to a running coding agent"]')?.value==='approval';
   })()`);
   if (!defaults) throw new Error("Pairing defaults grant unexpected permissions");
   await b.evaluate(`(() => {
@@ -525,18 +534,18 @@ try {
     projects.click();
   })()`);
   await b.evaluate(`(() => {
-    const group = document.querySelector('[aria-label="Sessions access"]');
+    const group = document.querySelector('.mcp-pairing [aria-label="Sessions access"]');
     if(group.value!=='approval')throw new Error('Session controls should default to approval');
     group.value='allow';group.dispatchEvent(new Event('change',{bubbles:true}));
   })()`);
   await b.until(
-    `document.querySelector('[aria-label="Launch a coding agent on a machine"]').value==='allow'`,
+    `document.querySelector('.mcp-pairing [aria-label="Launch a coding agent on a machine"]').value==='allow'`,
   );
   await b.evaluate(
-    `(() => {const group=document.querySelector('[aria-label="Sessions access"]');group.value='deny';group.dispatchEvent(new Event('change',{bubbles:true}));})()`,
+    `(() => {const group=document.querySelector('.mcp-pairing [aria-label="Sessions access"]');group.value='deny';group.dispatchEvent(new Event('change',{bubbles:true}));})()`,
   );
   await b.until(
-    `document.querySelector('[aria-label="Launch a coding agent on a machine"]').value==='deny'`,
+    `document.querySelector('.mcp-pairing [aria-label="Launch a coding agent on a machine"]').value==='deny'`,
   );
   await b.evaluate(`(() => {
     for (const item of document.querySelectorAll('.mcp-pairing .permission-choice')) {
@@ -619,7 +628,12 @@ try {
       JSON.stringify({ project_ids: "*", machine_ids: [], unassigned: false })
   )
     throw new Error("Pairing resource choices were not preserved");
+  await b.evaluate(
+    `fetch('/api/logout',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})`,
+  );
   await b.command("Page.navigate", { url: running.settings.ownerUrl });
+  await b.until(`document.querySelector('.login-enter')?.textContent==='Sign in with passkey'`);
+  await b.evaluate(`document.querySelector('.login-enter').click()`);
   await b.until(`!!document.querySelector('.app-header')`);
   const owner = { id: "owner", kind: "owner", inlet: "browser", scopes: ["admin"] } as const;
   const task = running.workspace.one<{ id: string }>(
@@ -724,7 +738,7 @@ try {
     `fetch('/api/logout',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})`,
   );
   await b.command("Page.reload");
-  await b.until(`!!document.querySelector('input[type="password"]')`);
+  await b.until(`!!document.querySelector('.login-enter')`);
   if (!(await b.evaluate(`document.documentElement.classList.contains('dark')`)))
     throw new Error("Login did not retain the browser theme");
   console.log(

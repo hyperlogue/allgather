@@ -12,7 +12,7 @@ import {
   type SessionRuntime,
 } from "../shared/contracts.ts";
 import type { MachineScope } from "../shared/tower-acp.ts";
-import { fixtureLoginToken, fixtureMcpToken } from "./fixture-auth.ts";
+import { fixtureLogin, fixtureMcpToken } from "./fixture-auth.ts";
 import { stopFixturePool, towerFixture } from "./tower-fixture.ts";
 
 const bundle = towerFixture("allgather-terminal-integration-");
@@ -47,7 +47,7 @@ const env = {
 let running = await startServer({
   dataDir: join(root, "server"),
   port: 0,
-  ownerUrl: "http://127.0.0.1:0",
+  ownerUrl: "http://localhost:0",
   gitSyncSeconds: 0,
 });
 const origin = running.settings.ownerUrl;
@@ -106,14 +106,7 @@ const operation = async <T>(name: Operation, input: Record<string, unknown> = {}
     })
   ).result;
 async function signIn() {
-  const response = await fetch(origin + "/api/login", {
-    method: "POST",
-    headers: { origin, "content-type": "application/json" },
-    body: JSON.stringify({ key: await fixtureLoginToken(join(root, "server")) }),
-  });
-  assert(response.ok, "Synthetic browser login failed");
-  await response.arrayBuffer();
-  cookie = response.headers.get("set-cookie")!.split(";")[0];
+  cookie = await fixtureLogin(join(root, "server"), origin);
 }
 async function enroll(scopes: MachineScope[]) {
   const machines = await operation<Machine[]>("machines_list");

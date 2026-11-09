@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -9,36 +9,12 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { AppError, type Operation, type Scope } from "../shared/contracts.ts";
+import { AppError, type Operation } from "../shared/contracts.ts";
 import { configDir, migrateClientConfig } from "../shared/local-config.ts";
 
 import { currentOperator, type OperatorMetadata } from "./operator.ts";
 
 export { configDir } from "../shared/local-config.ts";
-export const defaultLoginScopes = [
-  "tasks:read",
-  "tasks:write",
-  "commits:read",
-  "projects:read",
-  "projects:write",
-  "repositories:read",
-  "sessions:read",
-  "sessions:identity",
-  "sessions:assets",
-  "transcripts:import",
-  "transcripts:read",
-  "sessions:launch",
-  "sessions:prompt",
-  "sessions:stop",
-  "sessions:resume",
-  "sessions:configure",
-  "sessions:reply",
-  "sessions:reconcile",
-  "artifacts:notify",
-  "artifacts:read",
-  "artifacts:contribute",
-  "offline_access",
-] as const satisfies readonly (Scope | "offline_access")[];
 export function readJson<T>(path: string, fallback: T): T {
   return existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : fallback;
 }
@@ -58,7 +34,7 @@ export function baseUrl(value?: string) {
     value ??
     process.env.ALLGATHER_URL ??
     savedClientUrl() ??
-    `http://127.0.0.1:${process.env.ALLGATHER_PORT ?? 4390}`
+    `http://localhost:${process.env.ALLGATHER_PORT ?? 4390}`
   ).trim();
   if (!input) throw new Error("Supply a hostname or server URL");
   const explicitScheme = input.includes("://");
@@ -189,102 +165,52 @@ export class Client {
       unlinkSync(lock);
     }
   }
-  async loginOAuth(scope = defaultLoginScopes.join(" ")) {
-    const state = randomBytes(32).toString("base64url"),
-      verifier = randomBytes(32).toString("base64url"),
-      challenge = createHash("sha256").update(verifier).digest("base64url");
-    let accept!: (code: string) => void, reject!: (error: Error) => void;
-    const code = new Promise<string>((ok, fail) => {
-      accept = ok;
-      reject = fail;
-    });
-    const callback = Bun.serve({
-      hostname: "127.0.0.1",
-      port: 0,
-      fetch: (request) => {
-        const url = new URL(request.url);
-        if (url.pathname !== "/callback" || url.searchParams.get("state") !== state)
-          return new Response("Invalid authorization response", { status: 400 });
-        if (url.searchParams.has("error")) {
-          reject(new Error("Authorization was declined"));
-          return new Response("Authorization declined.");
+  async loginPairing(pairingCode: string) {
+    const post = async (path: string, body: unknown, token?: string) => {
+      let response: Response | undefined;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          response = await fetch(this.url + path, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              ...(token ? { authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify(body),
+            redirect: "error",
+            signal: AbortSignal.timeout(30000),
+          });
+          if (response.status < 500 || attempt === 2) break;
+          await response.body?.cancel();
+        } catch (error) {
+          if (attempt === 2) throw error;
         }
-        if (url.searchParams.get("iss") !== this.url || !url.searchParams.get("code"))
-          return new Response("Invalid issuer or code", { status: 400 });
-        accept(url.searchParams.get("code")!);
-        return new Response("Allgather CLI connected. You can close this window.", {
-          headers: { "content-type": "text/plain", "cache-control": "no-store" },
-        });
-      },
-    });
-    const timer = setTimeout(
-      () => reject(new Error("Authorization timed out. Run login again.")),
-      300000,
+        await Bun.sleep(250 * 2 ** attempt);
+      }
+      if (!response) throw new Error("CLI pairing could not reach the server");
+      if (!response.ok) {
+        const failure = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        throw new Error(failure?.error?.message ?? `CLI pairing failed (${response.status})`);
+      }
+      return response.json();
+    };
+    const paired = (await post("/api/cli/pairings/claim", {
+      pairing_code: pairingCode,
+      request_id: randomBytes(32).toString("base64url"),
+    })) as OAuthCredential & { pairing_id: string };
+    const { pairing_id, ...credential } = paired;
+    if (credential.resource !== this.url + "/api")
+      throw new Error("CLI pairing returned an invalid resource");
+    this.saveCredential(credential);
+    privateJson(join(configDir(), "client.json"), { url: this.url });
+    this.credential = credential;
+    await post(
+      `/api/cli/pairings/${encodeURIComponent(pairing_id)}/confirm`,
+      {},
+      credential.access_token,
     );
-    // Attach a rejection handler while registration is pending.
-    void code.catch(() => {});
-    try {
-      const redirect = `http://127.0.0.1:${callback.port}/callback`,
-        resource = this.url + "/api";
-      const registered = await fetch(this.url + "/oauth/register-cli", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          client_name: "Allgather CLI",
-          redirect_uris: [redirect],
-          token_endpoint_auth_method: "none",
-        }),
-        redirect: "error",
-        signal: AbortSignal.timeout(30000),
-      });
-      if (!registered.ok) throw new Error("CLI registration failed");
-      const client = (await registered.json()) as { client_id: string };
-      const url = new URL(this.url + "/oauth/authorize");
-      url.search = new URLSearchParams({
-        client_id: client.client_id,
-        redirect_uri: redirect,
-        response_type: "code",
-        scope,
-        resource,
-        state,
-        code_challenge: challenge,
-        code_challenge_method: "S256",
-      }).toString();
-      console.error(`Open this URL to approve CLI access:\n${url}`);
-      const grant = await code,
-        response = await fetch(this.url + "/oauth/token", {
-          method: "POST",
-          headers: { "content-type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            grant_type: "authorization_code",
-            client_id: client.client_id,
-            redirect_uri: redirect,
-            code: grant,
-            code_verifier: verifier,
-            resource,
-          }),
-          redirect: "error",
-          signal: AbortSignal.timeout(30000),
-        });
-      if (!response.ok) throw new Error("Authorization code exchange failed");
-      const token = (await response.json()) as {
-        access_token: string;
-        refresh_token?: string;
-        expires_in: number;
-      };
-      const credential = {
-        ...token,
-        client_id: client.client_id,
-        resource,
-        expires_at: Date.now() + token.expires_in * 1000,
-      };
-      this.saveCredential(credential);
-      privateJson(join(configDir(), "client.json"), { url: this.url });
-      this.credential = credential;
-    } finally {
-      clearTimeout(timer);
-      await callback.stop(true);
-    }
   }
   async request(path: string, body?: unknown) {
     const token = await this.accessToken();

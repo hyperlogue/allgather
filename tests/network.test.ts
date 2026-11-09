@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fixtureMcpAuthorization } from "../scripts/fixture-auth.ts";
+import { fixtureRegisterPasskey } from "../scripts/fixture-passkey.ts";
 import { config } from "../server/config.ts";
 import { controlRequest } from "../server/control.ts";
 import { startServer } from "../server/index.ts";
@@ -139,9 +140,9 @@ test("public listener only serves MCP/OAuth and completes consent through the pr
         )
       ).status,
     ).toBe(403);
-    const loginCode = (await (await controlRequest(root, "auth/create-token", {})).json()) as any;
-    const login = await request("private", "/api/login", post({ key: loginCode.token }));
-    const cookie = login.headers.get("set-cookie")!.split(";")[0];
+    const loginLink = (await (await controlRequest(root, "auth/login", {})).json()) as {
+      url: string;
+    };
     const via = (surface: "private" | "public") => async (r: Request) => {
       const url = new URL(r.url);
       return request(surface, url.pathname + url.search, {
@@ -150,6 +151,7 @@ test("public listener only serves MCP/OAuth and completes consent through the pr
         body: r.method === "GET" ? undefined : await r.text(),
       });
     };
+    const cookie = await fixtureRegisterPasskey(loginLink.url, via("private"));
     const grant = await fixtureMcpAuthorization("https://owner.example", cookie, {
       scopes: ["tasks:read"],
       mcpOrigin: "https://mcp.example",
@@ -245,7 +247,7 @@ test("public proxy trust is required independently and cannot lock out an unprox
   const running = await startServer({
     dataDir: root,
     port: 0,
-    ownerUrl: "http://127.0.0.1:0",
+    ownerUrl: "http://localhost:0",
     mcpPort: 0,
     mcpUrl: "https://mcp.example",
     ownerTrustedProxies: [],

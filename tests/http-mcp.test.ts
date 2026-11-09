@@ -11,6 +11,7 @@ import {
   fixtureResources,
   fixtureTowerEnrollment,
 } from "../scripts/fixture-auth.ts";
+import { fixtureBrowserCookie } from "../scripts/fixture-passkey.ts";
 import { createApp, Updates } from "../server/app.ts";
 import { Auth, OWNER, secret } from "../server/auth.ts";
 import { openDatabase } from "../server/storage.ts";
@@ -42,25 +43,16 @@ async function setup(dataDir?: string) {
         body: body === undefined ? undefined : JSON.stringify(body),
       }),
     );
-  const loginToken = auth.createLoginToken("Test browser").token;
-  const cookie = auth.signIn(auth.createLoginToken("API fixture consent").token).split(";")[0];
+  const cookie = fixtureBrowserCookie(db);
   const key = await fixtureApiToken(base, cookie, ["admin"], (request) => app.fetch(request));
-  return { db, key, loginToken, w, auth, app, req };
+  return { db, key, w, auth, app, req };
 }
 async function authorize(
   s: Awaited<ReturnType<typeof setup>>,
   scope = "tasks:read tasks:write projects:read repositories:read commits:read transcripts:read offline_access",
   operatorName = "Approved test agent",
 ) {
-  const login = await s.req(
-    "/api/login",
-    { key: s.auth.createLoginToken("MCP pairing").token },
-    { origin: base },
-  );
-  expect(login.status).toBe(200);
-  const cookieHeader = login.headers.get("set-cookie");
-  if (!cookieHeader) throw new Error("Missing login cookie");
-  const cookie = cookieHeader.split(";")[0];
+  const cookie = fixtureBrowserCookie(s.db);
   const state = randomUUID();
   const grant = await fixtureMcpAuthorization(base, cookie, {
     scopes: scope.split(" ").filter((value) => value && value !== "offline_access"),
@@ -783,7 +775,7 @@ test("PKCE failure consumes the code; redirect, resource, origin and grant check
     expect(
       (await s.req("/api/oauth/authorize", grant.params, { cookie: grant.cookie, origin: base }))
         .status,
-    ).toBe(400);
+    ).toBe(404);
     expect((await s.req(`/oauth/authorize?${new URLSearchParams(grant.params)}`)).status).toBe(403);
     expect(
       (await s.req("/oauth/register", { redirect_uris: ["https://client.example/callback"] }))

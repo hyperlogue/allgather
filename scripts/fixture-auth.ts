@@ -3,26 +3,18 @@ import { controlRequest } from "../server/control.ts";
 import type { PermissionModes } from "../shared/permissions.ts";
 import type { ResourceGrants } from "../shared/resource-grants.ts";
 import type { MachineScope } from "../shared/tower-acp.ts";
+import { fixtureRegisterPasskey } from "./fixture-passkey.ts";
 
 export const fixtureResources = { project_ids: "*", machine_ids: "*", unassigned: true } as const;
 
-export async function fixtureLoginToken(directory: string) {
-  const response = await controlRequest(directory, "auth/create-token", {
-    label: "Verification browser",
-  });
-  return ((await response.json()) as { token: string }).token;
+export async function fixtureLoginLink(directory: string) {
+  const response = await controlRequest(directory, "auth/login", { label: "Verification browser" });
+  return ((await response.json()) as { url: string }).url;
 }
 export async function fixtureLogin(directory: string, origin: string) {
-  const response = await fetch(origin + "/api/login", {
-    method: "POST",
-    headers: { origin, "content-type": "application/json" },
-    body: JSON.stringify({ key: await fixtureLoginToken(directory) }),
-  });
-  if (!response.ok) throw new Error(`Fixture login failed: ${response.status}`);
-  await response.arrayBuffer();
-  const cookie = response.headers.get("set-cookie")?.split(";")[0];
-  if (!cookie) throw new Error("Fixture login did not set a cookie");
-  return cookie;
+  const url = await fixtureLoginLink(directory);
+  if (new URL(url).origin !== origin) throw new Error("Fixture login origin differs from server");
+  return fixtureRegisterPasskey(url);
 }
 export async function fixtureApiToken(
   origin: string,
@@ -44,42 +36,32 @@ export async function fixtureApiToken(
       throw new Error(`Fixture authorization ${path}: ${response.status} ${await response.text()}`);
     return response.json();
   };
-  const client = await request("/oauth/register-cli", {
-    client_name: "Verification API client",
-    redirect_uris: ["https://client.example/callback"],
-    token_endpoint_auth_method: "none",
+  const pairing = await request(
+    "/api/cli/pairings",
+    {
+      name: "Verification API client",
+      scopes: scopes.filter((scope) => scope !== "offline_access"),
+      resource_grants: resources,
+      permission_modes: modes,
+    },
+    true,
+  );
+  const tokens = await request("/api/cli/pairings/claim", {
+    pairing_code: pairing.pairing_code,
+    request_id: randomBytes(32).toString("base64url"),
   });
-  const verifier = randomBytes(32).toString("base64url");
-  const params = {
-    client_id: client.client_id,
-    redirect_uri: "https://client.example/callback",
-    response_type: "code",
-    resource: origin + "/api",
-    scope: scopes.join(" "),
-    resource_grants: JSON.stringify(resources),
-    permission_modes: JSON.stringify(modes),
-    code_challenge_method: "S256",
-    code_challenge: createHash("sha256").update(verifier).digest("base64url"),
-  };
-  const approved = await request("/api/oauth/authorize", params, true);
-  const code = new URL(approved.redirect_uri).searchParams.get("code");
-  if (!code) throw new Error("Fixture authorization code missing");
-  const response = await send(
-    new Request(origin + "/oauth/token", {
+  const confirmed = await send(
+    new Request(`${origin}/api/cli/pairings/${pairing.pairing_id}/confirm`, {
       method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        client_id: client.client_id,
-        redirect_uri: params.redirect_uri,
-        code,
-        code_verifier: verifier,
-        resource: params.resource,
-      }),
+      headers: {
+        authorization: `Bearer ${tokens.access_token}`,
+        "content-type": "application/json",
+      },
+      body: "{}",
     }),
   );
-  if (!response.ok) throw new Error(`Fixture token exchange: ${response.status}`);
-  return ((await response.json()) as { access_token: string }).access_token;
+  if (!confirmed.ok) throw new Error(`Fixture pairing confirmation: ${confirmed.status}`);
+  return tokens.access_token as string;
 }
 
 export async function fixtureTowerEnrollment(

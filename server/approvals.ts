@@ -8,8 +8,10 @@ import {
   type Scope,
 } from "../shared/contracts.ts";
 import type { PermissionModes } from "../shared/permissions.ts";
+import { effectiveScopes } from "../shared/permissions.ts";
 import { resourceGrantsSchema } from "../shared/resource-grants.ts";
 import { isBrowserOwner } from "./auth.ts";
+import { connectionIdentity } from "./client-access.ts";
 import { canonical, digest, uid, type Workspace } from "./workspace.ts";
 
 type Input = Record<string, unknown>;
@@ -93,7 +95,7 @@ export class Approvals {
       original = JSON.parse(grant.original_scopes) as Scope[];
     const p = {
       ...saved,
-      scopes: saved.scopes.filter((s) => granted.includes(s) && original.includes(s)),
+      scopes: effectiveScopes(saved.scopes, effectiveScopes(original, granted)),
       resources: resourceGrantsSchema.parse(JSON.parse(grant.resources)),
       permission_modes: JSON.parse(grant.permissions) as PermissionModes,
     };
@@ -177,7 +179,9 @@ export class Approvals {
       decided_at: row.decided_at,
       result: row.result ? JSON.parse(row.result) : null,
       error: row.error ? JSON.parse(row.error) : null,
-      ...(owner ? this.review(row) : {}),
+      ...(owner
+        ? { ...this.review(row), connection: connectionIdentity(this.w.db, row.client_id) }
+        : {}),
     };
   }
   ownerList() {

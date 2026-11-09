@@ -139,7 +139,9 @@ export class McpPairings {
     const now = this.now();
     return (
       this.db
-        .query("SELECT * FROM mcp_pairings ORDER BY created_at DESC,id DESC LIMIT 50")
+        .query(
+          "SELECT * FROM mcp_pairings p WHERE NOT EXISTS(SELECT 1 FROM oauth_clients c WHERE c.id=p.client_id AND c.deleted_at IS NOT NULL) ORDER BY created_at DESC,id DESC LIMIT 50",
+        )
         .all() as Pairing[]
     ).map((row) => ({
       pairing_id: row.id,
@@ -163,7 +165,7 @@ export class McpPairings {
   options(owner: Principal) {
     this.owner(owner);
     return {
-      scopes: this.auth.metadata("public").scopes_supported.filter((s) => s !== "offline_access"),
+      scopes: this.auth.metadata().scopes_supported.filter((s) => s !== "offline_access"),
       projects: this.db.query("SELECT id,name FROM projects ORDER BY name,id").all(),
       machines: this.db.query("SELECT id,name FROM machines ORDER BY name,id").all(),
     };
@@ -192,7 +194,7 @@ export class McpPairings {
           .get(this.now(), maxFailures) as Pairing | null;
         if (!pairing || pairing.registrations >= maxRegistrations)
           throw new AppError("pairing_closed", "Open MCP pairing in Allgather first", 403);
-        const client = this.auth.register(body, "mcp", { id: pairing.id, name: pairing.name });
+        const client = this.auth.register(body, { id: pairing.id, name: pairing.name });
         this.db
           .query("UPDATE mcp_pairings SET registrations=registrations+1 WHERE id=?")
           .run(pairing.id);

@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
+import { connectionActorLabel } from "../shared/client-access.ts";
 import type {
   AgentSession,
   Assignment,
@@ -555,7 +556,7 @@ function TaskDetail({
           <ol className="comments">
             {[...older, ...c.comments.items].map((entry) => (
               <li key={entry.id}>
-                <strong>{entry.operator_name}</strong>
+                <strong>{connectionActorLabel(entry.connection, entry.operator_name)}</strong>
                 {entry.role_name && <span> · {entry.role_name}</span>}
                 <small>
                   {entry.session_id ? `${entry.session_id} · ` : ""}

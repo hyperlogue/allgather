@@ -70,7 +70,7 @@ test("server gateways receive bound ports, restart after exit, and stop with the
   const running = await startServer({
     dataDir: directory,
     port: 0,
-    ownerUrl: "http://127.0.0.1:0",
+    ownerUrl: "http://localhost:0",
     mcpPort: 0,
     mcpUrl: "http://127.0.0.1:0",
     gitSyncSeconds: 0,

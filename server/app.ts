@@ -6,6 +6,8 @@ import { approvalWait } from "./approvals.ts";
 import { artifactApi } from "./artifact-api.ts";
 import type { Auth } from "./auth.ts";
 import { hashBytes } from "./blobs.ts";
+import { CliPairings } from "./cli-pairing.ts";
+import { ClientAccess } from "./client-access.ts";
 import { mcpResponse } from "./mcp.ts";
 import { McpPairings, pairingHtml } from "./mcp-pairing.ts";
 import { isPublicRoute, listenerRejection } from "./network.ts";
@@ -39,6 +41,8 @@ export function createApp(
   const app = new Hono();
   const enrollment = new TowerEnrollment(workspace, auth.baseUrl);
   const pairings = new McpPairings(workspace.db, auth);
+  const cliPairings = new CliPairings(workspace.db, auth);
+  const clientAccess = new ClientAccess(workspace.db, auth);
   const surface = options.surface ?? "private";
   const originUrl = surface === "public" ? auth.mcpBaseUrl : auth.baseUrl;
   const rates = new RateLimits();
@@ -64,6 +68,14 @@ export function createApp(
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; frame-src 'self'; media-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'",
     );
     c.header("Cache-Control", "no-store");
+    if (
+      surface === "private" &&
+      c.req.path !== "/api/logout" &&
+      !c.req.path.startsWith("/api/passkeys")
+    ) {
+      const renewed = auth.browser.renew(c.req.raw);
+      if (renewed) c.header("Set-Cookie", renewed);
+    }
     await next();
   });
   app.use("*", async (c, next) => {
@@ -77,7 +89,8 @@ export function createApp(
     }
     const small =
       c.req.path.startsWith("/oauth/") ||
-      c.req.path === "/api/login" ||
+      c.req.path.startsWith("/api/passkeys") ||
+      c.req.path.startsWith("/api/cli/pairings") ||
       c.req.path.startsWith("/api/tower/enrollments") ||
       c.req.path.startsWith("/api/tower/invitations") ||
       (c.req.path === "/mcp" && !auth.principal(c.req.raw, true));
@@ -107,16 +120,38 @@ export function createApp(
     return c.json({ error: { code: "internal_error", message: "Internal server error" } }, 500);
   });
   app.get("/health", (c) => c.json({ ok: true, version: VERSION }));
-  app.get("/.well-known/oauth-authorization-server", (c) => c.json(auth.metadata(surface)));
+  app.get("/.well-known/oauth-authorization-server", (c) => c.json(auth.metadata()));
   app.get("/.well-known/oauth-protected-resource/mcp", (c) => c.json(auth.resourceMetadata()));
   app.get("/.well-known/oauth-protected-resource", (c) => c.json(auth.resourceMetadata()));
-  app.post("/api/login", async (c) => {
-    rate(`login:${options.peer?.(c.req.raw) ?? "local"}`, 12);
+  const passkeyRequest = (c: Context) => {
+    if (c.req.header("origin") !== auth.baseUrl)
+      throw new AppError("forbidden_origin", "Use the Allgather sign-in page", 403);
+    rate(`passkey:${c.req.path}:${options.peer?.(c.req.raw) ?? "local"}`, 20);
+  };
+  app.post("/api/passkeys/register/options", async (c) => {
+    passkeyRequest(c);
     const body = await c.req.json();
-    if (!body || typeof body.key !== "string" || body.key.length > 512)
-      throw new AppError("invalid_input", "Enter a login code");
-    c.header("Set-Cookie", auth.signIn(body.key));
-    return c.json({ ok: true });
+    const result = await auth.browser.registrationOptions(c.req.raw, body?.token);
+    c.header("Set-Cookie", result.cookie);
+    return c.json(result.options);
+  });
+  app.post("/api/passkeys/register/verify", async (c) => {
+    passkeyRequest(c);
+    const body = await c.req.json();
+    c.header("Set-Cookie", await auth.browser.register(c.req.raw, body?.response));
+    return c.json({ authenticated: true });
+  });
+  app.post("/api/passkeys/authenticate/options", async (c) => {
+    passkeyRequest(c);
+    const result = await auth.browser.authenticationOptions(c.req.raw);
+    c.header("Set-Cookie", result.cookie);
+    return c.json(result.options);
+  });
+  app.post("/api/passkeys/authenticate/verify", async (c) => {
+    passkeyRequest(c);
+    const body = await c.req.json();
+    c.header("Set-Cookie", await auth.browser.authenticate(c.req.raw, body?.response));
+    return c.json({ authenticated: true });
   });
   app.post("/api/tower/assets", async (c) => {
     const authorization = c.req.header("authorization"),
@@ -292,27 +327,19 @@ export function createApp(
     workspace.onChange();
     return c.json({ revoked: true });
   });
-  app.get("/api/login-tokens", (c) => {
+  app.get("/api/passkeys", (c) => {
     browserOwner(c.req.raw);
-    return c.json(auth.loginTokens());
+    return c.json(auth.browser.list());
   });
-  app.post("/api/login-tokens", async (c) => {
+  app.post("/api/passkeys/:id/revoke", (c) => {
     browserOwner(c.req.raw);
-    const body = await c.req.json();
-    return c.json(
-      auth.createLoginToken(typeof body.label === "string" ? body.label : "Browser login"),
-    );
-  });
-  app.post("/api/login-tokens/:id/revoke", (c) => {
-    browserOwner(c.req.raw);
-    auth.revokeLoginToken(c.req.param("id"));
+    auth.browser.revoke(c.req.param("id"));
     return c.json({ revoked: true });
   });
   app.post("/api/logout", (c) => {
     browserOwner(c.req.raw);
-    auth.signOut(c.req.raw);
+    c.header("Set-Cookie", auth.browser.signOut(c.req.raw));
     workspace.artifacts?.previews.close();
-    c.header("Set-Cookie", "allgather_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0");
     return c.json({ ok: true });
   });
   app.get("/api/boot", (c) => {
@@ -432,8 +459,6 @@ export function createApp(
     return c.html(pairingHtml(page), page.status as 200);
   };
   app.get("/oauth/authorize", (c) => {
-    if (surface !== "public" && c.req.query("resource") !== auth.resource)
-      return options.assets?.(c.req.raw) ?? c.text("Not found", 404);
     pairingRate(c.req.raw);
     return pairingPage(c, pairings.start(c.req.query()));
   });
@@ -455,20 +480,22 @@ export function createApp(
   app.post("/api/mcp/pairings/:id/revoke", (c) =>
     c.json(pairings.revoke(c.req.param("id"), browserOwner(c.req.raw))),
   );
-  app.post("/oauth/register-cli", async (c) => {
-    rate(`register:${options.peer?.(c.req.raw) ?? "local"}`, 10);
-    return c.json(auth.register(await c.req.json(), "api"), 201);
+  app.get("/api/cli/pairings", (c) => c.json(cliPairings.list(browserOwner(c.req.raw))));
+  app.post("/api/cli/pairings", async (c) => {
+    const owner = browserOwner(c.req.raw);
+    return c.json(cliPairings.open(await c.req.json(), owner), 201);
   });
-  app.get("/api/oauth/request", (c) => {
-    browserOwner(c.req.raw);
-    return c.json(auth.authorizeInfo(c.req.query()));
+  app.post("/api/cli/pairings/claim", async (c) => {
+    rate(`cli-pair:${options.peer?.(c.req.raw) ?? "local"}`, 10);
+    return c.json(cliPairings.claim(await c.req.json()));
   });
-  app.post("/api/oauth/authorize", async (c) => {
-    const body = await c.req.json();
-    if (!body || typeof body !== "object" || Object.values(body).some((v) => typeof v !== "string"))
-      throw new AppError("invalid_input", "Invalid authorization request");
-    return c.json(await auth.authorize(c.req.raw, body));
+  app.post("/api/cli/pairings/:id/confirm", (c) => {
+    rate(`cli-confirm:${options.peer?.(c.req.raw) ?? "local"}`, 30);
+    return c.json(cliPairings.confirm(c.req.param("id"), pollingToken(c.req.raw)));
   });
+  app.post("/api/cli/pairings/:id/revoke", (c) =>
+    c.json(cliPairings.revoke(c.req.param("id"), browserOwner(c.req.raw))),
+  );
   app.post("/oauth/token", async (c) => {
     rate(`token:${options.peer?.(c.req.raw) ?? "local"}`, 60);
     const body = Object.fromEntries(new URLSearchParams(await c.req.text()));
@@ -487,7 +514,28 @@ export function createApp(
     const p = auth.principal(c.req.raw);
     if (!p || !can(p, "admin")) throw new AppError("forbidden", "Owner access required", 403);
     workspace.access.run(p, () => workspace.access.require(workspace.access.global()));
-    return c.json(auth.clients());
+    return c.json(clientAccess.list());
+  });
+  app.get("/api/clients/:id/grants/:grant", (c) =>
+    c.json(
+      clientAccess.options(c.req.param("id"), c.req.param("grant"), auth.principal(c.req.raw)),
+    ),
+  );
+  app.post("/api/clients/:id/grants/:grant", async (c) => {
+    const p = auth.principal(c.req.raw);
+    const result = clientAccess.update(
+      c.req.param("id"),
+      c.req.param("grant"),
+      await c.req.json(),
+      p,
+    );
+    workspace.onChange();
+    return c.json(result);
+  });
+  app.post("/api/clients/:id/delete", (c) => {
+    const result = clientAccess.remove(c.req.param("id"), auth.principal(c.req.raw));
+    workspace.onChange();
+    return c.json(result);
   });
   app.post("/api/clients/:id/revoke", (c) => {
     const p = auth.principal(c.req.raw);

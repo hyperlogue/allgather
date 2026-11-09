@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import type { RegisteredClient } from "../shared/client-access.ts";
 import type { Project } from "../shared/contracts.ts";
 import type { ProjectIconUpload } from "../shared/project-icon.ts";
 import { suggestedProjectSlug } from "../shared/project-slug.ts";
@@ -7,10 +8,12 @@ import { Activity } from "./activity.tsx";
 import { call, mutation, request } from "./api.ts";
 import { ApprovalsView, useApprovals } from "./approvals.tsx";
 import { ArtifactsView } from "./artifacts.tsx";
+import { CliPairing } from "./cli-pairing.tsx";
+import { ClientGrants } from "./client-grants.tsx";
 import { CommandPalette } from "./command-palette.tsx";
-import { Consent } from "./consent.tsx";
 import { HistoryView, type Repo } from "./history.tsx";
 import { Icon } from "./icons.tsx";
+import { Login } from "./login.tsx";
 import { MachineConnections } from "./machine-connections.tsx";
 import { McpPairing } from "./mcp-pairing.tsx";
 import { initialCollapsed, isEditing, readView, Sidebar, type View, views } from "./navigation.tsx";
@@ -21,66 +24,6 @@ import { TasksView } from "./tasks.tsx";
 import { TowerEnrollmentView } from "./tower-enrollment.tsx";
 import { Brand, Dialog, ErrorText, LoginFrame, useAction } from "./ui.tsx";
 
-function Login({ done }: { done: () => void }) {
-  const [key, setKey] = useState("");
-  const [copyStatus, setCopyStatus] = useState("");
-  const command = "allgather-server auth create-token";
-  const { busy, error, run } = useAction();
-  return (
-    <LoginFrame>
-      <Brand />
-      <h1>Sign in to AllGather</h1>
-      <p>Use a one-time code from your AllGather server to sign in.</p>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void run(async () => {
-            await request("/api/login", { key });
-            setKey("");
-            done();
-          });
-        }}
-      >
-        <label>
-          Login code
-          <input
-            autoComplete="one-time-code"
-            type="password"
-            required
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
-          />
-        </label>
-        <ErrorText>{error}</ErrorText>
-        <button type="submit" className="primary" disabled={busy}>
-          {busy ? "Signing in…" : "Sign in"}
-        </button>
-      </form>
-      <p className="muted small">Run this command on your AllGather server to get a login code:</p>
-      <div className="login-command">
-        <code>{command}</code>
-        <button
-          type="button"
-          aria-label="Copy login command"
-          onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(command);
-              setCopyStatus("Command copied.");
-            } catch {
-              setCopyStatus("Could not copy. Select and copy the command above.");
-            }
-          }}
-        >
-          Copy
-        </button>
-      </div>
-      <p className="muted small" role="status">
-        {copyStatus}
-      </p>
-      <p className="muted small">Codes work once and expire after ten minutes.</p>
-    </LoginFrame>
-  );
-}
 function NewProject({ close, created }: { close: () => void; created: (p: Project) => void }) {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState<string | null>(null);
@@ -151,16 +94,26 @@ function Connections({
   refresh: number;
   manageMachines: () => void;
 }) {
-  const [clients, setClients] = useState<
-    { id: string; name: string; revoked: number; created_at: string }[]
-  >([]);
+  const [clients, setClients] = useState<RegisteredClient[]>([]);
+  const [editing, setEditing] = useState<RegisteredClient | null>(null);
   const { busy, error, run } = useAction();
   const load = useCallback(() => request<typeof clients>("/api/clients").then(setClients), []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Refresh the client list when server updates arrive.
   useEffect(() => {
     void run(async () => {
       await load();
     });
+  }, [load, run, refresh]);
+  const reloadAccess = async () => {
+    const next = await request<RegisteredClient[]>("/api/clients");
+    setClients(next);
+    setEditing((previous) => next.find((c) => c.id === previous?.id) ?? null);
+  };
+  useEffect(() => {
+    const timer = setInterval(() => void run(load), 30000);
+    return () => clearInterval(timer);
   }, [load, run]);
+  const selected = editing;
   return (
     <div className="connections">
       <h1>Agent connections</h1>
@@ -193,33 +146,79 @@ function Connections({
       )}
       <ErrorText>{error}</ErrorText>
       <h2>Registered clients</h2>
+      <p className="muted small">
+        Last used records authenticated API/MCP requests and token refreshes. Older usage is
+        unavailable.
+      </p>
       {clients.length ? (
-        <ul className="plain-list">
+        <ul className="plain-list registered-clients">
           {clients.map((client) => (
             <li key={client.id}>
               <span>
                 <strong>{client.name}</strong>
+                <small>
+                  {client.audience === "mcp" ? "MCP connector" : "CLI / API client"} ·{" "}
+                  <code>{client.id}</code>
+                </small>
+                <small>
+                  {client.last_used_at ? (
+                    <>
+                      Last used{" "}
+                      <time dateTime={client.last_used_at}>
+                        {new Date(client.last_used_at).toLocaleString()}
+                      </time>
+                    </>
+                  ) : (
+                    "No usage recorded"
+                  )}
+                </small>
                 <small>
                   {client.revoked
                     ? "Revoked"
                     : `Registered ${new Date(client.created_at).toLocaleDateString()}`}
                 </small>
               </span>
-              {!client.revoked && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    if (confirm(`Revoke ${client.name}'s access?`))
-                      void run(async () => {
-                        await request(`/api/clients/${client.id}/revoke`, {});
-                        await load();
-                      });
-                  }}
-                >
-                  Revoke
+              <div className="actions">
+                <button type="button" onClick={() => setEditing(client)}>
+                  Manage access
                 </button>
-              )}
+                {!client.revoked && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      if (confirm(`Revoke ${client.name}'s access?`))
+                        void run(async () => {
+                          await request(`/api/clients/${client.id}/revoke`, {});
+                          await load();
+                        });
+                    }}
+                  >
+                    Revoke
+                  </button>
+                )}
+                {!!client.revoked && (
+                  <button
+                    type="button"
+                    className="danger"
+                    disabled={busy}
+                    onClick={() => {
+                      if (
+                        confirm(
+                          `Delete ${client.name}? It will be hidden from Connections. Its identity and history are kept as a deleted account.`,
+                        )
+                      )
+                        void run(async () => {
+                          await request(`/api/clients/${encodeURIComponent(client.id)}/delete`, {});
+                          if (editing?.id === client.id) setEditing(null);
+                          await load();
+                        });
+                    }}
+                  >
+                    Delete connection
+                  </button>
+                )}
+              </div>
             </li>
           ))}
         </ul>
@@ -228,9 +227,13 @@ function Connections({
           No clients yet. Each pairing connects one client with the access you choose.
         </p>
       )}
+      {selected && (
+        <ClientGrants client={selected} close={() => setEditing(null)} saved={reloadAccess} />
+      )}
       <MachineConnections refresh={refresh} manage={manageMachines} />
       <div className="pairing-panels">
-        <McpPairing changed={() => void load()} />
+        <CliPairing refresh={refresh} changed={() => void load()} />
+        <McpPairing refresh={refresh} changed={() => void load()} />
       </div>
       <div className="history-section">
         <h2>Access rules</h2>
@@ -544,9 +547,9 @@ function App() {
         <p>Connecting…</p>
       </LoginFrame>
     );
+  if (location.pathname === "/welcome") return <Login welcome done={load} />;
   if (!session.authenticated) return <Login done={load} />;
   if (location.pathname.startsWith("/tower/enroll/")) return <TowerEnrollmentView />;
-  if (location.pathname === "/oauth/authorize") return <Consent />;
   return <WorkspaceApp mcp={session.mcp_url} />;
 }
 const root = document.getElementById("root");

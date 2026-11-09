@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Passkeys } from "./passkeys.tsx";
 import { setTheme, useTheme } from "./theme.ts";
 
 export function SettingsView() {
@@ -41,6 +42,7 @@ export function SettingsView() {
           {error}
         </p>
       </fieldset>
+      <Passkeys />
     </section>
   );
 }

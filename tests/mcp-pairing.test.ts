@@ -5,6 +5,7 @@ import {
   fixtureMcpAuthorization,
   fixtureResources,
 } from "../scripts/fixture-auth.ts";
+import { fixtureBrowserCookie } from "../scripts/fixture-passkey.ts";
 import { createApp, Updates } from "../server/app.ts";
 import { Auth } from "../server/auth.ts";
 import { openDatabase } from "../server/storage.ts";
@@ -23,7 +24,7 @@ function setup() {
       surface: "public",
       peer: (request) => request.headers.get("x-fixture") ?? "fixture",
     });
-  const cookie = auth.signIn(auth.createLoginToken("Pairing test").token).split(";")[0];
+  const cookie = fixtureBrowserCookie(db);
   const sendOwner = (request: Request) => privateApp.fetch(request),
     sendMcp = (request: Request) => publicApp.fetch(request);
   const open = (body: Record<string, unknown> = {}) =>
@@ -277,7 +278,7 @@ test("only the browser owner opens pairings with MCP scopes and visible names", 
           ),
         )
       ).status,
-    ).toBe(400);
+    ).toBe(404);
     const grant = await fixtureMcpAuthorization(owner, s.cookie, {
       scopes: ["sessions:read", "sessions:launch"],
       modes: { "sessions:launch": "approval" },

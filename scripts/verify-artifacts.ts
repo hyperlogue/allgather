@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server/index.ts";
 import { verifyArtifactBrowser } from "./artifact-browser.ts";
-import { fixtureLoginToken } from "./fixture-auth.ts";
+import { fixtureLoginLink } from "./fixture-auth.ts";
 
 const executable = process.env.ALLGATHER_TEST_BROWSER;
 if (!executable) throw new Error("Set ALLGATHER_TEST_BROWSER to a Chromium executable");
@@ -11,7 +11,7 @@ const dir = mkdtempSync(join(tmpdir(), "allgather-artifact-ui-")),
   server = await startServer({
     dataDir: dir,
     port: 0,
-    ownerUrl: "http://127.0.0.1:0",
+    ownerUrl: "http://localhost:0",
     gitSyncSeconds: 0,
   }),
   p = { id: "owner", kind: "owner", inlet: "browser", scopes: ["admin"] } as const;
@@ -45,7 +45,7 @@ try {
   await verifyArtifactBrowser(
     executable,
     server.settings.ownerUrl,
-    await fixtureLoginToken(dir),
+    await fixtureLoginLink(dir),
     artifact.id,
   );
   console.log(

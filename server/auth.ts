@@ -1,13 +1,15 @@
 import type { Database } from "bun:sqlite";
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 import OAuth2Server from "@node-oauth/oauth2-server";
 import { AppError, type Principal, type Scope, scopes } from "../shared/contracts.ts";
 import { mcpOperationScopes } from "../shared/mcp-surface.ts";
-import { type PermissionModes, permissions } from "../shared/permissions.ts";
+import { effectiveScopes, type PermissionModes, permissions } from "../shared/permissions.ts";
 import { resourceGrantsSchema } from "../shared/resource-grants.ts";
+import { hash, secret } from "./auth-secrets.ts";
+import { activeBrowserSession, BrowserAuth } from "./browser-auth.ts";
 
-export const hash = (text: string) => createHash("sha256").update(text).digest("hex");
-export const secret = () => randomBytes(32).toString("base64url");
+export { hash, secret } from "./auth-secrets.ts";
+
 const equal = (a: string, b: string) =>
   a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 const mcpScopes = [...mcpOperationScopes, "offline_access"];
@@ -41,6 +43,7 @@ interface TokenRow {
 }
 export class Auth {
   private readonly oauth: OAuth2Server;
+  readonly browser: BrowserAuth;
   readonly resource: string;
   readonly apiResource: string;
   constructor(
@@ -48,6 +51,7 @@ export class Auth {
     readonly baseUrl: string,
     readonly mcpBaseUrl = baseUrl,
   ) {
+    this.browser = new BrowserAuth(db, baseUrl);
     this.resource = `${mcpBaseUrl}/mcp`;
     this.apiResource = `${baseUrl}/api`;
     this.oauth = new OAuth2Server({
@@ -224,13 +228,14 @@ export class Auth {
   client(id: unknown) {
     if (typeof id !== "string" || !id) return null;
     return this.db
-      .query(`SELECT * FROM oauth_clients c WHERE id=? AND revoked=0 AND (
+      .query(`SELECT * FROM oauth_clients c WHERE id=? AND revoked=0 AND deleted_at IS NULL AND (
         created_at>? OR EXISTS(SELECT 1 FROM oauth_tokens t WHERE t.client_id=c.id)
         OR EXISTS(SELECT 1 FROM oauth_codes a WHERE json_extract(a.data,'$.client.id')=c.id AND a.expires>?)
-      )`)
+      ) AND NOT EXISTS(SELECT 1 FROM cli_pairings p WHERE p.client_id=c.id AND (p.revoked_at IS NOT NULL OR (p.confirmed_at IS NULL AND p.expires_at<=?)))`)
       .get(
         id,
         new Date(Date.now() - 15 * 60000).toISOString(),
+        new Date().toISOString(),
         new Date().toISOString(),
       ) as ClientRow | null;
   }
@@ -256,7 +261,8 @@ export class Auth {
         row &&
         row.resource === (mcp ? this.resource : this.apiResource) &&
         Date.parse(row.expires) > Date.now()
-      )
+      ) {
+        this.used(row.client_id);
         return {
           id: row.client_id,
           kind: "client",
@@ -265,110 +271,30 @@ export class Auth {
           permission_modes: JSON.parse(row.permissions),
           inlet: mcp ? "mcp" : "api",
           operator_name: row.operator_name ?? this.client(row.client_id)?.name ?? "MCP client",
-          scopes: (JSON.parse(row.scopes) as string[]).filter(
-            (s) => s !== "offline_access" && JSON.parse(row.granted_scopes).includes(s),
-          ) as Scope[],
+          scopes: effectiveScopes(JSON.parse(row.scopes), JSON.parse(row.granted_scopes)),
           auth_binding: { kind: "oauth", hash: hash(token) },
         };
+      }
       return null;
     }
     if (mcp) return null;
-    const cookie = /(?:^|;\s*)allgather_session=([^;]+)/.exec(
-      request.headers.get("cookie") ?? "",
-    )?.[1];
-    if (cookie) {
-      const now = new Date().toISOString(),
-        row = this.db
-          .query(
-            "SELECT s.token_id,t.last_used_at,t.revoked_at FROM sessions s JOIN login_tokens t ON t.id=s.token_id WHERE s.hash=? AND s.expires>?",
-          )
-          .get(hash(cookie), now) as {
-          token_id: string;
-          last_used_at: string;
-          revoked_at: string | null;
-        } | null;
-      if (row && !row.revoked_at && Date.parse(row.last_used_at) > Date.now() - 14 * 86400000) {
-        if (Date.parse(row.last_used_at) < Date.now() - 60000)
-          this.db.query("UPDATE login_tokens SET last_used_at=? WHERE id=?").run(now, row.token_id);
-        return {
+    const sessionHash = this.browser.session(request);
+    return sessionHash
+      ? {
           ...OWNER,
-          id: `browser-${hash(cookie).slice(0, 24)}`,
+          id: `browser-${sessionHash.slice(0, 24)}`,
           inlet: "browser",
-          auth_binding: { kind: "browser", hash: hash(cookie) },
-        };
-      }
-    }
-    return null;
-  }
-  createLoginToken(label = "Browser login") {
-    if (!label.trim() || label.length > 160)
-      throw new AppError("invalid_label", "Token label must have 1 to 160 characters");
-    const value = secret(),
-      id = `login-${secret().slice(0, 16)}`;
-    const now = new Date().toISOString(),
-      expires = new Date(Date.now() + 10 * 60000).toISOString();
-    this.db
-      .query(
-        "INSERT INTO login_tokens(id,hash,label,created_at,last_used_at,expires_at) VALUES(?,?,?,?,?,?)",
-      )
-      .run(id, hash(value), label.trim(), now, now, expires);
-    return { id, label: label.trim(), token: value, expires_at: expires };
-  }
-  loginTokens() {
-    return this.db
-      .query(
-        "SELECT id,label,created_at,last_used_at,revoked_at,expires_at,consumed_at FROM login_tokens ORDER BY created_at DESC",
-      )
-      .all();
-  }
-  revokeLoginToken(id: string) {
-    this.db
-      .transaction(() => {
-        this.db
-          .query("UPDATE login_tokens SET revoked_at=? WHERE id=?")
-          .run(new Date().toISOString(), id);
-        this.db.query("DELETE FROM sessions WHERE token_id=?").run(id);
-      })
-      .immediate();
+          auth_binding: { kind: "browser", hash: sessionHash },
+        }
+      : null;
   }
   resetAccess() {
     revokeCredentials(this.db);
   }
-  signIn(token: string) {
-    const value = secret(),
-      now = new Date().toISOString();
-    this.db
-      .transaction(() => {
-        const row = this.db
-          .query(
-            "SELECT id FROM login_tokens WHERE hash=? AND revoked_at IS NULL AND consumed_at IS NULL AND expires_at>?",
-          )
-          .get(hash(token), now) as { id: string } | null;
-        if (!row)
-          throw new AppError(
-            "unauthorized",
-            "The login code is invalid, expired, revoked, or already used",
-            401,
-          );
-        this.db.query("DELETE FROM sessions WHERE expires<=?").run(now);
-        this.db
-          .query("UPDATE login_tokens SET last_used_at=?,consumed_at=? WHERE id=?")
-          .run(now, now, row.id);
-        this.db
-          .query("INSERT INTO sessions(hash,expires,token_id) VALUES(?,?,?)")
-          .run(hash(value), new Date(Date.now() + 30 * 86400000).toISOString(), row.id);
-      })
-      .immediate();
-    return `allgather_session=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${this.baseUrl.startsWith("https:") ? "; Secure" : ""}`;
-  }
-  signOut(request: Request) {
-    const c = /(?:^|;\s*)allgather_session=([^;]+)/.exec(request.headers.get("cookie") ?? "")?.[1];
-    if (c) this.db.query("DELETE FROM sessions WHERE hash=?").run(hash(c));
-  }
   private pruneRegistrations() {
     const now = new Date().toISOString();
     this.db.query("DELETE FROM oauth_codes WHERE expires<=?").run(now);
-    const unused = `NOT EXISTS(SELECT 1 FROM oauth_tokens t WHERE t.client_id=oauth_clients.id)
+    const unused = `deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM oauth_tokens t WHERE t.client_id=oauth_clients.id)
       AND NOT EXISTS(SELECT 1 FROM oauth_codes a WHERE json_extract(a.data,'$.client.id')=oauth_clients.id)
       AND NOT EXISTS(SELECT 1 FROM oauth_grants g WHERE g.client_id=oauth_clients.id)`;
     this.db
@@ -387,13 +313,8 @@ export class Auth {
     for (const row of pending.slice(0, Math.max(0, pending.length - 255)))
       this.db.query("DELETE FROM oauth_clients WHERE id=?").run(row.id);
   }
-  register(
-    body: Record<string, unknown>,
-    audience: "mcp" | "api",
-    pairing?: { id: string; name: string },
-  ) {
-    if (audience === "mcp" && !pairing)
-      throw new AppError("pairing_closed", "Open MCP pairing in Allgather first", 403);
+  register(body: Record<string, unknown>, pairing: { id: string; name: string }) {
+    if (!pairing) throw new AppError("pairing_closed", "Open MCP pairing in Allgather first", 403);
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       throw new AppError("invalid_client_metadata", "Provide a client metadata object");
     }
@@ -427,10 +348,7 @@ export class Auth {
     this.pruneRegistrations();
     const id = `client-${secret()}`,
       clientSecret = method === "none" ? undefined : secret();
-    const name =
-      pairing?.name ??
-      ((typeof body.client_name === "string" && body.client_name.trim().slice(0, 120)) ||
-        "API client");
+    const name = pairing.name;
     this.db
       .query(
         "INSERT INTO oauth_clients(id,name,redirects,secret_hash,method,created_at,revoked,audience,pairing_id) VALUES(?,?,?,?,?,?,0,?,?)",
@@ -442,8 +360,8 @@ export class Auth {
         clientSecret ? hash(clientSecret) : null,
         String(method),
         new Date().toISOString(),
-        audience,
-        pairing?.id ?? null,
+        "mcp",
+        pairing.id,
       );
     return {
       client_id: id,
@@ -472,27 +390,11 @@ export class Auth {
       return false;
     }
   }
-  authorizeInfo(params: Record<string, string>) {
-    const c = this.authorizationClient(params);
-    if (c.audience !== "api")
-      throw new AppError("pairing_required", "MCP clients connect through MCP pairing", 400);
-    const selected = (params.scope ?? "tasks:read").split(" ").filter(Boolean);
-    if (!selected.every((s) => apiScopes.includes(s)))
-      throw new AppError("invalid_scope", "Requested scopes are not available");
-    return {
-      client_id: c.id,
-      name: c.name,
-      scopes: selected.filter((scope) => scope !== "offline_access"),
-      redirect_uri: params.redirect_uri,
-      audience: c.audience,
-      resource: params.resource,
-      projects: this.db.query("SELECT id,name FROM projects ORDER BY name,id").all(),
-      machines: this.db.query("SELECT id,name FROM machines ORDER BY name,id").all(),
-    };
-  }
   authorizationClient(params: Record<string, string>) {
     const c = this.client(params.client_id);
     if (!c) throw new AppError("invalid_client", "Unknown or revoked OAuth client");
+    if (c.audience !== "mcp")
+      throw new AppError("pairing_required", "CLI clients connect through CLI pairing", 400);
     if (!(JSON.parse(c.redirects) as string[]).includes(params.redirect_uri))
       throw new AppError("invalid_redirect_uri", "Callback URL is not registered");
     if (
@@ -507,21 +409,6 @@ export class Auth {
         "This client is not registered for the requested resource",
       );
     return c;
-  }
-  async authorize(request: Request, params: Record<string, string>) {
-    if (this.principal(request)?.inlet !== "browser")
-      throw new AppError("unauthorized", "Sign in before granting access", 401);
-    const info = this.authorizeInfo(params);
-    if (params.keep_access !== undefined && !["true", "false"].includes(params.keep_access))
-      throw new AppError("invalid_request", "Choose whether to keep this connection signed in");
-    const grant = this.grantChoice("api", {
-      scopes: info.scopes,
-      resources: params.resource_grants ? JSON.parse(params.resource_grants) : {},
-      permission_modes: params.permission_modes ? JSON.parse(params.permission_modes) : {},
-      name: params.operator_name?.trim() || info.name,
-      keep_access: params.keep_access !== "false",
-    });
-    return { redirect_uri: await this.issueCode(request, params, grant) };
   }
   grantChoice(
     audience: "mcp" | "api",
@@ -670,6 +557,8 @@ export class Auth {
         "invalid_target",
         "This client is not registered for the requested resource",
       );
+    if (client.audience === "api" && body.grant_type !== "refresh_token")
+      throw new AppError("unsupported_grant_type", "CLI clients connect through CLI pairing");
     const response = new OAuth2Server.Response();
     await this.oauth.token(
       new OAuth2Server.Request({
@@ -684,14 +573,15 @@ export class Auth {
       }),
       response,
     );
+    if (body.grant_type === "refresh_token") this.used(client.id);
     return response.body as Record<string, unknown>;
   }
-  clients() {
-    return this.db
+  private used(id: string) {
+    this.db
       .query(
-        "SELECT id,name,redirects,method,created_at,revoked,audience FROM oauth_clients ORDER BY created_at DESC",
+        "INSERT INTO client_activity VALUES(?,?) ON CONFLICT(client_id) DO UPDATE SET last_used_at=excluded.last_used_at",
       )
-      .all() as Omit<ClientRow, "secret_hash">[];
+      .run(id, new Date().toISOString());
   }
   revoke(id: string) {
     this.db
@@ -718,19 +608,19 @@ export class Auth {
       })
       .immediate();
   }
-  metadata(surface: "private" | "public" = "private") {
-    const issuer = surface === "public" ? this.mcpBaseUrl : this.baseUrl;
+  metadata() {
+    const issuer = this.mcpBaseUrl;
     return {
       issuer,
       authorization_endpoint: `${issuer}/oauth/authorize`,
+      registration_endpoint: `${issuer}/oauth/register`,
       token_endpoint: `${issuer}/oauth/token`,
-      registration_endpoint: `${issuer}/oauth/${surface === "public" ? "register" : "register-cli"}`,
       revocation_endpoint: `${issuer}/oauth/revoke`,
       response_types_supported: ["code"],
       grant_types_supported: ["authorization_code", "refresh_token"],
       code_challenge_methods_supported: ["S256"],
       token_endpoint_auth_methods_supported: ["none", "client_secret_post", "client_secret_basic"],
-      scopes_supported: surface === "public" ? mcpScopes : apiScopes,
+      scopes_supported: mcpScopes,
       authorization_response_iss_parameter_supported: true,
     };
   }
@@ -749,11 +639,7 @@ export function isBrowserOwner(db: Database, p: Principal, now = new Date().toIS
     p.kind === "owner" &&
     p.inlet === "browser" &&
     p.auth_binding?.kind === "browser" &&
-    !!db
-      .query(
-        "SELECT 1 FROM sessions s JOIN login_tokens t ON t.id=s.token_id WHERE s.hash=? AND s.expires>? AND t.revoked_at IS NULL AND t.last_used_at>?",
-      )
-      .get(p.auth_binding.hash, now, new Date(Date.parse(now) - 14 * 86400000).toISOString())
+    !!activeBrowserSession(db, p.auth_binding.hash, now)
   );
 }
 
@@ -762,6 +648,8 @@ export function revokeCredentials(db: Database) {
     db.exec(`
       DELETE FROM settings WHERE key='owner_key_hash';
       DELETE FROM sessions;
+      DELETE FROM passkey_challenges;
+      UPDATE passkeys SET revoked_at=strftime('%Y-%m-%dT%H:%M:%fZ','now');
       DELETE FROM oauth_codes;
       UPDATE login_tokens SET revoked_at=strftime('%Y-%m-%dT%H:%M:%fZ','now');
       UPDATE oauth_tokens SET revoked=1;
@@ -769,6 +657,7 @@ export function revokeCredentials(db: Database) {
       UPDATE oauth_grants SET revoked=1;
       UPDATE mcp_pairings SET revoked_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE revoked_at IS NULL;
       DELETE FROM oauth_requests;
+      UPDATE cli_pairings SET revoked_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE revoked_at IS NULL;
       UPDATE tower_credentials SET revoked_at=strftime('%Y-%m-%dT%H:%M:%fZ','now');
       UPDATE tower_enrollments SET state='denied';
       UPDATE tower_invitations SET revoked_at=strftime('%Y-%m-%dT%H:%M:%fZ','now');

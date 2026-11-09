@@ -10,6 +10,7 @@ import {
   type TaskComment,
   type TaskContext,
 } from "../shared/contracts.ts";
+import { connectionIdentity } from "./client-access.ts";
 import { commitReference } from "./graph.ts";
 import { uid, type Workspace } from "./workspace.ts";
 
@@ -246,12 +247,17 @@ export class Tasks {
       start = Number(a.cursor ?? 0),
       limit = Number(a.limit ?? 50);
     return {
-      items: this.w.all<TaskComment>(
-        "SELECT * FROM task_comments WHERE task_id=? ORDER BY sequence LIMIT ? OFFSET ?",
-        id,
-        limit,
-        start,
-      ),
+      items: this.w
+        .all<TaskComment & { connection_id: string | null }>(
+          "SELECT c.*,(SELECT o.connection_id FROM audit_changes a JOIN audit_operations o ON o.id=a.operation_id WHERE a.task_id=c.task_id AND a.entity_type='task_comments' AND a.entity_id=c.id AND a.change_kind='insert' ORDER BY a.sequence LIMIT 1) connection_id FROM task_comments c WHERE c.task_id=? ORDER BY c.sequence LIMIT ? OFFSET ?",
+          id,
+          limit,
+          start,
+        )
+        .map(({ connection_id, ...comment }) => ({
+          ...comment,
+          connection: connection_id ? connectionIdentity(this.w.db, connection_id) : null,
+        })),
       total,
       next_cursor: start + limit < total ? start + limit : null,
     };

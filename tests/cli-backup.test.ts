@@ -20,7 +20,7 @@ test("CLI mutations, upstream configuration, and backup restore preserve work", 
   const running = await startServer({
     dataDir: join(root, "state"),
     port: 0,
-    ownerUrl: "http://127.0.0.1:0",
+    ownerUrl: "http://localhost:0",
   });
   const env = {
     ...process.env,
@@ -369,7 +369,7 @@ test("CLI mutations, upstream configuration, and backup restore preserve work", 
     const recovered = await startServer({
       dataDir: restored,
       port: 0,
-      ownerUrl: "http://127.0.0.1:0",
+      ownerUrl: "http://localhost:0",
     });
     try {
       expect(

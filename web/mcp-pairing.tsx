@@ -7,7 +7,7 @@ import {
 } from "../shared/permissions.ts";
 import { noResources, type ResourceGrants } from "../shared/resource-grants.ts";
 import { request } from "./api.ts";
-import { Category, ResourceCategory } from "./consent.tsx";
+import { Category, ResourceCategory } from "./permission-picker.tsx";
 import { ErrorText, useAction } from "./ui.tsx";
 
 interface PairingRow {
@@ -44,7 +44,7 @@ const defaults = (scopes: Scope[]): PermissionModes =>
       .map((scope) => [scope, permissions[scope].approval ? "approval" : "allow"]),
   );
 
-export function McpPairing({ changed }: { changed: () => void }) {
+export function McpPairing({ changed, refresh = 0 }: { changed: () => void; refresh?: number }) {
   const [options, setOptions] = useState<PairingOptions | null>(null);
   const [name, setName] = useState("");
   const [modes, setModes] = useState<PermissionModes>({});
@@ -63,6 +63,12 @@ export function McpPairing({ changed }: { changed: () => void }) {
       setModes(defaults(value.scopes));
     });
   }, [load, run]);
+  useEffect(() => {
+    if (refresh > 0)
+      void run(async () => {
+        await load();
+      });
+  }, [refresh, load, run]);
   useEffect(() => {
     if (!opened) return;
     const timer = setInterval(() => {

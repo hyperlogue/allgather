@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { AppError, type Operation, type Principal } from "../shared/contracts.ts";
+import { effectiveScopes } from "../shared/permissions.ts";
 import {
   noResources,
   type ResourceGrants,
@@ -27,7 +28,7 @@ export class Access {
         throw new AppError("grant_revoked", "This connection's access grant was revoked", 403);
       current = {
         ...principal,
-        scopes: principal.scopes.filter((scope) => JSON.parse(grant.scopes).includes(scope)),
+        scopes: effectiveScopes(principal.scopes, JSON.parse(grant.scopes)),
         resources: resourceGrantsSchema.parse(JSON.parse(grant.resources)),
         permission_modes: JSON.parse(grant.permissions),
       };

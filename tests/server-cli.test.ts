@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { baseUrl } from "../cli/client.ts";
+import { fixtureRegisterPasskey } from "../scripts/fixture-passkey.ts";
 import { controlRequest, type ServerStatus, serverStatus } from "../server/control.ts";
 
 function fixture(overrides: Record<string, string | undefined> = {}) {
@@ -26,7 +27,7 @@ function fixture(overrides: Record<string, string | undefined> = {}) {
     ALLGATHER_URL: undefined,
     ALLGATHER_TOKEN: undefined,
     ALLGATHER_PORT: "0",
-    ALLGATHER_OWNER_URL: "http://127.0.0.1:0",
+    ALLGATHER_OWNER_URL: "http://localhost:0",
     ALLGATHER_BIND: "127.0.0.1",
     ALLGATHER_GIT_SYNC_SECONDS: "0",
     ...overrides,
@@ -91,7 +92,7 @@ test("server lifecycle uses authenticated local ownership, retains settings, and
     const started = await f.command(
       "start",
       "--mcp-url",
-      "http://127.0.0.1:0",
+      "http://localhost:0",
       "--mcp-port",
       "0",
       "--owner-trusted-proxies",
@@ -118,24 +119,20 @@ test("server lifecycle uses authenticated local ownership, retains settings, and
         })
       ).status,
     ).toBe(403);
-    const issued = await f.command<{ token: string; id: string }>(
-      "auth",
-      "create-token",
+    const issued = await f.command<{ url: string; id: string }>(
+      "login",
       "--label",
       "Lifecycle browser",
     );
-    const login = await fetch(started.settings!.ownerUrl + "/api/login", {
-      method: "POST",
-      headers: { "content-type": "application/json", origin: started.settings!.ownerUrl },
-      body: JSON.stringify({ key: issued.token }),
-    });
-    expect(login.ok).toBe(true);
-    const listed = await f.command<{ id: string }[]>("auth", "list-tokens");
-    expect(listed.some((t) => t.id === issued.id)).toBe(true);
-    expect(JSON.stringify(listed)).not.toContain(issued.token);
-    await f.command("auth", "revoke-token", issued.id);
+    expect(new URL(issued.url).hash).toStartWith("#key=");
+    const cookie = await fixtureRegisterPasskey(issued.url);
+    const listed = await f.command<{ id: string; label: string }[]>("auth", "list-passkeys");
+    const passkey = listed.find((key) => key.label === "Lifecycle browser")!;
+    expect(passkey).toBeDefined();
+    expect(JSON.stringify(listed)).not.toContain(new URL(issued.url).hash.slice(5));
+    await f.command("auth", "revoke-passkey", passkey.id);
     const session = await fetch(started.settings!.ownerUrl + "/api/session", {
-      headers: { cookie: login.headers.get("set-cookie")!.split(";")[0] },
+      headers: { cookie },
     });
     expect(((await session.json()) as { authenticated: boolean }).authenticated).toBe(false);
     const backup = join(f.root, "backup.zip");
@@ -211,9 +208,9 @@ test("saved config starts a background server without repeated flags and restart
       "port",
       "0",
       "ownerUrl",
-      "http://127.0.0.1:0",
+      "http://localhost:0",
       "mcpUrl",
-      "http://127.0.0.1:0",
+      "http://localhost:0",
       "mcpPort",
       "0",
       "managedSessions",

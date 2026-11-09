@@ -15,7 +15,7 @@ import type {
   RepositoryCatalog,
   TowerCheckout,
 } from "../shared/tower-catalog.ts";
-import { fixtureLoginToken } from "./fixture-auth.ts";
+import { fixtureLogin } from "./fixture-auth.ts";
 import { stopFixturePool, towerFixture } from "./tower-fixture.ts";
 
 // Actual Tower + Allgather + host Git. All data, credentials, and Git history are synthetic.
@@ -136,7 +136,7 @@ const relay = Bun.serve<RelayData>({
     },
   },
 });
-const origin = `http://127.0.0.1:${relay.port}`;
+const origin = `http://localhost:${relay.port}`;
 let running: Awaited<ReturnType<typeof startServer>> | undefined,
   online = false,
   cookie = "";
@@ -260,14 +260,7 @@ async function connected() {
 }
 try {
   await start();
-  const signIn = await fetch(origin + "/api/login", {
-    method: "POST",
-    headers: { origin, "content-type": "application/json" },
-    body: JSON.stringify({ key: await fixtureLoginToken(join(root, "server")) }),
-  });
-  assert(signIn.ok, "Synthetic owner login failed");
-  await signIn.arrayBuffer();
-  cookie = signIn.headers.get("set-cookie")!.split(";")[0];
+  cookie = await fixtureLogin(join(root, "server"), origin);
   const project = await operation<Project>("projects_create", { name: "Catalog fixture" });
   const repo = await operation<Repository>("repositories_create", {
     project_id: project.id,

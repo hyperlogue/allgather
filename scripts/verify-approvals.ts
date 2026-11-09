@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server/index.ts";
 import { fullControls } from "../tests/fixtures/tower-controls.ts";
-import { browserSession } from "./browser.ts";
-import { fixtureApiToken, fixtureLogin, fixtureLoginToken } from "./fixture-auth.ts";
+import { browserPasskeyLogin, browserSession } from "./browser.ts";
+import { fixtureApiToken, fixtureLogin, fixtureLoginLink } from "./fixture-auth.ts";
 
 const executable = process.env.ALLGATHER_TEST_BROWSER;
 if (!executable) throw new Error("Set ALLGATHER_TEST_BROWSER to Chromium");
@@ -13,7 +13,7 @@ const root = mkdtempSync(join(tmpdir(), "allgather-approval-ui-"));
 const running = await startServer({
   dataDir: root,
   port: 0,
-  ownerUrl: "http://127.0.0.1:0",
+  ownerUrl: "http://localhost:0",
   mcpUrl: "http://127.0.0.1:0",
   mcpPort: 0,
   gitSyncSeconds: 0,
@@ -29,11 +29,7 @@ try {
       `(()=>{const button=[...document.querySelectorAll('button')].find(el=>el.textContent.trim()===${JSON.stringify(text)});if(!button)throw new Error('Button missing');button.click();})()`,
     );
   await b.command("Page.navigate", { url: owner });
-  await b.until(`!!document.querySelector('input[type=password]')`);
-  await b.evaluate(
-    `(()=>{const input=document.querySelector('input[type=password]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(await fixtureLoginToken(root))});input.dispatchEvent(new Event('input',{bubbles:true}));})()`,
-  );
-  await click("Sign in");
+  await browserPasskeyLogin(b, await fixtureLoginLink(root));
   await b.until(`!!document.querySelector('.app-header')`);
   const { project, machine } = (await b.evaluate(
     `(async()=>{const call=async(name,args)=>{const response=await fetch('/api/operations/'+name,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...args,operation_key:crypto.randomUUID()})});const data=await response.json();if(!response.ok)throw new Error(JSON.stringify(data));return data.result;};return {project:await call('projects_create',{name:'Approval project'}),machine:await call('machines_create',{name:'Approval machine'})};})()`,

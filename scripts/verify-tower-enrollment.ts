@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { hash, secret } from "../server/auth.ts";
 import { startServer } from "../server/index.ts";
-import { browserSession } from "./browser.ts";
-import { fixtureLoginToken } from "./fixture-auth.ts";
+import { browserPasskeyLogin, browserSession } from "./browser.ts";
+import { fixtureLoginLink } from "./fixture-auth.ts";
 
 const executable = process.env.ALLGATHER_TEST_BROWSER;
 if (!executable) throw new Error("Set ALLGATHER_TEST_BROWSER to Chromium");
@@ -12,7 +12,7 @@ const root = mkdtempSync(join(tmpdir(), "allgather-enrollment-ui-"));
 const running = await startServer({
   dataDir: root,
   port: 0,
-  ownerUrl: "http://127.0.0.1:0",
+  ownerUrl: "http://localhost:0",
   gitSyncSeconds: 0,
 });
 let browser: Awaited<ReturnType<typeof browserSession>> | undefined;
@@ -36,10 +36,7 @@ try {
     mobile: true,
   });
   await b.command("Page.navigate", { url: origin + "/?view=sessions" });
-  await b.until(`!!document.querySelector('input[type="password"]')`);
-  await b.evaluate(`document.querySelector('input[type="password"]').focus()`);
-  await b.command("Input.insertText", { text: await fixtureLoginToken(root) });
-  await b.evaluate(`document.querySelector('button[type="submit"]').click()`);
+  await browserPasskeyLogin(b, await fixtureLoginLink(root));
   await b.until(`[...document.querySelectorAll('button')].some(b=>b.textContent==='Machines')`);
   await b.evaluate(
     `[...document.querySelectorAll('button')].find(b=>b.textContent==='Machines').click()`,

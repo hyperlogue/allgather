@@ -1,5 +1,6 @@
 import type { ArtifactDelivery, ArtifactNotificationSource } from "../shared/artifact-delivery.ts";
 import { AppError, can, type Principal, type SessionCommand } from "../shared/contracts.ts";
+import { effectiveScopes } from "../shared/permissions.ts";
 import { resourceGrantsSchema } from "../shared/resource-grants.ts";
 import type { Artifacts } from "./artifacts.ts";
 import { artifactNudgeText } from "./r3/shared/artifact-prompt.ts";
@@ -67,13 +68,22 @@ export class ArtifactNotifications {
     return row ? this.artifacts.workers.get(row.id) : null;
   }
   authorized(principal: string, artifactId: string, sessionId: string) {
-    const credentials = this.w.all<{ resources: string }>(
-      "SELECT g.resources FROM oauth_tokens t JOIN oauth_clients c ON c.id=t.client_id JOIN oauth_grants g ON g.id=t.grant_id AND g.client_id=t.client_id AND g.resource=t.resource WHERE c.id=? AND c.revoked=0 AND t.revoked=0 AND g.revoked=0 AND (t.expires>? OR t.refresh_hash IS NOT NULL AND t.refresh_expires>?) AND (EXISTS(SELECT 1 FROM json_each(t.scopes) WHERE value='admin') OR (EXISTS(SELECT 1 FROM json_each(t.scopes) WHERE value='artifacts:read') AND EXISTS(SELECT 1 FROM json_each(t.scopes) WHERE value='artifacts:notify')))",
+    const credentials = this.w.all<{ resources: string; scopes: string; granted_scopes: string }>(
+      "SELECT g.resources,t.scopes,g.scopes granted_scopes FROM oauth_tokens t JOIN oauth_clients c ON c.id=t.client_id JOIN oauth_grants g ON g.id=t.grant_id AND g.client_id=t.client_id AND g.resource=t.resource WHERE c.id=? AND c.revoked=0 AND t.revoked=0 AND g.revoked=0 AND (t.expires>? OR t.refresh_hash IS NOT NULL AND t.refresh_expires>?) AND (EXISTS(SELECT 1 FROM json_each(t.scopes) WHERE value='admin') OR (EXISTS(SELECT 1 FROM json_each(t.scopes) WHERE value='artifacts:read') AND EXISTS(SELECT 1 FROM json_each(t.scopes) WHERE value='artifacts:notify')))",
       principal,
       this.w.now(),
       this.w.now(),
     );
     return credentials.some((credential) => {
+      const effective = effectiveScopes(
+        JSON.parse(credential.scopes),
+        JSON.parse(credential.granted_scopes),
+      );
+      if (
+        !effective.includes("admin") &&
+        (!effective.includes("artifacts:read") || !effective.includes("artifacts:notify"))
+      )
+        return false;
       const resources = resourceGrantsSchema.safeParse(JSON.parse(credential.resources));
       if (!resources.success) return false;
       return this.w.access.run(

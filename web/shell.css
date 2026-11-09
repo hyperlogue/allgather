@@ -1414,6 +1414,22 @@ dialog::backdrop {
   border-width: 0 1px 1px 0;
   transform: rotate(45deg);
 }
+.registered-clients > li {
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+.registered-clients > li > span {
+  flex: 1;
+  min-width: 12rem;
+}
+.registered-clients code,
+.client-grant-editor p {
+  overflow-wrap: anywhere;
+}
+.client-grant-editor {
+  display: grid;
+  gap: 1rem;
+}
 
 .project-picker {
   display: flex;

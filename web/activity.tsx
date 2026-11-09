@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
+import { type ConnectionIdentity, connectionActorLabel } from "../shared/client-access.ts";
 import type { Page } from "../shared/contracts.ts";
 import { call } from "./api.ts";
 import { ErrorText, PageHeading } from "./ui.tsx";
 
 interface Entry {
+  connection?: ConnectionIdentity | null;
   id: string;
   operation: string;
   operator_name: string;
@@ -126,7 +128,7 @@ export function Activity({ project, refresh }: { project: string; refresh: numbe
       <ol className="audit-list">
         {page.items.map((entry) => (
           <li key={entry.id}>
-            <strong>{entry.operator_name}</strong>
+            <strong>{connectionActorLabel(entry.connection, entry.operator_name)}</strong>
             {entry.role_name ? ` as ${entry.role_name}` : ""} ·{" "}
             {entry.operation.replaceAll("_", " ")}
             <small>

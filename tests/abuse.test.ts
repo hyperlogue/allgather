@@ -22,22 +22,26 @@ test("bounded rate entries never impose a global lockout on new callers", () => 
 test("registration floods recycle only ungranted clients and expired registrations cannot gain consent", () => {
   const db = openDatabase(":memory:"),
     auth = new Auth(db, "https://owner.example");
+  db.query(
+    "INSERT INTO mcp_pairings(id,code_hash,name,scopes,resources,permissions,owner,created_at,register_until,expires_at) VALUES('pairing-test','hash','Flood fixture','[]','{}','{}','owner','2000-01-01','2099-01-01','2099-01-01')",
+  ).run();
+  const pairing = { id: "pairing-test", name: "Flood fixture" };
   const input = { redirect_uris: ["https://connector.example/callback"] };
   try {
-    const granted = auth.register(input, "api");
+    const granted = auth.register(input, pairing);
     db.query(
       "INSERT INTO oauth_tokens(hash,client_id,scopes,expires,refresh_expires,resource) VALUES('granted',?,'[\"tasks:read\"]','2099-01-01','2099-01-01',?)",
     ).run(granted.client_id, auth.apiResource);
-    const expired = auth.register(input, "api");
+    const expired = auth.register(input, pairing);
     db.query("UPDATE oauth_clients SET created_at='2000-01-01T00:00:00.000Z' WHERE id=?").run(
       expired.client_id,
     );
     expect(auth.client(expired.client_id)).toBeNull();
-    for (let i = 0; i < 300; i++) auth.register(input, "api");
+    for (let i = 0; i < 300; i++) auth.register(input, pairing);
     expect(db.query("SELECT COUNT(*) n FROM oauth_clients").get()).toEqual({ n: 257 });
     expect(auth.client(granted.client_id)).not.toBeNull();
     expect(db.query("SELECT 1 FROM oauth_clients WHERE id=?").get(expired.client_id)).toBeNull();
-    expect(auth.client(auth.register(input, "api").client_id)).not.toBeNull();
+    expect(auth.client(auth.register(input, pairing).client_id)).not.toBeNull();
   } finally {
     db.close();
   }
@@ -51,9 +55,9 @@ test("anonymous auth and MCP bodies have a small streaming limit and rate respon
   });
   try {
     for (const path of [
-      "/api/login",
+      "/api/passkeys/register/options",
       "/oauth/register",
-      "/oauth/register-cli",
+      "/api/cli/pairings/claim",
       "/oauth/token",
       "/oauth/revoke",
       "/api/tower/enrollments",
@@ -84,13 +88,17 @@ test("anonymous auth and MCP bodies have a small streaming limit and rate respon
     }
     const login = (peer: string) =>
       app.fetch(
-        new Request(auth.baseUrl + "/api/login", {
+        new Request(auth.baseUrl + "/api/passkeys/register/options", {
           method: "POST",
-          headers: { "content-type": "application/json", "fixture-peer": peer },
-          body: '{"key":"invalid"}',
+          headers: {
+            "content-type": "application/json",
+            "fixture-peer": peer,
+            origin: auth.baseUrl,
+          },
+          body: '{"token":"invalid"}',
         }),
       );
-    for (let i = 0; i < 12; i++) expect((await login("abusive")).status).toBe(401);
+    for (let i = 0; i < 20; i++) expect((await login("abusive")).status).toBe(401);
     const limited = await login("abusive");
     expect(limited.status).toBe(429);
     expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);

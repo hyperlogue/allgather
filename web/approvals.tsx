@@ -4,10 +4,12 @@ import {
   approvalTextParts,
   reviewableApproval,
 } from "../shared/approval-content.ts";
+import { type ConnectionIdentity, connectionActorLabel } from "../shared/client-access.ts";
 import { request } from "./api.ts";
 import { ErrorText, useAction } from "./ui.tsx";
 
 export interface ApprovalView {
+  connection?: ConnectionIdentity | null;
   id: string;
   operation: string;
   operation_key: string;
@@ -140,7 +142,8 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
               <span>
                 <strong>{title(row)}</strong>
                 <small className="approval-value">
-                  {approvalDisplayText(row.operator_name)} · {row.state.replaceAll("_", " ")}
+                  {approvalDisplayText(connectionActorLabel(row.connection, row.operator_name))} ·{" "}
+                  {row.state.replaceAll("_", " ")}
                 </small>
               </span>
             </button>
@@ -153,7 +156,9 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
             <p>
               Requested by{" "}
               <strong className="approval-value">
-                {approvalDisplayText(current.operator_name)}
+                {approvalDisplayText(
+                  connectionActorLabel(current.connection, current.operator_name),
+                )}
               </strong>
               . The client supplied this name.
             </p>

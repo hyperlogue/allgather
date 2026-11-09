@@ -129,3 +129,40 @@ export async function browserSession(executable: string) {
     throw error;
   }
 }
+
+export async function browserPasskeyLogin(
+  browser: Awaited<ReturnType<typeof browserSession>>,
+  loginUrl: string,
+  target?: string,
+) {
+  const prior = target ?? (await browser.evaluate<string>("location.href"));
+  await browser.command("WebAuthn.enable");
+  await browser.command("WebAuthn.addVirtualAuthenticator", {
+    options: {
+      protocol: "ctap2",
+      transport: "internal",
+      hasResidentKey: true,
+      hasUserVerification: true,
+      isUserVerified: true,
+      automaticPresenceSimulation: true,
+    },
+  });
+  await browser.command("Page.navigate", { url: loginUrl });
+  await browser.until(
+    `document.querySelector('.login-enter')?.textContent==='Create passkey and enter'`,
+  );
+  if (await browser.evaluate("location.hash!==''"))
+    throw new Error("Registration secret remains in the URL");
+  await browser.evaluate("document.querySelector('.login-enter').click()");
+  await browser.until(
+    `!!document.querySelector('.app-header') || !!document.querySelector('.login .error')`,
+  );
+  const failure = await browser.evaluate<string | null>(
+    "document.querySelector('.login .error')?.textContent ?? null",
+  );
+  if (failure) throw new Error(`Browser passkey registration: ${failure}`);
+  if (prior.startsWith(new URL(loginUrl).origin) && !prior.includes("/welcome")) {
+    await browser.command("Page.navigate", { url: prior });
+    await browser.until(`!!document.querySelector('.app-header')`);
+  }
+}

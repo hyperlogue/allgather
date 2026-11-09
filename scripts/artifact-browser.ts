@@ -1,9 +1,9 @@
-import { browserSession } from "./browser.ts";
+import { browserPasskeyLogin, browserSession } from "./browser.ts";
 /** Exercise the actual artifact bundle, sandbox handshake, and review composer. */
 export async function verifyArtifactBrowser(
   executable: string,
   origin: string,
-  loginToken: string,
+  loginUrl: string,
   id: string,
 ) {
   const b = await browserSession(executable);
@@ -19,10 +19,7 @@ export async function verifyArtifactBrowser(
       mobile: false,
     });
     await b.command("Page.navigate", { url: origin });
-    await b.until(`!!document.querySelector('input[type=password]')`);
-    await b.evaluate(`document.querySelector('input[type=password]').focus()`);
-    await b.command("Input.insertText", { text: loginToken });
-    await b.evaluate(`document.querySelector('form').requestSubmit()`);
+    await browserPasskeyLogin(b, loginUrl);
     await b.until(`!!document.querySelector('.app-header')`);
     await b.evaluate(
       `[...document.querySelectorAll('button')].find(b=>b.textContent==='Settings').click()`,

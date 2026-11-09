@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import { AppError, type Principal, type SessionRuntime } from "../shared/contracts.ts";
+import { effectiveScopes } from "../shared/permissions.ts";
 import { resourceGrantsSchema } from "../shared/resource-grants.ts";
 import {
   type CommandReceipt,
@@ -9,6 +10,7 @@ import {
   receiptSchema,
   requestSchema,
 } from "../shared/tower-acp.ts";
+import { activeBrowserSession } from "./browser-auth.ts";
 import { canonical, uid, type Workspace } from "./workspace.ts";
 
 type Input = Record<string, unknown>;
@@ -578,14 +580,7 @@ export class ManagedControl {
       binding = p.auth_binding;
     if (!binding) return null;
     if (binding.kind === "browser")
-      return this.w.one(
-        "SELECT 1 FROM sessions s JOIN login_tokens t ON t.id=s.token_id WHERE s.hash=? AND s.expires>? AND t.revoked_at IS NULL AND t.last_used_at>?",
-        binding.hash,
-        this.w.now(),
-        new Date(Date.parse(this.w.now()) - 14 * 86400000).toISOString(),
-      )
-        ? row.expires_at
-        : null;
+      return activeBrowserSession(this.w.db, binding.hash, this.w.now()) ? row.expires_at : null;
     if (binding.kind !== "oauth") return null;
     const command = this.w.one<{ kind: string }>(
       "SELECT kind FROM session_commands WHERE id=?",
@@ -613,9 +608,7 @@ export class ManagedControl {
       return null;
     const tokenScopes = JSON.parse(access.scopes) as string[],
       grantScopes = JSON.parse(access.granted_scopes) as string[];
-    if (
-      ![scope, "admin"].some((scope) => tokenScopes.includes(scope) && grantScopes.includes(scope))
-    )
+    if (!effectiveScopes(tokenScopes, grantScopes).some((s) => s === scope || s === "admin"))
       return null;
     const resources = resourceGrantsSchema.safeParse(JSON.parse(access.resources));
     if (!resources.success) return null;

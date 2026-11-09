@@ -133,16 +133,17 @@ export function startLocalControl(
           workspace.onChange();
           return Response.json({ reset: true });
         }
-        if (path === "/auth/list-tokens" && request.method === "GET")
-          return Response.json(auth.loginTokens());
-        if (path === "/auth/create-token" && request.method === "POST") {
+        if (path === "/auth/passkeys" && request.method === "GET")
+          return Response.json(auth.browser.list());
+        if (path === "/auth/login" && request.method === "POST") {
           const input = (await request.json()) as { label?: string };
-          return Response.json(auth.createLoginToken(input.label));
+          return Response.json(auth.browser.createLink(input.label));
         }
-        if (path === "/auth/revoke-token" && request.method === "POST") {
+        if (path === "/auth/revoke-passkey" && request.method === "POST") {
           const input = (await request.json()) as { id?: string };
-          if (!input.id || typeof input.id !== "string") throw new Error("Supply a token ID");
-          auth.revokeLoginToken(input.id);
+          if (!input.id || typeof input.id !== "string") throw new Error("Supply a passkey ID");
+          auth.browser.revoke(input.id);
+          workspace.onChange();
           return Response.json({ revoked: true });
         }
         return new Response("Unknown local control action", { status: 404 });

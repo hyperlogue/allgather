@@ -20,11 +20,12 @@ export const HELP = `allgather-server — local Allgather server administration
   status      Report running, stopping, stopped, or unreachable
   run         Run in the foreground (for terminals and service managers)
   config show | get KEY | set KEY VALUE [KEY VALUE ...] | unset KEY [KEY ...]
-  auth create-token [--label NAME] | list-tokens | revoke-token TOKEN_ID | reset
+  login [--label NAME]    Create a single-use link to register a passkey (expires in five minutes)
+  auth list-passkeys | revoke-passkey PASSKEY_ID | reset
   backup FILE
   restore FILE --data-dir NEW_DIRECTORY
 
-Use --data-dir DIR to select the local instance. Control results are JSON; run prints logs.
+Use --data-dir DIR to select the local instance. Control results are JSON; login prints a link (or JSON with --json), and run prints logs.
 Private server: --port PORT --bind HOST --owner-url URL.
 Public MCP (opt in): --mcp-url URL --mcp-port PORT --mcp-bind HOST.
 Network: --owner-trusted-proxies CIDRS --mcp-trusted-proxies CIDRS --private-networks CIDRS (comma separated).
@@ -38,7 +39,7 @@ Gateway exits restart with 1–30 second backoff; status reports process state, 
 config show reports saved and effective settings; config get reads a saved override.
 Priority: command flags > environment > saved settings > defaults. Writes save only explicit values; start/restart applies them. dataDir selects the instance.
 Example: allgather-server config set ownerUrl https://owner.example mcpUrl https://mcp.example mcpTrustedProxies 127.0.0.1/32
-Auth and backup require a running local server. Login codes expire after ten minutes and work once.
+Login, auth and backup require a running local server. Browser access requires a passkey.
 Auth reset revokes all browser, connector and machine access. Restore also revokes prior credentials.
 Restore writes to a new directory.
 Backup and restore use the Allgather ZIP format.
@@ -152,9 +153,18 @@ export async function main(argv = process.argv.slice(2)) {
     return;
   }
   if (
-    !["run", "start", "stop", "restart", "status", "auth", "backup", "restore", "config"].includes(
-      p[0],
-    )
+    ![
+      "run",
+      "start",
+      "stop",
+      "restart",
+      "status",
+      "login",
+      "auth",
+      "backup",
+      "restore",
+      "config",
+    ].includes(p[0])
   )
     throw new Error("Unknown server command. Run allgather-server help.");
   const startup = ["run", "start", "restart"].includes(p[0]);
@@ -175,7 +185,7 @@ export async function main(argv = process.argv.slice(2)) {
           "managed-sessions",
         ]
       : []),
-    ...(p[0] === "auth" ? ["label"] : []),
+    ...(p[0] === "login" ? ["label"] : []),
   ]);
   for (const flag of Object.keys(f))
     if (!allowed.has(flag)) throw new Error(`Unknown option --${flag}`);
@@ -220,20 +230,26 @@ export async function main(argv = process.argv.slice(2)) {
   );
   const saved = !startup && overrides.dataDir ? null : readServerConfig();
   const directory = dataDirectory(overrides.dataDir, saved ?? {});
+  if (p[0] === "login") {
+    if (p.length !== 1) throw new Error("Use allgather-server login [--label NAME]");
+    const link = (await (
+      await controlRequest(directory, "auth/login", { label: text("label") })
+    ).json()) as { url: string; expires_at: string };
+    if (f.json) print(link);
+    else
+      console.log(
+        `Open this link to register your passkey and enter Allgather:\n${link.url}\n\nThis link works once and expires in five minutes.`,
+      );
+    return;
+  }
   if (p[0] === "auth") {
     if (p[1] === "reset" && p.length === 2)
       print(await (await controlRequest(directory, "auth/reset", {})).json());
-    else if (p[1] === "create-token" && p.length === 2)
-      print(
-        await (
-          await controlRequest(directory, "auth/create-token", { label: text("label") })
-        ).json(),
-      );
-    else if (p[1] === "list-tokens" && p.length === 2)
-      print(await (await controlRequest(directory, "auth/list-tokens")).json());
-    else if (p[1] === "revoke-token" && p.length === 3)
-      print(await (await controlRequest(directory, "auth/revoke-token", { id: p[2] })).json());
-    else throw new Error("Use auth create-token, list-tokens, revoke-token TOKEN_ID, or reset");
+    else if (p[1] === "list-passkeys" && p.length === 2)
+      print(await (await controlRequest(directory, "auth/passkeys")).json());
+    else if (p[1] === "revoke-passkey" && p.length === 3)
+      print(await (await controlRequest(directory, "auth/revoke-passkey", { id: p[2] })).json());
+    else throw new Error("Use auth list-passkeys, revoke-passkey PASSKEY_ID, or reset");
     return;
   }
   if (p[0] === "backup") {

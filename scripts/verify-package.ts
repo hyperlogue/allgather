@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fixtureApiToken, fixtureLogin, fixtureLoginToken } from "./fixture-auth.ts";
+import { fixtureApiToken, fixtureLogin, fixtureLoginLink } from "./fixture-auth.ts";
 
 const executable = resolve(process.argv[2] ?? "dist/allgather");
 const daemon = join(dirname(executable), "allgather-server");
@@ -55,7 +55,7 @@ const server = Bun.spawn(
     "--port",
     "0",
     "--owner-url",
-    "http://127.0.0.1:0",
+    "http://localhost:0",
   ],
   { cwd: directory, env: isolatedEnv, stdout: "pipe", stderr: "pipe" },
 );
@@ -77,7 +77,7 @@ try {
       timeout = setTimeout(() => reject(new Error("Packaged server did not start")), 20000);
     }),
   ]).finally(() => clearTimeout(timeout));
-  for (const route of ["/", "/oauth/authorize"]) {
+  for (const route of ["/", "/sign-in"]) {
     const response = await fetch(origin + route);
     if (!response.ok) throw new Error(`Document failed: ${route}`);
     const html = await response.text();
@@ -151,7 +151,7 @@ try {
     await verifyArtifactBrowser(
       process.env.ALLGATHER_TEST_BROWSER,
       origin,
-      await fixtureLoginToken(join(directory, "state")),
+      await fixtureLoginLink(join(directory, "state")),
       artifact.id,
     );
   }
@@ -169,9 +169,9 @@ try {
     "port",
     "0",
     "ownerUrl",
-    "http://127.0.0.1:0",
+    "http://localhost:0",
     "mcpUrl",
-    "http://127.0.0.1:0",
+    "http://localhost:0",
     "mcpPort",
     "0",
     "gateways",
@@ -243,7 +243,7 @@ try {
   if ((await daemonCommand("stop")).state !== "stopped") throw new Error("Packaged stop failed");
   assertStopped(replacementGateway);
   console.log(
-    "Standalone packages passed: HTTP client, offline guide, foreground/background lifecycle, restart, local backup, embedded browser assets, OAuth document, task workflow, artifact capture, and source rendering.",
+    "Standalone packages passed: HTTP client, offline guide, foreground/background lifecycle, restart, local backup, embedded browser assets, sign-in document, task workflow, artifact capture, and source rendering.",
   );
 } finally {
   if (server.exitCode === null) server.kill("SIGTERM");

@@ -90,3 +90,42 @@ export function migrateMcpPairings(db: Database) {
     `),
   ).immediate();
 }
+
+export function migrateCliPairings(db: Database) {
+  db.transaction(() =>
+    db.exec(`
+    CREATE TABLE cli_pairings(
+      id TEXT PRIMARY KEY, code_hash TEXT NOT NULL UNIQUE, name TEXT NOT NULL,
+      scopes TEXT NOT NULL, resources TEXT NOT NULL, permissions TEXT NOT NULL,
+      created_at TEXT NOT NULL, expires_at TEXT NOT NULL, request_hash TEXT,
+      client_id TEXT UNIQUE REFERENCES oauth_clients(id), claimed_at TEXT,
+      confirmed_at TEXT, revoked_at TEXT
+    );
+    DELETE FROM oauth_codes WHERE json_extract(data,'$.client.id') IN (SELECT id FROM oauth_clients WHERE audience='api');
+    PRAGMA user_version=31;
+  `),
+  ).immediate();
+}
+
+export function migrateClientActivity(db: Database) {
+  db.transaction(() =>
+    db.exec(`
+    CREATE TABLE client_activity(client_id TEXT PRIMARY KEY REFERENCES oauth_clients(id),last_used_at TEXT NOT NULL);
+    PRAGMA user_version=33;
+  `),
+  ).immediate();
+}
+
+export function migrateClientTombstones(db: Database) {
+  db.transaction(() =>
+    db.exec(`
+    ALTER TABLE oauth_clients ADD COLUMN deleted_at TEXT;
+    CREATE TRIGGER client_tombstone_no_revival BEFORE UPDATE ON oauth_clients
+    WHEN OLD.deleted_at IS NOT NULL AND (NEW.deleted_at IS NOT OLD.deleted_at OR NEW.revoked!=1 OR NEW.name IS NOT OLD.name OR NEW.id IS NOT OLD.id)
+    BEGIN SELECT RAISE(ABORT,'Deleted client identity is immutable'); END;
+    CREATE TRIGGER client_tombstone_retained BEFORE DELETE ON oauth_clients WHEN OLD.deleted_at IS NOT NULL
+    BEGIN SELECT RAISE(ABORT,'Deleted client identity must be retained'); END;
+    PRAGMA user_version=34;
+  `),
+  ).immediate();
+}

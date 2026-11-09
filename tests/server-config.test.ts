@@ -32,6 +32,7 @@ test("server configuration precedence is flags, environment, saved values, then 
     "MCP_TRUSTED_PROXIES",
   );
   expect(config({}, {}, {}).port).toBe(4390);
+  expect(config({}, {}, {}).ownerUrl).toBe("http://localhost:4390");
   expect(
     dataDirectory(undefined, { dataDir: "/fixture/saved" }, { ALLGATHER_DATA_DIR: "/fixture/env" }),
   ).toBe("/fixture/env");

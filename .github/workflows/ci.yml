@@ -59,12 +59,15 @@ jobs:
       - name: Verify browser workflows
         if: runner.os == 'Linux'
         run: |
+          bun --no-env-file scripts/verify-passkeys.ts
           bun --no-env-file scripts/verify-browser.ts
           bun --no-env-file scripts/verify-design.ts
           bun --no-env-file scripts/verify-project-icons.ts
+          bun --no-env-file scripts/verify-cli-pairing.ts dist/allgather
           bun --no-env-file scripts/verify-artifacts.ts
           bun --no-env-file scripts/verify-tower-enrollment.ts
           bun --no-env-file scripts/verify-session-controls.ts
+          bun --no-env-file scripts/verify-client-access.ts
           bun --no-env-file scripts/verify-approvals.ts
 
   # Verify the Nix distribution independently of the npm-installed toolchain.

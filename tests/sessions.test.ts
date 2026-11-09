@@ -27,7 +27,7 @@ test("Tower authentication, durable command receipts, transcript replay, and liv
     server = await startServer({
       dataDir: root,
       port: 0,
-      ownerUrl: "http://127.0.0.1:0",
+      ownerUrl: "http://localhost:0",
       gitSyncSeconds: 0,
       managedSessions: true,
     }),

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { fixtureBrowserCookie } from "../scripts/fixture-passkey.ts";
 import { createApp, Updates } from "../server/app.ts";
 import { Auth, hash, secret } from "../server/auth.ts";
 import { openDatabase } from "../server/storage.ts";
@@ -11,7 +12,7 @@ function fixture() {
   const w = new Workspace(db, () => new Date(now)),
     auth = new Auth(db, origin);
   const app = createApp(w, auth, new Updates());
-  const cookie = auth.signIn(auth.createLoginToken("Test").token).split(";")[0]!;
+  const cookie = fixtureBrowserCookie(db);
   const owner = { cookie, origin };
   const req = (path: string, body?: unknown, headers: Record<string, string> = {}) =>
     app.request(origin + path, {

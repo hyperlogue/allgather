@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server/index.ts";
-import { browserSession } from "./browser.ts";
-import { fixtureLoginToken } from "./fixture-auth.ts";
+import { browserPasskeyLogin, browserSession } from "./browser.ts";
+import { fixtureLoginLink } from "./fixture-auth.ts";
 
 const executable = process.env.ALLGATHER_TEST_BROWSER;
 if (!executable) throw new Error("Set ALLGATHER_TEST_BROWSER to a Chromium executable");
@@ -11,7 +11,7 @@ const directory = mkdtempSync(join(tmpdir(), "allgather-design-"));
 const running = await startServer({
   dataDir: directory,
   port: 0,
-  ownerUrl: "http://127.0.0.1:0",
+  ownerUrl: "http://localhost:0",
   gitSyncSeconds: 0,
   gateways: [],
 });
@@ -89,12 +89,11 @@ try {
   };
   await size(1440);
   await b.command("Page.navigate", { url: running.settings.ownerUrl });
-  await b.until(`!!document.querySelector('input[type=password]')`);
+  await b.until(`!!document.querySelector('.login-enter')`);
   if (!(await b.evaluate("document.documentElement.classList.contains('dark')")))
     throw new Error("Fresh browser did not use Midnight");
   await shot("login");
-  await fill("input[type=password]", await fixtureLoginToken(directory));
-  await b.evaluate("document.querySelector('.login form').requestSubmit()");
+  await browserPasskeyLogin(b, await fixtureLoginLink(directory));
   await b.until("!!document.querySelector('.app-header')");
   const seed = await b.evaluate<{ project: string; task: string; session: string }>(`(async()=>{
     const op=async(name,input)=>{const r=await fetch('/api/operations/'+name,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...input,operation_key:crypto.randomUUID()})});const d=await r.json();if(!r.ok)throw new Error(JSON.stringify(d));return d.result;};

@@ -22,7 +22,13 @@ user request.
 
 Use small, self-contained Conventional Commits with a subsystem scope and an
 imperative subject of at most 72 characters, without a final period. Stage only
-your own changes by explicit path. Commit after the applicable checks in
-`.github/workflows/ci.yml` pass; leave `git push` to the user. Preserve existing
+your own changes by explicit path. Leave `git push` to the user. Preserve existing
 authorship metadata. Keep personal identifiers, credentials, and home-directory
 paths out of tracked files and commit messages.
+
+Before code commits, run `bun --no-env-file run typecheck`,
+`biome check <changed-files>`, and `bun --no-env-file test <affected-test-files>`
+for directly affected unit tests. Keep this commit check set under 30 seconds
+total; leave full-suite, browser, and packaging runs to CI. Report any check that
+exceeds the budget or remains unverified. Commit after the selected checks pass.
+For prose-only commits, run only `git diff --check`.

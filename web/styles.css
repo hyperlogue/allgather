@@ -6,8 +6,8 @@ html {
 }
 body {
   margin: 0;
-  font: 13px / 1.5 var(--ui);
-  letter-spacing: -0.006em;
+  font: 14px / 1.5 var(--ui);
+  font-optical-sizing: auto;
   color: var(--ink);
   background: var(--page);
   -webkit-font-smoothing: antialiased;
@@ -26,7 +26,7 @@ button {
   background: var(--page);
   color: var(--ink);
   border-radius: 0;
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 500;
   transition: background 0.12s;
 }
@@ -85,7 +85,7 @@ textarea {
 }
 label {
   display: block;
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 500;
   margin-bottom: 14px;
 }
@@ -101,19 +101,19 @@ p {
   margin: 0;
 }
 h1 {
-  font-size: 20px;
+  font-size: 21px;
   line-height: 1.2;
-  letter-spacing: -0.8px;
-  font-weight: 650;
+  letter-spacing: -0.02em;
+  font-weight: 600;
 }
 h2 {
-  font-size: 16px;
+  font-size: 17px;
   line-height: 1.4;
-  font-weight: 620;
+  font-weight: 600;
 }
 h3 {
-  font-size: 14px;
-  font-weight: 650;
+  font-size: 15px;
+  font-weight: 600;
   margin-bottom: 14px;
 }
 p + p {
@@ -121,7 +121,7 @@ p + p {
 }
 small {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   font-weight: 400;
 }
@@ -131,7 +131,7 @@ code {
 code,
 pre {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 13px;
 }
 pre {
   background: var(--surface);
@@ -149,14 +149,14 @@ code.wrap {
   color: var(--muted);
 }
 .small {
-  font-size: 13px;
+  font-size: 14px;
 }
 .error {
   padding: 12px 15px;
   background: var(--error-surface);
   color: var(--red);
   border-radius: 0;
-  font-size: 13px;
+  font-size: 14px;
   margin: 14px 0;
   overflow-wrap: anywhere;
 }
@@ -164,7 +164,7 @@ code.wrap {
   padding: 12px 15px;
   background: var(--warning-surface);
   border-radius: 0;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--warning);
   margin: 18px 0;
 }
@@ -285,17 +285,17 @@ code.wrap {
 }
 .task-row-main strong {
   display: block;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 16px;
+  font-weight: 400;
   overflow-wrap: anywhere;
 }
 .task-row-main small {
   margin-top: 5px;
-  font-size: 11px;
+  font-size: 13px;
 }
 .priority {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 .state-dot {
   width: 14px;
@@ -320,7 +320,7 @@ code.wrap {
   background: var(--warning-surface);
 }
 .status {
-  font-size: 11px;
+  font-size: 13px;
   background: var(--surface);
   padding: 4px 8px;
   border-radius: 0;
@@ -344,7 +344,7 @@ code.wrap {
   display: block;
   margin: 10px 10px 0 auto;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .task-detail {
   padding: 12px 26px 26px;
@@ -364,7 +364,7 @@ code.wrap {
   margin: 15px 0 20px;
 }
 .task-actions button {
-  font-size: 12px;
+  font-size: 13px;
   padding: 7px 11px;
 }
 .task-detail form {
@@ -376,7 +376,7 @@ code.wrap {
   margin-top: 25px;
 }
 .detail-section p {
-  font-size: 13px;
+  font-size: 14px;
 }
 .detail-section textarea {
   margin-bottom: 10px;
@@ -393,7 +393,7 @@ code.wrap {
   gap: 14px;
   border-bottom: 1px solid var(--line);
   padding: 14px 0;
-  font-size: 13px;
+  font-size: 14px;
 }
 .plain-list li:last-child {
   border-bottom: 0;
@@ -403,7 +403,7 @@ code.wrap {
 }
 .timeline {
   padding: 0 0 0 16px;
-  font-size: 12px;
+  font-size: 13px;
   margin: 0;
 }
 .timeline li {
@@ -416,7 +416,7 @@ code.wrap {
 .timeline time {
   display: block;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
   margin-top: 3px;
 }
 .timeline p {
@@ -428,11 +428,11 @@ code.wrap {
   text-align: center;
 }
 .empty h2 {
-  font-size: 16px;
+  font-size: 17px;
 }
 .empty p {
   color: var(--muted);
-  font-size: 14px;
+  font-size: 15px;
   margin-top: 12px;
 }
 .task-list-loading {
@@ -442,7 +442,7 @@ code.wrap {
   gap: 10px;
   padding: 65px 30px;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 15px;
 }
 .spinner {
   width: 16px;
@@ -479,13 +479,13 @@ code.wrap {
 }
 .metrics strong {
   display: block;
-  font-size: 36px;
+  font-size: 38px;
   letter-spacing: -1px;
   font-weight: 600;
 }
 .metrics span {
   display: block;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--muted);
 }
 .history-section {
@@ -524,7 +524,7 @@ code.wrap {
   display: flex;
   justify-content: space-between;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
   margin: 8px 0 18px;
 }
 .repo-row {
@@ -535,12 +535,12 @@ code.wrap {
   display: block;
 }
 .repo-row code {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--muted);
   overflow-wrap: anywhere;
 }
 .repo-row p {
-  font-size: 12px;
+  font-size: 13px;
   margin: 8px 0;
 }
 .repo-row:last-of-type {
@@ -562,7 +562,7 @@ code.wrap {
   border-radius: 0;
   padding: 8px 0;
   text-align: left;
-  font-size: 14px;
+  font-size: 15px;
 }
 .commit-list small {
   margin-top: 5px;
@@ -579,11 +579,11 @@ code.wrap {
 table {
   border-collapse: collapse;
   width: 100%;
-  font-size: 13px;
+  font-size: 14px;
   text-align: left;
 }
 th {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--muted);
   font-weight: 550;
   padding: 12px;
@@ -614,7 +614,7 @@ td {
   color: var(--warning);
   text-align: center;
   padding: 10px;
-  font-size: 13px;
+  font-size: 14px;
 }
 .sr-only {
   position: absolute;
@@ -647,10 +647,10 @@ dialog::backdrop {
   margin-bottom: 24px;
 }
 .dialog-head h2 {
-  font-size: 18px;
+  font-size: 19px;
 }
 .dialog-head button {
-  font-size: 17px;
+  font-size: 18px;
 }
 @media (max-width: 1050px) {
   .work-area.has-detail {
@@ -669,10 +669,10 @@ dialog::backdrop {
     align-items: flex-start;
   }
   h1 {
-    font-size: 26px;
+    font-size: 28px;
   }
   .page-heading p {
-    font-size: 13px;
+    font-size: 14px;
   }
   .task-toolbar {
     flex-direction: column;
@@ -686,7 +686,7 @@ dialog::backdrop {
     justify-content: space-between;
   }
   .filters button {
-    font-size: 12px;
+    font-size: 13px;
     padding: 7px 11px;
   }
   .work-area.has-detail {
@@ -709,10 +709,10 @@ dialog::backdrop {
     gap: 12px;
   }
   .metrics strong {
-    font-size: 24px;
+    font-size: 26px;
   }
   .metrics span {
-    font-size: 11px;
+    font-size: 13px;
   }
   .section-line {
     flex-direction: column;
@@ -726,7 +726,7 @@ dialog::backdrop {
     height: 110px;
   }
   .connections h1 {
-    font-size: 26px;
+    font-size: 28px;
   }
   .connection-address {
     flex-direction: column;
@@ -785,7 +785,7 @@ dialog::backdrop {
 summary {
   cursor: pointer;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
   padding: 8px 0;
 }
 .filter-grid {
@@ -817,7 +817,7 @@ summary {
 }
 .label-chip {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
   padding: 1px 6px;
   background: var(--surface);
   border-radius: 0;
@@ -842,11 +842,11 @@ summary {
   accent-color: var(--blue);
 }
 .epic-progress p {
-  font-size: 12px;
+  font-size: 13px;
   margin-top: 5px;
 }
 .detail-section h2 {
-  font-size: 15px;
+  font-size: 16px;
   margin-bottom: 16px;
 }
 .comments {
@@ -857,7 +857,7 @@ summary {
 .comments li {
   border-bottom: 1px solid var(--line);
   padding: 16px 0;
-  font-size: 13px;
+  font-size: 14px;
 }
 .comments p {
   white-space: pre-wrap;
@@ -869,7 +869,7 @@ summary {
     justify-content: flex-end;
   }
   .heading-actions button {
-    font-size: 12px;
+    font-size: 13px;
     padding: 6px 10px;
   }
 }
@@ -884,7 +884,7 @@ summary {
 }
 .audit-change {
   margin: 16px 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 .audit-change dl {
   margin: 12px 0;
@@ -935,7 +935,8 @@ textarea {
 .task-body {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: 14px;
+  font-size: 16px;
+  line-height: 1.6;
   margin: 20px 0;
 }
 .state-dot.closed {
@@ -946,13 +947,13 @@ textarea {
 .blocker-row {
   padding: 12px 0;
   border-bottom: 1px solid var(--line);
-  font-size: 13px;
+  font-size: 14px;
   overflow-wrap: anywhere;
 }
 .context-row > span {
   display: block;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 .blocker-row p {
   white-space: pre-wrap;
@@ -987,7 +988,7 @@ textarea {
   border-bottom: 1px solid var(--line);
 }
 .transcript-message > strong {
-  font-size: 13px;
+  font-size: 14px;
 }
 .transcript-message > small {
   display: inline;
@@ -996,7 +997,7 @@ textarea {
 .message-content {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: 14px;
+  font-size: 15px;
   margin-top: 8px;
 }
 .session-request {
@@ -1038,7 +1039,7 @@ textarea {
 .command-row {
   padding: 12px 0;
   border-bottom: 1px solid var(--line);
-  font-size: 13px;
+  font-size: 14px;
 }
 .pairing {
   padding: 16px 0;
@@ -1093,7 +1094,7 @@ textarea {
   font-weight: 600;
 }
 .artifact-kind {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--muted);
 }
 .artifact-workspace {
@@ -1109,7 +1110,7 @@ textarea {
   gap: 16px;
   border-bottom: 1px solid var(--line);
   padding: 8px 12px;
-  font-size: 13px;
+  font-size: 14px;
 }
 .artifact-bar > .heading-actions {
   margin-left: auto;
@@ -1265,8 +1266,8 @@ textarea {
   margin: 32px 0;
 }
 .appearance legend {
-  font-size: 16px;
-  font-weight: 620;
+  font-size: 17px;
+  font-weight: 600;
   margin-bottom: 8px;
 }
 .theme-options {

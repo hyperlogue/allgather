@@ -5,6 +5,8 @@
     "": {
       "name": "allgather",
       "dependencies": {
+        "@fontsource-variable/inter": "5.3.0",
+        "@fontsource-variable/jetbrains-mono": "5.3.0",
         "@formkit/auto-animate": "0.10.0",
         "@modelcontextprotocol/sdk": "1.32.1",
         "@node-oauth/oauth2-server": "5.3.0",
@@ -40,6 +42,10 @@
   },
   "packages": {
     "@babel/runtime": ["@babel/runtime@7.29.10", "", {}, "sha512-NpugTzbKgGrNe45Ui32cN8vCFFMxVtP/9rtfwv0nP5FRDAjvYBxJcLVpYA9mr1jxP6cnIT7x9LUzuDTbWYYNRA=="],
+
+    "@fontsource-variable/inter": ["@fontsource-variable/inter@5.3.0", "", {}, "sha512-OupL48va4JNofb97w6NYeF9S7W/kHNKM0Er8Dem5nqi4jeOLrVJDoE8tZEpnMJmtkvNbB1EIPPwHcdkF6b1oUA=="],
+
+    "@fontsource-variable/jetbrains-mono": ["@fontsource-variable/jetbrains-mono@5.3.0", "", {}, "sha512-F32xpS2NsGYoQi2ADSkKTgpJj7ozajsGgDJ8woTnqjmIB+dxDIqImjl4pXZVEExu8UFZ2ndhmX18EBS/hdz3Lw=="],
 
     "@formkit/auto-animate": ["@formkit/auto-animate@0.10.0", "", {}, "sha512-KGomRttjUfORuPUaR/ZGQw+6xfMrTM+sxnILv7JAd9AmabU9rg9i6gF/iC0Ih+QpKCubJpCA/1DX9UHKE8cX+A=="],
 

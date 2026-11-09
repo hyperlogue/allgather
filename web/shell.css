@@ -14,7 +14,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -77,11 +77,11 @@
   white-space: nowrap;
 }
 .scope-name b {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 .scope-name small {
-  font: 10px var(--mono);
+  font: 12px var(--ui);
   color: var(--fg4);
 }
 .scope-chevron {
@@ -102,7 +102,7 @@
   height: 20px;
   display: grid;
   place-items: center;
-  font: 600 9px var(--mono);
+  font: 600 11px var(--ui);
   color: #061518;
 }
 .scope-marks.stacked .scope-mark {
@@ -215,7 +215,7 @@
 }
 .scope-option small {
   margin-left: auto;
-  font: 10px var(--mono);
+  font: 12px var(--ui);
   color: var(--fg4);
 }
 .scope-swatch {
@@ -244,7 +244,7 @@ kbd {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font: 10px / 1 var(--mono);
+  font: 12px / 1 var(--mono);
   min-width: 18px;
   height: 18px;
   padding: 0 4px;
@@ -313,7 +313,7 @@ kbd {
   box-shadow: none;
   color: var(--fg3);
   text-align: left;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 400;
 }
 .app-header nav button:hover {
@@ -338,18 +338,15 @@ kbd {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--fg4);
-  padding: 12px 12px 4px 14px;
-  font: 600 10px var(--mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  min-height: 28px;
+  color: var(--fg3);
+  padding: 14px 12px 4px 14px;
+  font: 500 13px var(--ui);
+  min-height: 30px;
 }
 .section-hint {
   margin-left: auto;
   font-weight: 400;
-  letter-spacing: 0;
-  text-transform: none;
+  color: var(--fg4);
 }
 .scope-title {
   color: var(--fg2);
@@ -366,7 +363,7 @@ kbd {
   height: 6px;
 }
 .sidebar-empty {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--fg3);
   margin: 4px 14px 12px;
 }
@@ -385,7 +382,7 @@ kbd {
   height: 18px;
   flex: none;
   border-radius: 50%;
-  font: 600 8px var(--mono);
+  font: 600 10px var(--ui);
   color: var(--fg);
   background: linear-gradient(135deg, var(--a400), var(--a600));
 }
@@ -413,14 +410,14 @@ kbd {
 }
 .nav-count {
   margin-left: auto;
-  min-width: 16px;
-  height: 16px;
+  min-width: 18px;
+  height: 18px;
   display: inline-grid;
   place-items: center;
   padding: 0 4px;
   background: var(--fill);
   color: var(--on-fill);
-  font: 600 10px var(--mono);
+  font: 600 12px var(--ui);
 }
 .nav-count::before {
   content: attr(data-count);
@@ -447,7 +444,7 @@ kbd {
   margin-left: 0;
 }
 .connection-label {
-  font: 10px var(--mono);
+  font: 12px var(--ui);
 }
 .sidebar-fold {
   display: grid;
@@ -515,7 +512,7 @@ kbd {
   position: absolute;
   right: 3px;
   top: 1px;
-  font-size: 9px;
+  font-size: 11px;
   height: 13px;
   min-width: 13px;
 }
@@ -550,7 +547,7 @@ kbd {
   min-height: 44px;
   padding: 0 16px;
   border-bottom: 1px solid var(--e2);
-  font-size: 13px;
+  font-size: 14px;
 }
 .breadcrumb-separator {
   color: var(--fg4);
@@ -572,11 +569,11 @@ kbd {
   min-width: 0;
 }
 .page-heading h1 {
-  font-size: 18px;
+  font-size: 19px;
   letter-spacing: -0.02em;
 }
 .page-heading p {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--fg3);
   margin-top: 3px;
 }
@@ -653,12 +650,12 @@ select:focus-visible {
   background: var(--l2);
 }
 .filters button {
-  padding: 3px 9px;
+  padding: 4px 11px;
   border: 0;
   background: transparent;
   color: var(--fg3);
-  font-size: 12px;
-  min-height: 26px;
+  font-size: 14px;
+  min-height: 30px;
   box-shadow: none;
 }
 .filters button[aria-pressed="true"] {
@@ -684,30 +681,31 @@ select:focus-visible {
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
-  min-height: 34px;
+  min-height: 38px;
   background: var(--tint);
   border-bottom: 1px solid var(--e1);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
 }
 .count {
-  font: 11px var(--mono);
+  font: 14px var(--ui);
   color: var(--fg3);
 }
 .task-row {
   position: relative;
-  gap: 9px;
+  gap: 12px;
   border-color: var(--e1);
-  min-height: 40px;
+  min-height: 46px;
 }
 .task-id {
   color: var(--fg3);
-  font-size: 10px;
-  width: 64px;
+  font: 14px var(--ui);
+  font-variant-numeric: tabular-nums;
+  width: 60px;
   flex: none;
 }
 .task-row-main small {
-  font-size: 10px;
+  font-size: 12px;
 }
 .task-row-labels {
   display: flex;
@@ -716,8 +714,8 @@ select:focus-visible {
   overflow: hidden;
 }
 .task-row-labels .label-chip {
-  font-size: 10px;
-  padding: 1px 5px;
+  font-size: 13px;
+  padding: 1px 6px;
   white-space: nowrap;
 }
 .task-row.selected {
@@ -756,7 +754,7 @@ select:focus-visible {
   border: 1px solid color-mix(in srgb, var(--vio) 30%, transparent);
   background: color-mix(in srgb, var(--vio) 8%, transparent);
   color: var(--vio);
-  font: 10px / 1.6 var(--mono);
+  font: 12px / 1.6 var(--ui);
   white-space: nowrap;
 }
 .agent-chip.waiting {
@@ -772,14 +770,19 @@ select:focus-visible {
 }
 .detail-top {
   color: var(--fg3);
-  font-size: 11px;
+  font-size: 13px;
+}
+.detail-top code {
+  font: 14px var(--ui);
+  font-variant-numeric: tabular-nums;
 }
 .task-detail {
   padding: 12px 18px 20px;
 }
 .task-detail h2 {
-  font-size: 19px;
+  font-size: 24px;
   line-height: 1.3;
+  letter-spacing: -0.015em;
   margin-bottom: 8px;
 }
 .task-actions {
@@ -793,7 +796,7 @@ select:focus-visible {
   border: 1px solid var(--e2);
   background: var(--tint);
   color: var(--fg2);
-  font-size: 11px;
+  font-size: 13px;
 }
 .epic-progress progress {
   accent-color: var(--acc);
@@ -847,13 +850,11 @@ select:focus-visible {
 }
 .transcript-message > strong {
   color: var(--vio);
-  font: 11px var(--mono);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
+  font: 600 13px var(--ui);
 }
 .transcript-message > small {
   color: var(--fg3);
-  font: 10px var(--mono);
+  font: 12px var(--ui);
 }
 .transcript-message[data-role="user"] > strong {
   color: var(--acc);
@@ -889,7 +890,7 @@ select:focus-visible {
   padding: 4px;
   border: 1px solid var(--e2);
   background: var(--l2);
-  font: 9px var(--mono);
+  font: 11px var(--ui);
 }
 .artifact-kind.html {
   color: var(--acc);
@@ -934,7 +935,7 @@ select:focus-visible {
 }
 .commit-list code {
   color: var(--acc);
-  font-size: 11px;
+  font-size: 13px;
 }
 .metrics {
   background: var(--l1);
@@ -956,11 +957,11 @@ select:focus-visible {
   border-bottom: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
   background: linear-gradient(90deg, var(--warning-surface), transparent);
   color: var(--warn);
-  font-size: 12px;
+  font-size: 13px;
 }
 .connection-notice {
   padding: 8px 16px;
-  font-size: 12px;
+  font-size: 13px;
   background: var(--warning-surface);
   color: var(--warn);
 }
@@ -975,7 +976,7 @@ select:focus-visible {
 .connections h1,
 .approvals > h1 {
   margin-bottom: 20px;
-  font-size: 20px;
+  font-size: 21px;
 }
 .theme-option,
 .theme-preview,
@@ -1042,7 +1043,7 @@ select:focus-visible {
   height: 28px;
 }
 .login-card h1 {
-  font-size: 22px;
+  font-size: 24px;
   letter-spacing: -0.025em;
   margin: 20px 0 8px;
   background: linear-gradient(var(--fg), var(--fg2));
@@ -1051,7 +1052,7 @@ select:focus-visible {
 }
 .login-card > p {
   color: var(--fg3);
-  font-size: 12px;
+  font-size: 13px;
 }
 .login-card form {
   margin: 20px 0;
@@ -1073,7 +1074,7 @@ select:focus-visible {
   flex: 1;
   min-width: 0;
   user-select: all;
-  font-size: 11px;
+  font-size: 13px;
 }
 .login-command button {
   border: 0;
@@ -1109,7 +1110,7 @@ dialog::backdrop {
   box-shadow: none;
   background: transparent;
   padding: 4px 0;
-  font-size: 14px;
+  font-size: 15px;
 }
 .palette-search input:focus-visible {
   box-shadow: none;
@@ -1119,7 +1120,7 @@ dialog::backdrop {
   justify-content: space-between;
   padding: 6px 16px;
   color: var(--fg2);
-  font: 11px var(--mono);
+  font: 13px var(--ui);
   border-bottom: 1px solid var(--e1);
 }
 .palette-scope span {
@@ -1133,7 +1134,7 @@ dialog::backdrop {
 }
 .palette-group {
   color: var(--fg3);
-  font-size: 11px;
+  font-size: 13px;
   padding: 10px 16px 4px;
 }
 .palette-result {
@@ -1159,7 +1160,7 @@ dialog::backdrop {
   white-space: nowrap;
 }
 .palette-result small {
-  font: 10px var(--mono);
+  font: 12px var(--ui);
   max-width: 28%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1189,7 +1190,7 @@ dialog::backdrop {
   gap: 14px;
   padding: 8px 16px;
   border-top: 1px solid var(--e2);
-  font-size: 11px;
+  font-size: 13px;
   color: var(--fg3);
 }
 .command-palette footer span {
@@ -1200,7 +1201,7 @@ dialog::backdrop {
 .palette-status {
   padding-inline: 16px;
   color: var(--fg3);
-  font-size: 12px;
+  font-size: 13px;
 }
 .feature-placeholder {
   border: 1px dashed var(--e3);
@@ -1217,7 +1218,7 @@ dialog::backdrop {
 }
 .feature-placeholder small {
   display: inline-block;
-  font: 10px var(--mono);
+  font: 12px var(--ui);
   color: var(--fg3);
   border: 1px solid var(--e2);
   padding: 1px 5px;
@@ -1228,7 +1229,7 @@ dialog::backdrop {
   }
   .task-id {
     width: 54px;
-    font-size: 9px;
+    font-size: 11px;
   }
   .work-area.has-detail {
     grid-template-columns: minmax(240px, 1fr) minmax(300px, 1.2fr);
@@ -1261,7 +1262,7 @@ dialog::backdrop {
     max-width: 160px;
   }
   .workspace-view-title {
-    font-size: 11px;
+    font-size: 13px;
   }
   .app-main {
     padding: 16px 12px;
@@ -1302,7 +1303,8 @@ dialog::backdrop {
   }
   .filters button {
     min-height: 36px;
-    padding: 4px 8px;
+    padding: 4px 7px;
+    font-size: 13px;
   }
   .session-layout {
     display: flex;
@@ -1372,17 +1374,17 @@ dialog::backdrop {
   gap: 12px;
 }
 .feature-placeholder {
-  font-size: 11px;
+  font-size: 13px;
 }
 .feature-placeholder h3 {
   flex-wrap: wrap;
-  font-size: 12px;
+  font-size: 13px;
 }
 .hot-path {
   display: grid !important;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .hot-path meter {
   grid-column: 1 / -1;
@@ -1449,7 +1451,7 @@ dialog::backdrop {
 }
 .task-toolbar summary {
   padding: 4px;
-  font-size: 12px;
+  font-size: 13px;
   white-space: nowrap;
 }
 .task-toolbar .filter-grid {
@@ -1470,12 +1472,12 @@ dialog::backdrop {
 }
 .detail-top {
   margin-bottom: 8px;
-  font-size: 11px;
+  font-size: 13px;
 }
 .close-detail {
   min-height: 22px;
   margin: 6px 8px 0 auto;
-  font-size: 10px;
+  font-size: 12px;
   padding: 0 4px;
 }
 .task-actions {
@@ -1485,7 +1487,7 @@ dialog::backdrop {
 .task-actions button {
   min-height: 26px;
   padding: 3px 7px;
-  font-size: 11px;
+  font-size: 13px;
 }
 .detail-section {
   margin-top: 14px;
@@ -1583,7 +1585,7 @@ dialog::backdrop {
   align-items: center;
   gap: 8px;
   color: var(--fg3);
-  font-size: 11px;
+  font-size: 13px;
 }
 .machine-status.online {
   color: var(--ok);
@@ -1595,12 +1597,12 @@ dialog::backdrop {
 }
 .task-properties {
   display: grid;
-  grid-template-columns: 80px minmax(0, 1fr);
-  gap: 0 8px;
-  padding: 10px 0;
-  margin: 10px 0;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 2px 8px;
+  padding: 12px 0;
+  margin: 12px 0;
   border-block: 1px solid var(--e1);
-  font-size: 12px;
+  font-size: 14px;
 }
 .task-properties dt {
   color: var(--fg3);
@@ -1622,7 +1624,7 @@ dialog::backdrop {
 .unavailable-label {
   color: var(--fg3);
   border: 1px dashed var(--e3);
-  font: 10px var(--mono);
+  font: 12px var(--ui);
   padding: 2px 5px;
 }
 .state-dot.closed {
@@ -1701,7 +1703,7 @@ dialog::backdrop {
   padding: 1px 6px;
   border: 1px solid var(--e2);
   color: var(--fg2);
-  font: 11px var(--mono);
+  font: 13px var(--ui);
   white-space: nowrap;
 }
 .scope-chip i {

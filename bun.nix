@@ -17,6 +17,14 @@
     url = "https://registry.npmjs.org/@babel/runtime/-/runtime-7.29.10.tgz";
     hash = "sha512-NpugTzbKgGrNe45Ui32cN8vCFFMxVtP/9rtfwv0nP5FRDAjvYBxJcLVpYA9mr1jxP6cnIT7x9LUzuDTbWYYNRA==";
   };
+  "@fontsource-variable/inter@5.3.0" = fetchurl {
+    url = "https://registry.npmjs.org/@fontsource-variable/inter/-/inter-5.3.0.tgz";
+    hash = "sha512-OupL48va4JNofb97w6NYeF9S7W/kHNKM0Er8Dem5nqi4jeOLrVJDoE8tZEpnMJmtkvNbB1EIPPwHcdkF6b1oUA==";
+  };
+  "@fontsource-variable/jetbrains-mono@5.3.0" = fetchurl {
+    url = "https://registry.npmjs.org/@fontsource-variable/jetbrains-mono/-/jetbrains-mono-5.3.0.tgz";
+    hash = "sha512-F32xpS2NsGYoQi2ADSkKTgpJj7ozajsGgDJ8woTnqjmIB+dxDIqImjl4pXZVEExu8UFZ2ndhmX18EBS/hdz3Lw==";
+  };
   "@formkit/auto-animate@0.10.0" = fetchurl {
     url = "https://registry.npmjs.org/@formkit/auto-animate/-/auto-animate-0.10.0.tgz";
     hash = "sha512-KGomRttjUfORuPUaR/ZGQw+6xfMrTM+sxnILv7JAd9AmabU9rg9i6gF/iC0Ih+QpKCubJpCA/1DX9UHKE8cX+A==";

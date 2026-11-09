@@ -52,6 +52,7 @@ const paths = {
     </>
   ),
   plus: <path d="M8 3v10M3 8h10" />,
+  updown: <path d="m5 6 3-3 3 3M5 10l3 3 3-3" />,
   html: <path d="M5.5 4.5 2 8l3.5 3.5m5-7L14 8l-3.5 3.5" />,
   diff: <path d="M5 2v6M2 5h6M2 12h6M10 3h4M10 13h4" />,
   files: <path d="M2 4h4l1.5 1.5H14V13H2z" />,

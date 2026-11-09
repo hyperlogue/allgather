@@ -38,19 +38,19 @@ try {
   const reload = async () => {
     const previous = await b.evaluate<number>("performance.timeOrigin");
     const project = await b.evaluate<string>(
-      `document.querySelector("#project-select")?.value ?? ""`,
+      `document.querySelector(".scope-switch")?.getAttribute("aria-label") ?? ""`,
     );
     await b.command("Page.reload");
     await b.until(`performance.timeOrigin!==${previous}`);
     if (project) {
       try {
         await b.until(
-          `document.querySelector("#project-select")?.value===${JSON.stringify(project)}`,
+          `document.querySelector(".scope-switch")?.getAttribute("aria-label")===${JSON.stringify(project)}`,
         );
       } catch (error) {
         console.error(
           await b.evaluate(
-            `({url: location.pathname + location.search, selected: document.querySelector('#project-select')?.value, signedIn: !!document.querySelector('.app-header'), error: document.querySelector('.error')?.textContent})`,
+            `({url: location.pathname + location.search, selected: document.querySelector('.scope-switch')?.getAttribute('aria-label'), signedIn: !!document.querySelector('.app-header'), error: document.querySelector('.error')?.textContent})`,
           ),
         );
         throw error;
@@ -114,7 +114,9 @@ try {
     throw new Error("Theme did not survive reload");
   await click("Tasks");
 
-  await b.evaluate(`document.querySelector('[aria-label="New project"]').click()`);
+  await b.evaluate(`document.querySelector('.scope-switch').click()`);
+  await b.until(`!!document.querySelector('button[aria-label="New project"]')`);
+  await b.evaluate(`document.querySelector('button[aria-label="New project"]').click()`);
   await b.until(`!!document.querySelector('dialog[open] input')`);
   await fill("dialog input", "Example project");
   await field("Slug", "EX", "dialog");

@@ -81,10 +81,10 @@ try {
   };
   const nav = async (label: string) => {
     await b.evaluate(
-      `document.querySelector('nav[aria-label="Main navigation"] button[aria-label="${label}"]').click()`,
+      `document.querySelector('.app-header nav button[aria-label="${label}"]').click()`,
     );
     await b.until(
-      `document.querySelector('nav[aria-label="Main navigation"] button[aria-label="${label}"]').getAttribute('aria-current')==='page'`,
+      `document.querySelector('.app-header nav button[aria-label="${label}"]').getAttribute('aria-current')==='page'`,
     );
   };
   await size(1440);

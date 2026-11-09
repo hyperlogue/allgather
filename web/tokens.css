@@ -60,6 +60,7 @@
   --rim: rgb(255 255 255 / 0.09);
   --cast: 0 2px 4px rgb(0 0 0 / 0.5), 0 16px 40px rgb(0 0 0 / 0.55);
   --scrim: rgb(0 0 0 / 0.55);
+  --scope-l: 74%;
   --t-fast: 120ms;
   --t-base: 180ms;
   --t-slow: 260ms;
@@ -95,6 +96,7 @@
   --rim: rgb(255 255 255 / 0.9);
   --cast: 0 2px 4px rgb(15 16 18 / 0.08), 0 16px 40px rgb(15 16 18 / 0.14);
   --scrim: rgb(240 240 245 / 0.6);
+  --scope-l: 58%;
   color-scheme: light;
 }
 

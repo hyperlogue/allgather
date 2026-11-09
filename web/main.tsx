@@ -12,12 +12,20 @@ import { CliPairing } from "./cli-pairing.tsx";
 import { ClientGrants } from "./client-grants.tsx";
 import { CommandPalette } from "./command-palette.tsx";
 import { HistoryView, type Repo } from "./history.tsx";
-import { Icon } from "./icons.tsx";
 import { Login } from "./login.tsx";
 import { MachineConnections } from "./machine-connections.tsx";
 import { McpPairing } from "./mcp-pairing.tsx";
-import { initialCollapsed, isEditing, readView, Sidebar, type View, views } from "./navigation.tsx";
+import {
+  initialCollapsed,
+  isEditing,
+  isScopedView,
+  readView,
+  Sidebar,
+  type View,
+  views,
+} from "./navigation.tsx";
 import { ProjectIcon, ProjectIconDialog, ProjectIconInput } from "./project-icon.tsx";
+import { projectColor } from "./project-scope.ts";
 import { SessionsView } from "./sessions.tsx";
 import { SettingsView } from "./settings.tsx";
 import { TasksView } from "./tasks.tsx";
@@ -249,9 +257,25 @@ function Connections({
     </div>
   );
 }
+function readScope(search: string) {
+  const value = new URLSearchParams(search).get("project");
+  return value ? value.split(",").filter(Boolean) : [];
+}
+function savedScope() {
+  try {
+    const saved = localStorage.getItem("allgather-project-scope");
+    return saved === null ? null : saved.split(",").filter(Boolean);
+  } catch {
+    return null;
+  }
+}
 function WorkspaceApp({ mcp }: { mcp: string }) {
   const [projects, setProjects] = useState<Project[]>([]),
-    [project, setProject] = useState(new URLSearchParams(location.search).get("project") ?? ""),
+    [scope, setScope] = useState(() =>
+      new URLSearchParams(location.search).has("project")
+        ? readScope(location.search)
+        : (savedScope() ?? []),
+    ),
     [repos, setRepos] = useState<Repo[]>([]),
     [view, setView] = useState<View>(readView(new URLSearchParams(location.search).get("view"))),
     [collapsed, setCollapsed] = useState(initialCollapsed),
@@ -272,17 +296,29 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
     if (Object.keys(params).length) setRouteRevision((value) => value + 1);
     if (matchMedia("(max-width: 760px)").matches) setCollapsed(true);
   }, []);
-  const chooseProject = useCallback((id: string) => {
+  const project = scope[0] ?? "";
+  const choose = useCallback((ids: string[]) => {
     const url = new URL(location.href);
-    url.searchParams.set("project", id);
-    url.searchParams.set("view", "tasks");
-    url.searchParams.delete("task");
-    url.searchParams.delete("action");
+    url.searchParams.set("project", ids.join(","));
+    for (const key of ["task", "session", "action"]) url.searchParams.delete(key);
     history.pushState(null, "", url);
-    setProject(id);
-    setView("tasks");
+    setScope(ids);
+    setRouteRevision((r) => r + 1);
+    try {
+      localStorage.setItem("allgather-project-scope", ids.join(","));
+    } catch {}
     if (matchMedia("(max-width: 760px)").matches) setCollapsed(true);
   }, []);
+  const chooseProject = useCallback(
+    (id: string) => {
+      choose(id ? [id] : []);
+      setView("tasks");
+      const url = new URL(location.href);
+      url.searchParams.set("view", "tasks");
+      history.replaceState(null, "", url);
+    },
+    [choose],
+  );
   useEffect(() => {
     try {
       localStorage.setItem("allgather-sidebar-collapsed", String(collapsed));
@@ -291,7 +327,7 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
   useEffect(() => {
     const back = () => {
       const p = new URLSearchParams(location.search);
-      setProject(p.get("project") ?? "");
+      setScope(readScope(location.search));
       setView(readView(p.get("view")));
       setRouteRevision((r) => r + 1);
     };
@@ -338,8 +374,11 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
         setError("");
         if (!initialized.current) {
           initialized.current = true;
-          if (!new URLSearchParams(location.search).has("project"))
-            setProject((current) => current || ps[0]?.id || "");
+          setScope((current) => {
+            const known = current.filter((id) => ps.some((p) => p.id === id));
+            if (known.length || new URLSearchParams(location.search).has("project")) return known;
+            return savedScope() === null && ps[0] ? [ps[0].id] : known;
+          });
         }
       })
       .catch((e) => {
@@ -363,14 +402,14 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
     <div className={`workspace-shell ${collapsed ? "sidebar-collapsed" : ""}`}>
       <Sidebar
         view={view}
-        project={project}
+        scope={scope}
         projects={projects}
         pending={pendingApprovals.length}
         connected={connected}
         collapsed={collapsed}
         refresh={refresh}
         navigate={navigate}
-        chooseProject={chooseProject}
+        choose={choose}
         newProject={() => setNewProject(true)}
         search={() => setPalette(true)}
         toggle={() => setCollapsed((v) => !v)}
@@ -385,48 +424,40 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
       )}
       <div className="workspace-body">
         <header className="workspace-topbar">
-          <div className="project-picker">
-            {projects
-              .filter((p) => p.id === project)
-              .map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className="quiet project-icon-button"
-                  aria-label="Change project icon"
-                  title={`Change icon for ${p.name}`}
-                  onClick={() => setIconProject(p)}
-                >
-                  <ProjectIcon project={p} />
-                </button>
-              ))}
-            <label className="sr-only" htmlFor="project-select">
-              Project
-            </label>
-            <select
-              id="project-select"
-              value={project}
-              onChange={(e) => chooseProject(e.target.value)}
-            >
-              <option value="">All projects</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+          <div className="topbar-scope">
+            {!isScopedView(view) ? (
+              <span className="scope-note">Workspace</span>
+            ) : scope.length ? (
+              projects
+                .filter((p) => scope.includes(p.id))
+                .map((p) =>
+                  scope.length === 1 ? (
+                    <span key={p.id} className="scope-single">
+                      <button
+                        type="button"
+                        className="quiet project-icon-button"
+                        aria-label="Change project icon"
+                        title={`Change icon for ${p.name}`}
+                        onClick={() => setIconProject(p)}
+                      >
+                        <ProjectIcon project={p} />
+                      </button>
+                      <span className="scope-project-name">{p.name}</span>
+                    </span>
+                  ) : (
+                    <span key={p.id} className="scope-chip">
+                      <i style={{ background: projectColor(p) }} />
+                      {p.name}
+                    </span>
+                  ),
+                )
+            ) : (
+              <span className="scope-note">All projects</span>
+            )}
           </div>
           <span className="breadcrumb-separator">/</span>
           <span className="workspace-view-title">{views.find(([name]) => name === view)?.[1]}</span>
           <div id="view-heading" />
-          <button
-            type="button"
-            className="quiet topbar-search"
-            aria-label="Open workspace search"
-            onClick={() => setPalette(true)}
-          >
-            <Icon name="search" />
-          </button>
         </header>
         {pendingApprovals.length > 0 && view !== "approvals" && (
           <div className="approval-notice" role="status">

@@ -59,6 +59,8 @@ try {
   await picture("#e55745", red, "image/jpeg");
   await picture("#397add", blue, "image/webp");
   writeFileSync(invalid, "not an image");
+  await browser.evaluate("document.querySelector('.scope-switch').click()");
+  await browser.until("!!document.querySelector('button[aria-label=\"New project\"]')");
   await browser.evaluate("document.querySelector('button[aria-label=\"New project\"]').click()");
   await browser.until("!!document.querySelector('dialog input[type=file]')");
   await field("Name", "Icon project");
@@ -68,21 +70,21 @@ try {
   );
   await click("Create project");
   await browser.until(
-    "!document.querySelector('dialog') && document.querySelector('nav[aria-label=Projects] img')?.naturalWidth===128",
+    "!document.querySelector('dialog') && document.querySelector('.scope-switch img.project-icon')?.naturalWidth===128",
   );
   await browser.evaluate(
-    "document.querySelector('[aria-label=\"Open workspace search\"]').click()",
+    "document.querySelector('[aria-label=\"Search or jump\"]').click()",
   );
   await browser.until("document.querySelector('.palette-result img')?.naturalWidth===128");
   await browser.evaluate("document.querySelector('[aria-label=\"Close search\"]').click()");
   const first = await browser.evaluate<string>(
-    "document.querySelector('nav[aria-label=Projects] img').src",
+    "document.querySelector('.scope-switch img.project-icon').src",
   );
   await browser.command("Page.reload");
-  await browser.until("document.querySelector('nav[aria-label=Projects] img')?.naturalWidth===128");
+  await browser.until("document.querySelector('.scope-switch img.project-icon')?.naturalWidth===128");
   if (
     (await browser.evaluate<string>(
-      "document.querySelector('nav[aria-label=Projects] img').src",
+      "document.querySelector('.scope-switch img.project-icon').src",
     )) !== first
   )
     throw new Error("Project icon did not persist");
@@ -113,10 +115,10 @@ try {
   }
   await click("Save icon");
   await browser.until(
-    `!document.querySelector('dialog') && document.querySelector('nav[aria-label=Projects] img')?.src!==${JSON.stringify(first)} && document.querySelector('nav[aria-label=Projects] img')?.naturalWidth===128`,
+    `!document.querySelector('dialog') && document.querySelector('.scope-switch img.project-icon')?.src!==${JSON.stringify(first)} && document.querySelector('.scope-switch img.project-icon')?.naturalWidth===128`,
   );
   const replacement = await browser.evaluate<string>(
-    "document.querySelector('nav[aria-label=Projects] img').src",
+    "document.querySelector('.scope-switch img.project-icon').src",
   );
   await browser.evaluate("document.querySelector('[aria-label=\"Change project icon\"]').click()");
   await browser.until("!!document.querySelector('dialog input[type=file]')");
@@ -125,7 +127,7 @@ try {
   await browser.until("!document.querySelector('dialog')");
   if (
     (await browser.evaluate<string>(
-      "document.querySelector('nav[aria-label=Projects] img').src",
+      "document.querySelector('.scope-switch img.project-icon').src",
     )) !== replacement
   )
     throw new Error("Cancelling changed the icon");
@@ -139,11 +141,11 @@ try {
   await click("Remove icon");
   await click("Save icon");
   await browser.until(
-    "!document.querySelector('dialog') && !document.querySelector('nav[aria-label=Projects] img')",
+    "!document.querySelector('dialog') && !document.querySelector('.scope-switch img.project-icon')",
   );
   await browser.command("Page.reload");
   await browser.until(
-    "!!document.querySelector('nav[aria-label=Projects] button[title=\"Icon project\"] .project-dot')",
+    "!!document.querySelector('[aria-label=\"Project filter: Icon project\"] span.scope-mark')",
   );
   console.log(
     "Project icon browser verification passed: upload, resize, persistence, invalid input, replacement, cancellation, removal and responsive layouts.",

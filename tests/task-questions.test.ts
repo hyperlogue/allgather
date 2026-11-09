@@ -17,7 +17,7 @@ import { taskAnswer, taskQuestions } from "../web/task-questions.ts";
 const owner: Principal = { id: "owner", kind: "owner", scopes: ["admin"], inlet: "browser" };
 const body =
   'Choose a direction.\n\n```questions\n[{"question":"Ship?","options":["Yes","Request changes","Decline"]}]\n```';
-test("task question answers are append-only comments and one durable resolution, regardless of answer", () => {
+test("answers remain comments until a blocker is explicitly cleared", () => {
   const db = openDatabase(":memory:"),
     w = new Workspace(db);
   const call = <T>(op: Operation, input: Record<string, unknown>, p = owner) =>
@@ -33,29 +33,31 @@ test("task question answers are append-only comments and one durable resolution,
       task = call<Task>("tasks_block", {
         task_id: task.id,
         expected_revision: task.revision,
-        waiting_on: "owner",
+        waiting_on: "human",
         body,
       });
       const context = call<TaskContext>("tasks_context", { task_id: task.id }),
-        blocker = context.blockers[0];
+        blocker = context.blockers.find((b) => !b.satisfied)!;
       const input = {
         task_id: task.id,
         body: taskAnswer(taskQuestions(body)!.questions, [answer]),
-        resolve_blocker_id: blocker.id,
         operation_key: randomUUID(),
       };
       const comment = call<TaskComment>("task_comments_add", input);
       expect(call<TaskComment>("task_comments_add", input)).toEqual(comment);
-      expect(() => call("task_comments_add", { ...input, operation_key: randomUUID() })).toThrow(
-        "already has an answer",
-      );
+      expect(w.task(task.id).blocked).toBe(true);
+      task = call<Task>("tasks_clear_blocker", {
+        task_id: task.id,
+        blocker_id: blocker.id,
+        expected_revision: task.revision,
+        comment: "The condition is satisfied",
+      });
       const resolved = call<TaskContext>("tasks_context", { task_id: task.id });
-      task = resolved.task;
       expect(task.blocked).toBe(false);
-      expect(resolved.blockers).toHaveLength(0);
-      expect(resolved.resolved_blockers.find((b) => b.id === blocker.id)?.resolved_comment_id).toBe(
-        comment.id,
-      );
+      expect(resolved.blockers.every((b) => b.satisfied)).toBe(true);
+      expect(
+        resolved.blockers.find((b) => b.id === blocker.id)?.resolution_comment_id,
+      ).toBeTruthy();
       expect(resolved.comments.items.filter((c) => c.id === comment.id)).toHaveLength(1);
       expect(() =>
         db.query("UPDATE task_comments SET body='new' WHERE id=?").run(comment.id),
@@ -64,10 +66,12 @@ test("task question answers are append-only comments and one durable resolution,
     task = call<Task>("tasks_block", {
       task_id: task.id,
       expected_revision: task.revision,
-      waiting_on: "owner",
+      waiting_on: "human",
       body: "Agent can resolve too",
     });
-    const blocker = call<TaskContext>("tasks_context", { task_id: task.id }).blockers[0];
+    const blocker = call<TaskContext>("tasks_context", { task_id: task.id }).blockers.find(
+      (b) => !b.satisfied,
+    )!;
     const agent: Principal = {
       id: "connector",
       kind: "client",
@@ -80,7 +84,18 @@ test("task question answers are append-only comments and one durable resolution,
       {
         task_id: task.id,
         body: "Alternative works",
-        resolve_blocker_id: blocker.id,
+        session_id: "fixture-agent",
+      },
+      agent,
+    );
+    expect(w.task(task.id).blocked).toBe(true);
+    call(
+      "tasks_clear_blocker",
+      {
+        task_id: task.id,
+        blocker_id: blocker.id,
+        expected_revision: task.revision,
+        comment: "Satisfied",
         session_id: "fixture-agent",
       },
       agent,

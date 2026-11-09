@@ -21,7 +21,6 @@ export function parse(argv: string[]) {
         "json",
         "remove",
         "help",
-        "override-claim",
         "undefer",
         "clear-labels",
         "needs-owner",
@@ -29,8 +28,7 @@ export function parse(argv: string[]) {
         "blocked",
         "pause",
         "resume",
-        "claimed",
-        "unclaimed",
+        "is-done",
         "unassigned",
       ].includes(name)
     ) {

@@ -150,16 +150,12 @@ try {
   )
     throw new Error("Deleted graph node still has a live content link");
   await b.evaluate(`document.querySelector('dialog button[aria-label="Close dialog"]').click()`);
-  await click("Claim");
-  await b.until(
-    `[...document.querySelectorAll('.task-actions button')].some(b=>b.textContent==='Release claim')`,
-  );
   await field("Add a comment", "Restart check passed.", ".task-detail");
   await click("Add comment");
   await b.until(
     `document.querySelector('.comments')?.textContent.includes('Restart check passed.')`,
   );
-  await click("Add a wait");
+  await click("Add a blocker");
   await b.until(`!!document.querySelector('dialog')`);
   await field(
     "Context",
@@ -171,14 +167,19 @@ try {
   await b.evaluate(`document.querySelectorAll('.blocker-row input[type="radio"]')[1].click()`);
   await b.evaluate(`document.querySelectorAll('.blocker-row input[type="radio"]')[5].click()`);
   await fill(".blocker-row textarea", "Use a smaller patch.");
-  await click("Confirm answers");
+  await click("Post answers");
   await b.until(
-    `!!document.querySelector('.blocker-row.answered') && document.querySelector('.comments')?.textContent.includes('Use a smaller patch.')`,
+    `document.querySelector('.detail-top span')?.textContent==='blocked' && document.querySelector('.comments')?.textContent.includes('Use a smaller patch.')`,
   );
   await reload();
-  await b.until(`!!document.querySelector('.blocker-row.answered')`);
-  if (await b.evaluate<boolean>(`!!document.querySelector('.blocker-row input[type="radio"]')`))
-    throw new Error("Answered task form became actionable after reload");
+  await b.until(`document.querySelector('.detail-top span')?.textContent==='blocked'`);
+  await click("Clear blocker");
+  await b.until(`!!document.querySelector('dialog')`);
+  await field("Context", "The revised direction satisfies the condition", "dialog");
+  await click("Save");
+  await b.until(
+    `!document.querySelector('dialog') && !!document.querySelector('.blocker-row.answered')`,
+  );
   await click("Edit");
   await b.until(`!!document.querySelector('dialog')`);
   await field(
@@ -192,22 +193,17 @@ try {
   await b.until(
     `!document.querySelector('dialog') && document.querySelector('.task-body')?.textContent.includes('checksum')`,
   );
-  await b.until(
-    `[...document.querySelectorAll('.task-actions button')].some(b=>b.textContent==='Release claim')`,
-  );
-  await click("Release claim");
-  await b.until(
-    `[...document.querySelectorAll('.task-actions button')].some(b=>b.textContent==='Claim')`,
-  );
-  await click("Available");
+  await click("Open");
   await b.until(`document.querySelectorAll('.task-row').length===1`);
   await b.evaluate(`document.querySelector('.filter-details').open=true`);
   await field("All labels", "missing", ".filter-grid");
   await b.until(`!document.querySelector('.task-row')`);
   await field("All labels", "backend, review", ".filter-grid");
   await b.until(`document.querySelectorAll('.task-row').length===1`);
-  await click("Mark done");
-  await b.until(`document.querySelector('.detail-top span')?.textContent==='done'`);
+  await click("Resolve");
+  await b.until(`!!document.querySelector('dialog')`);
+  await click("Save");
+  await b.until(`document.querySelector('.detail-top span')?.textContent==='closed'`);
   await click("Reopen");
   await b.until(`!!document.querySelector('dialog')`);
   await field("Context", "Check one more recovery case", "dialog");
@@ -223,6 +219,7 @@ try {
     `document.querySelector('.task-detail textarea')?.value==='Draft stays with this task.'`,
   );
   await click("Close task");
+  await click("All");
   await click("Add a plan");
   await b.until(`!!document.querySelector('dialog')`);
   await field("Plan title", "Release checks", "dialog");
@@ -233,8 +230,10 @@ try {
   );
   await click("Verify restore");
   await b.until(`document.querySelector('.task-detail h2')?.textContent==='Verify restore'`);
-  await click("Mark done");
-  await b.until(`document.querySelector('.detail-top span')?.textContent==='done'`);
+  await click("Resolve");
+  await b.until(`!!document.querySelector('dialog')`);
+  await click("Save");
+  await b.until(`document.querySelector('.detail-top span')?.textContent==='closed'`);
   await click("Close task");
   await b.evaluate(
     `[...document.querySelectorAll('.task-row')].find(r=>r.textContent.includes('Verify optional integration')).click()`,
@@ -247,14 +246,53 @@ try {
   await field("Context", "Outside this release", "dialog");
   await click("Save");
   await b.until(
-    `!document.querySelector('dialog') && document.querySelector('.detail-top span')?.textContent==='cancelled'`,
+    `!document.querySelector('dialog') && document.querySelector('.detail-top span')?.textContent==='closed'`,
   );
   await click("Close task");
   await b.evaluate(
     `[...document.querySelectorAll('.task-row')].find(r=>r.textContent.includes('Release checks')).click()`,
   );
   await b.until(
-    `document.querySelector('.epic-progress')?.textContent.includes('1 done') && document.querySelector('.epic-progress')?.textContent.includes('1 cancelled')`,
+    `document.querySelector('.epic-progress')?.textContent.includes('1 done') && document.querySelector('.epic-progress')?.textContent.includes('1 closed without completion')`,
+  );
+  const prerequisite = running.workspace.one<{ id: string }>(
+    "SELECT id FROM tasks WHERE title='Verify restore'",
+  )!;
+  await click("Add a blocker");
+  await b.until(`!!document.querySelector('dialog')`);
+  await field("Waiting on", "task", "dialog");
+  await field("Prerequisite task ID", prerequisite.id, "dialog");
+  await field("Context", "Require the verified restore result", "dialog");
+  await click("Save");
+  await b.until(
+    `!document.querySelector('dialog') && document.querySelector('.blocker-row')?.textContent.includes('Prerequisite completed')`,
+  );
+  await b.evaluate(`document.querySelector('.detail-section .section-line .link-button').click()`);
+  await b.until(`document.querySelector('.task-detail h2')?.textContent==='Verify restore'`);
+  await click("Reopen");
+  await b.until(`!!document.querySelector('dialog')`);
+  await field("Context", "Recheck the required result", "dialog");
+  await click("Save");
+  await b.until(
+    `!document.querySelector('dialog') && document.querySelector('.detail-top span')?.textContent==='open'`,
+  );
+  await click("Close task");
+  await b.evaluate(
+    `[...document.querySelectorAll('.task-row')].find(r=>r.textContent.includes('Release checks')).click()`,
+  );
+  await b.until(`document.querySelector('.detail-top span')?.textContent==='blocked'`);
+  if (
+    !(await b.evaluate(
+      `[...document.querySelectorAll('.task-actions button')].find(b=>b.textContent.trim()==='Resolve').disabled`,
+    ))
+  )
+    throw new Error("Unsatisfied prerequisite did not disable Resolve");
+  await click("Remove blocker");
+  await b.until(`!!document.querySelector('dialog')`);
+  await field("Context", "This prerequisite is no longer required", "dialog");
+  await click("Save");
+  await b.until(
+    `!document.querySelector('dialog') && document.querySelector('.detail-top span')?.textContent==='open'`,
   );
   for (const width of [1440, 1024, 390]) {
     await b.command("Emulation.setDeviceMetricsOverride", {

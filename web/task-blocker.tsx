@@ -12,12 +12,12 @@ export function TaskBlocker({
   blocker,
   busy,
   answer,
-  resolve,
+  clear,
 }: {
   blocker: Blocker;
   busy: boolean;
   answer: (body: string) => void;
-  resolve: () => void;
+  clear: () => void;
 }) {
   const form = taskQuestions(blocker.body);
   const [choices, setChoices] = useState<Record<number, string>>({}),
@@ -26,14 +26,14 @@ export function TaskBlocker({
     form?.questions.map((q, i) =>
       choices[i] === "free" ? (free[i] ?? "").trim() : (q.options[Number(choices[i])] ?? ""),
     ) ?? [];
-  if (blocker.resolved_at)
+  if (blocker.cleared_at)
     return (
       <details className="blocker-row answered">
-        <summary>Answered · {new Date(blocker.resolved_at).toLocaleString()}</summary>
+        <summary>Cleared · {new Date(blocker.cleared_at).toLocaleString()}</summary>
         <TaskMarkdown body={form?.description || blocker.body} />
-        {blocker.resolved_comment_id && (
+        {blocker.resolution_comment_id && (
           <p>
-            Saved as comment <code>{blocker.resolved_comment_id}</code>.
+            Saved as comment <code>{blocker.resolution_comment_id}</code>.
           </p>
         )}
       </details>
@@ -42,7 +42,13 @@ export function TaskBlocker({
     <div className="blocker-row">
       <TaskMarkdown body={form ? form.description : blocker.body} />
       <small>Waiting on {blocker.waiting_on}</small>
-      {form ? (
+      {blocker.waiting_on === "task" ? (
+        <p className="muted small">
+          {blocker.satisfied
+            ? "Prerequisite completed."
+            : "Waiting for the prerequisite to be resolved."}
+        </p>
+      ) : form ? (
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -85,16 +91,17 @@ export function TaskBlocker({
             </fieldset>
           ))}
           <p className="muted small">
-            Confirm adds your answers as a comment and resolves this wait, including when you
-            decline or request changes.
+            Answers are saved as comments. Clear the blocker explicitly when its condition is
+            satisfied.
           </p>
           <button type="submit" disabled={busy || !answers.every(Boolean)}>
-            Confirm answers
+            Post answers
           </button>
         </form>
-      ) : (
-        <button type="button" className="quiet" disabled={busy} onClick={resolve}>
-          Resolve
+      ) : null}
+      {blocker.waiting_on !== "task" && (
+        <button type="button" className="quiet" disabled={busy} onClick={clear}>
+          Clear blocker
         </button>
       )}
     </div>

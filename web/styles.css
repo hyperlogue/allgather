@@ -913,7 +913,7 @@ textarea {
   font-size: 14px;
   margin: 20px 0;
 }
-.state-dot.done {
+.state-dot.closed {
   background: var(--green);
   border-color: var(--green);
 }

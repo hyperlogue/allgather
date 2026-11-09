@@ -251,7 +251,7 @@ export class Access {
     }
     if (typeof a.machine_id === "string") this.require(this.machine(a.machine_id));
     if (typeof a.repository_id === "string") this.require(this.repository(a.repository_id));
-    for (const key of ["task_id", "parent_id", "epic_id", "depends_on", "prerequisite_id"])
+    for (const key of ["task_id", "parent_id", "epic_id", "waiting_on_task_id"])
       if (typeof a[key] === "string") this.require(this.task(a[key]));
     if (
       typeof a.target_session_id === "string" &&

@@ -119,9 +119,11 @@ test("project restrictions apply before pagination, labels, graph context and wr
       ),
     ).rejects.toMatchObject({ code: "resource_not_granted" });
     expect(f.w.task(f.tb.id).title).toBe("Private work");
-    await f.write("tasks_set_dependency", {
+    await f.write("tasks_block", {
+      waiting_on: "task",
+      body: "Required work",
       task_id: f.ta.id,
-      depends_on: f.tb.id,
+      waiting_on_task_id: f.tb.id,
       expected_revision: f.ta.revision,
     });
     const context = await f.call("tasks_context", { task_id: f.ta.id }, p);

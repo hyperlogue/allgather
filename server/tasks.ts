@@ -2,7 +2,6 @@ import {
   AppError,
   type Assignment,
   type Blocker,
-  type Claim,
   can,
   type EpicProgress,
   type Operation,
@@ -17,8 +16,15 @@ import { uid, type Workspace } from "./workspace.ts";
 type Input = Record<string, unknown>;
 type StoredTask = Omit<
   Task,
-  "labels" | "assignee" | "claim" | "blocked" | "needs_owner" | "dependencies" | "child_count"
-> & { labels: string; assignee: string | null };
+  | "labels"
+  | "assignee"
+  | "status"
+  | "is_done"
+  | "blocked"
+  | "needs_owner"
+  | "dependencies"
+  | "child_count"
+> & { labels: string; assignee: string | null; is_done: number };
 export class Tasks {
   constructor(private w: Workspace) {}
   raw(id: string) {
@@ -29,50 +35,40 @@ export class Tasks {
   }
   dependencies(id: string) {
     return this.w
-      .all<{ prerequisite_id: string }>(
-        "SELECT prerequisite_id FROM task_prerequisites WHERE task_id=? ORDER BY prerequisite_id",
+      .all<{ waiting_on_task_id: string }>(
+        "SELECT waiting_on_task_id FROM task_blockers WHERE task_id=? AND waiting_on='task' ORDER BY waiting_on_task_id",
         id,
       )
-      .map((r) => r.prerequisite_id);
+      .map((r) => r.waiting_on_task_id);
   }
   blockers(id: string): Blocker[] {
-    return [
-      ...this.w.all<Blocker>(
-        "SELECT * FROM task_blockers WHERE task_id=? AND resolved_at IS NULL ORDER BY created_at,id",
+    return this.w
+      .all<Omit<Blocker, "satisfied"> & { satisfied: number }>(
+        `SELECT b.*,CASE WHEN b.waiting_on='task' THEN p.closed_at IS NOT NULL AND p.is_done=1
+        ELSE b.cleared_at IS NOT NULL END satisfied
+       FROM task_blockers b LEFT JOIN tasks p ON p.id=b.waiting_on_task_id
+       WHERE b.task_id=? ORDER BY b.created_at,b.id`,
         id,
-      ),
-      ...this.w
-        .all<{ id: string; title: string; created_at: string }>(
-          "SELECT t.id,t.title,t.created_at FROM task_prerequisites p JOIN tasks t ON t.id=p.prerequisite_id WHERE p.task_id=? AND t.status!='done' ORDER BY t.id",
-          id,
-        )
-        .map((t) => ({
-          id: this.w.access.task(t.id) ? `dependency:${t.id}` : "restricted-prerequisite",
-          task_id: id,
-          waiting_on: "task" as const,
-          body: this.w.access.task(t.id)
-            ? `Complete prerequisite: ${t.title}`
-            : "Waiting for a restricted prerequisite",
-          dependency_id: this.w.access.task(t.id) ? t.id : undefined,
-          created_at: t.created_at,
-          resolved_at: null,
-        })),
-    ];
+      )
+      .map((b) => ({
+        ...b,
+        satisfied: !!b.satisfied,
+        ...(b.waiting_on_task_id && !this.w.access.task(b.waiting_on_task_id)
+          ? { waiting_on_task_id: null, body: "Waiting for a restricted prerequisite" }
+          : {}),
+      }));
   }
   get(id: string): Task {
     const t = this.raw(id),
-      blockers = this.blockers(id);
+      blockers = this.blockers(id).filter((b) => !b.satisfied);
     return {
       ...t,
+      status: t.closed_at ? "closed" : blockers.length ? "blocked" : "open",
+      is_done: !!t.is_done,
       labels: JSON.parse(t.labels),
       assignee: t.assignee ? JSON.parse(t.assignee) : null,
-      claim: this.w.one<Claim>(
-        "SELECT * FROM task_claims WHERE task_id=? AND lease_until>?",
-        id,
-        this.w.now(),
-      ),
-      blocked: t.status === "open" && blockers.length > 0,
-      needs_owner: t.status === "open" && blockers.some((b) => b.waiting_on === "owner"),
+      blocked: !t.closed_at && blockers.length > 0,
+      needs_owner: !t.closed_at && blockers.some((b) => b.waiting_on === "human"),
       dependencies: this.dependencies(id).filter((id) => this.w.access.task(id)),
       child_count: this.w.one<{ n: number }>("SELECT COUNT(*) n FROM tasks WHERE parent_id=?", id)!
         .n,
@@ -99,25 +95,11 @@ export class Tasks {
       id,
     )!.n;
   }
-  private checkClaim(t: Task, a: Input, p: Principal) {
-    if (
-      !t.claim ||
-      (t.claim.holder === "owner"
-        ? this.w.operator.kind === "user"
-        : t.claim.session_id === this.w.operator.session_id)
-    )
-      return;
-    if (a.override_claim && can(p, "admin")) {
-      this.w.run("DELETE FROM task_claims WHERE task_id=?", t.id);
-      return;
-    }
-    throw new AppError("claim_conflict", "Another session holds this claim", 409, t.claim);
-  }
   private bump(id: string) {
     this.w.run("UPDATE tasks SET revision=revision+1,updated_at=? WHERE id=?", this.w.now(), id);
   }
   private open(t: Task) {
-    if (t.status !== "open") throw new AppError("reopen_required", "Reopen the task first", 409);
+    if (t.closed_at) throw new AppError("reopen_required", "Reopen the task first", 409);
   }
   assignment(value: Assignment | null) {
     if (!value || value.kind === "owner") return;
@@ -141,21 +123,42 @@ export class Tasks {
     }
     this.w.run("UPDATE tasks SET parent_id=? WHERE id=?", parent, id);
   }
-  private dependency(id: string, other: string, remove = false) {
-    this.raw(other);
-    if (remove) {
-      this.w.run("DELETE FROM task_prerequisites WHERE task_id=? AND prerequisite_id=?", id, other);
-      return;
-    }
-    if (
-      this.w.one(
-        "WITH RECURSIVE reachable(id) AS (SELECT ? UNION SELECT p.prerequisite_id FROM task_prerequisites p JOIN reachable r ON p.task_id=r.id) SELECT 1 FROM reachable WHERE id=?",
-        other,
-        id,
+  private addBlocker(
+    task: string,
+    waiting: Blocker["waiting_on"],
+    body: string,
+    prerequisite?: string,
+  ) {
+    if (prerequisite) {
+      this.raw(prerequisite);
+      if (
+        this.w.one(
+          `WITH RECURSIVE reachable(id) AS (SELECT ? UNION
+          SELECT b.waiting_on_task_id FROM task_blockers b JOIN reachable r ON b.task_id=r.id
+          WHERE b.waiting_on='task') SELECT 1 FROM reachable WHERE id=?`,
+          prerequisite,
+          task,
+        )
       )
-    )
-      throw new AppError("relation_cycle", "Dependency cycle is not allowed", 409);
-    this.w.run("INSERT OR IGNORE INTO task_prerequisites VALUES(?,?)", id, other);
+        throw new AppError("dependency_cycle", "Dependency cycle is not allowed", 409);
+      if (
+        this.w.one(
+          "SELECT 1 FROM task_blockers WHERE task_id=? AND waiting_on='task' AND waiting_on_task_id=?",
+          task,
+          prerequisite,
+        )
+      )
+        throw new AppError("duplicate_blocker", "This prerequisite already has a blocker", 409);
+    }
+    this.w.run(
+      "INSERT INTO task_blockers(id,task_id,waiting_on,waiting_on_task_id,body,created_at) VALUES(?,?,?,?,?,?)",
+      uid("blocker"),
+      task,
+      waiting,
+      prerequisite ?? null,
+      body,
+      this.w.now(),
+    );
   }
   private create(a: Input): Task {
     const project = this.w.project(String(a.project_id)),
@@ -209,25 +212,30 @@ export class Tasks {
     this.w.graph.ensure(c, "comment", this.raw(id).project_id);
     return this.w.one<TaskComment>("SELECT * FROM task_comments WHERE id=?", c)!;
   }
-  private resolve(task: string, blocker: string, body: string, reply?: string) {
+  private clearBlocker(task: string, blocker: string, body: string) {
     const row = this.w.one<Blocker>(
       "SELECT * FROM task_blockers WHERE id=? AND task_id=?",
       blocker,
       task,
     );
     if (!row) throw new AppError("not_found", "Blocker not found", 404);
-    if (row.resolved_at)
-      throw new AppError("blocker_resolved", "This blocker already has an answer", 409, {
-        comment_id: row.resolved_comment_id,
+    if (row.waiting_on === "task")
+      throw new AppError(
+        "automatic_blocker",
+        "Task blockers satisfy automatically; remove the blocker if it is no longer required",
+        409,
+      );
+    if (row.cleared_at)
+      throw new AppError("blocker_cleared", "This blocker is already cleared", 409, {
+        comment_id: row.resolution_comment_id,
       });
-    const comment = this.comment(task, body, reply);
+    const comment = this.comment(task, body);
     this.w.run(
-      "UPDATE task_blockers SET resolved_at=?,resolved_comment_id=? WHERE id=?",
+      "UPDATE task_blockers SET cleared_at=?,resolution_comment_id=? WHERE id=?",
       this.w.now(),
       comment.id,
       blocker,
     );
-    return comment;
   }
   comments(id: string, a: Input) {
     this.raw(id);
@@ -249,20 +257,20 @@ export class Tasks {
     };
   }
   progress(id: string): EpicProgress {
-    const t = this.raw(id),
+    const t = this.get(id),
       descendants = this.descendants(id).map((x) => this.get(x)),
       children = descendants.filter((c) => !c.child_count),
-      count = (status: string) => children.filter((c) => c.status === status).length;
+      done = children.filter((c) => c.is_done).length;
     return {
       id,
       title: t.title,
       total: children.length,
-      done: count("done"),
-      cancelled: count("cancelled"),
-      open: count("open"),
+      done,
+      closed_without_completion: children.filter((c) => c.closed_at && !c.is_done).length,
+      open: children.filter((c) => !c.closed_at).length,
       blocked: children.filter((c) => c.blocked).length,
-      percent_done: children.length ? Math.round((count("done") * 100) / children.length) : 0,
-      can_close: !descendants.some((c) => c.status === "open"),
+      percent_done: children.length ? Math.round((done * 100) / children.length) : 0,
+      can_resolve: !t.closed_at && !t.blocked,
     };
   }
   private context(id: string, p: Principal): TaskContext {
@@ -285,7 +293,7 @@ export class Tasks {
       dependencies: task.dependencies.map((x) => this.get(x)),
       dependents: this.w
         .all<{ task_id: string }>(
-          "SELECT task_id FROM task_prerequisites WHERE prerequisite_id=?",
+          "SELECT task_id FROM task_blockers WHERE waiting_on='task' AND waiting_on_task_id=?",
           id,
         )
         .filter((r) => this.w.access.task(r.task_id))
@@ -294,10 +302,6 @@ export class Tasks {
         .all<{ id: string }>("SELECT id FROM tasks WHERE parent_id=? ORDER BY created_at,id", id)
         .map((r) => this.get(r.id)),
       blockers: this.blockers(id),
-      resolved_blockers: this.w.all<Blocker>(
-        "SELECT * FROM task_blockers WHERE task_id=? AND resolved_at IS NOT NULL ORDER BY resolved_at DESC,id",
-        id,
-      ),
       comments: { ...this.comments(id, { cursor: offset, limit: 50 }), older_count: offset },
       log_sequence: this.logSequence(id),
       related,
@@ -351,7 +355,7 @@ export class Tasks {
             )
               return false;
           }
-          if (a.claimed !== undefined && !!t.claim !== a.claimed) return false;
+          if (a.is_done !== undefined && t.is_done !== a.is_done) return false;
           if (a.blocked !== undefined && t.blocked !== a.blocked) return false;
           if (a.needs_owner !== undefined && t.needs_owner !== a.needs_owner) return false;
           if (a.assignee && JSON.stringify(t.assignee) !== JSON.stringify(a.assignee)) return false;
@@ -366,8 +370,7 @@ export class Tasks {
             )
           )
             return false;
-          if (mode !== "tasks_search" && (t.status !== "open" || t.blocked || t.claim))
-            return false;
+          if (mode !== "tasks_search" && t.status !== "open") return false;
           return true;
         });
     rows.sort(
@@ -433,7 +436,7 @@ export class Tasks {
         ...(e.depends_on_keys as string[]).map((k) => mapping[k]),
         ...(e.depends_on as string[]),
       ])
-        this.dependency(id, dep);
+        this.addBlocker(id, "task", "Complete prerequisite", dep);
     }
     return { mapping, tasks: Object.values(mapping).map((id) => this.get(id)) };
   }
@@ -442,20 +445,9 @@ export class Tasks {
     if (name === "tasks_plan_create") return this.plan(a);
     const id = String(a.task_id),
       t = this.get(id);
-    if (name === "task_comments_add") {
-      if (!a.resolve_blocker_id)
-        return this.comment(id, String(a.body), a.reply_to as string | undefined);
-      const comment = this.resolve(
-        id,
-        String(a.resolve_blocker_id),
-        String(a.body),
-        a.reply_to as string | undefined,
-      );
-      this.bump(id);
-      return comment;
-    }
+    if (name === "task_comments_add")
+      return this.comment(id, String(a.body), a.reply_to as string | undefined);
     this.checkRevision(t, a);
-    this.checkClaim(t, a, p);
     switch (name) {
       case "tasks_update": {
         if (a.assignee !== undefined) this.assignment(a.assignee as Assignment | null);
@@ -475,65 +467,30 @@ export class Tasks {
         if (a.parent_id !== undefined) this.parent(id, a.parent_id as string | null);
         break;
       }
-      case "tasks_claim": {
+      case "tasks_resolve":
+      case "tasks_cancel": {
         this.open(t);
-        if (t.blocked)
-          throw new AppError("task_blocked", "Resolve blockers before claiming work", 409);
-        const owner = this.w.operator.kind === "user",
-          session = this.w.operator.session_id;
-        if (!owner && !session)
-          throw new AppError("session_required", "Supply a session ID for an agent claim");
-        this.w.run(
-          "INSERT INTO task_claims VALUES(?,?,?,?) ON CONFLICT(task_id) DO UPDATE SET holder=excluded.holder,session_id=excluded.session_id,lease_until=excluded.lease_until",
-          id,
-          owner ? "owner" : "session",
-          owner ? null : session,
-          new Date(this.w.clock().getTime() + Number(a.lease_seconds) * 1000).toISOString(),
-        );
-        this.w.participation(id);
-        break;
-      }
-      case "tasks_release":
-        this.w.run("DELETE FROM task_claims WHERE task_id=?", id);
-        break;
-      case "tasks_finish": {
-        this.open(t);
-        if (t.blocked)
+        if (name === "tasks_resolve" && t.blocked)
           throw new AppError(
             "task_blocked",
-            "Resolve blockers and prerequisites before finishing",
+            "Satisfy all blockers and prerequisites before resolving",
             409,
           );
-        if (this.descendants(id).some((c) => this.raw(c).status === "open"))
-          throw new AppError("unfinished_children", "Finish or cancel descendant work first", 409);
-        if (a.commit_id) {
-          if (!can(p, "commits:read"))
-            throw new AppError("forbidden", "Commit references require commits:read", 403);
-          this.w.graph.add(
-            "produces",
-            id,
-            this.w.graph.commit(String(a.repository_id), String(a.commit_id)).id,
-          );
-        }
-        this.w.run("UPDATE tasks SET status='done',closed_at=? WHERE id=?", this.w.now(), id);
-        this.w.run("DELETE FROM task_claims WHERE task_id=?", id);
-        if (a.summary) this.comment(id, String(a.summary));
-        break;
-      }
-      case "tasks_cancel":
-        this.open(t);
-        this.w.run("UPDATE tasks SET status='cancelled',closed_at=? WHERE id=?", this.w.now(), id);
-        this.w.run("DELETE FROM task_claims WHERE task_id=?", id);
+        this.w.run(
+          "UPDATE tasks SET is_done=?,closed_at=? WHERE id=?",
+          name === "tasks_resolve" ? 1 : 0,
+          this.w.now(),
+          id,
+        );
+        if (a.labels !== undefined)
+          this.w.run("UPDATE tasks SET labels=? WHERE id=?", JSON.stringify(a.labels), id);
         if (a.comment) this.comment(id, String(a.comment));
         break;
+      }
       case "tasks_reopen":
-        if (t.status === "open")
-          throw new AppError("already_open", "The task is already open", 409);
-        this.w.run("UPDATE tasks SET status='open',closed_at=NULL WHERE id=?", id);
+        if (!t.closed_at) throw new AppError("already_open", "The task is already open", 409);
+        this.w.run("UPDATE tasks SET is_done=0,closed_at=NULL WHERE id=?", id);
         this.comment(id, String(a.reason));
-        break;
-      case "tasks_set_dependency":
-        this.dependency(id, String(a.depends_on), !!a.remove);
         break;
       case "tasks_link_commit":
         if (!can(p, "commits:read"))
@@ -546,17 +503,27 @@ export class Tasks {
         break;
       case "tasks_block":
         this.open(t);
-        this.w.run(
-          "INSERT INTO task_blockers(id,task_id,waiting_on,body,created_at,resolved_at) VALUES(?,?,?,?,?,NULL)",
-          uid("blocker"),
+        this.addBlocker(
           id,
-          String(a.waiting_on),
+          a.waiting_on as Blocker["waiting_on"],
           String(a.body),
-          this.w.now(),
+          a.waiting_on_task_id as string | undefined,
         );
         break;
-      case "tasks_resolve_blocker":
-        this.resolve(id, String(a.blocker_id), String(a.comment));
+      case "tasks_clear_blocker":
+        this.clearBlocker(id, String(a.blocker_id), String(a.comment));
+        break;
+      case "tasks_remove_blocker":
+        if (
+          !this.w.one(
+            "SELECT id FROM task_blockers WHERE id=? AND task_id=?",
+            String(a.blocker_id),
+            id,
+          )
+        )
+          throw new AppError("not_found", "Blocker not found", 404);
+        this.comment(id, String(a.comment));
+        this.w.run("DELETE FROM task_blockers WHERE id=? AND task_id=?", String(a.blocker_id), id);
         break;
       case "tasks_handoff": {
         this.open(t);
@@ -575,7 +542,6 @@ export class Tasks {
           id,
         );
         this.comment(id, String(a.comment));
-        this.w.run("DELETE FROM task_claims WHERE task_id=?", id);
         break;
       }
       default:

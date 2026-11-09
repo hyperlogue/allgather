@@ -3,7 +3,7 @@ import type { OperatorContext, Principal } from "../shared/contracts.ts";
 
 const quoted = (name: string) => `"${name.replaceAll('"', '""')}"`;
 const literal = (value: string) => `'${value.replaceAll("'", "''")}'`;
-const taskTables = new Set(["task_comments", "task_blockers", "task_claims", "task_prerequisites"]);
+const taskTables = new Set(["task_comments", "task_blockers"]);
 const artifactTables = new Set([
   "artifacts",
   "artifact_versions",
@@ -154,8 +154,8 @@ export class Audit {
               ? `(SELECT id FROM entities WHERE id=${row}.source_id AND kind='task')`
               : "NULL";
       const related =
-        table === "task_prerequisites"
-          ? `${row}.prerequisite_id`
+        table === "task_blockers"
+          ? `${row}.waiting_on_task_id`
           : table === "relations"
             ? `(SELECT id FROM entities WHERE id=${row}.target_id AND kind='task')`
             : "NULL";
@@ -180,13 +180,9 @@ export class Audit {
         artifactEntityId[table] ??
         (table === "checkout_observations"
           ? `${row}.checkout_id`
-          : table === "task_prerequisites"
-            ? `${row}.task_id||'/'||${row}.prerequisite_id`
-            : table === "task_claims"
-              ? `${row}.task_id`
-              : table === "project_repositories"
-                ? `${row}.project_id||'/'||${row}.repository_id`
-                : `${row}.id`);
+          : table === "project_repositories"
+            ? `${row}.project_id||'/'||${row}.repository_id`
+            : `${row}.id`);
       const triggerName = `audit_capture_${table}_${operation}`;
       this.db.exec(`DROP TRIGGER IF EXISTS temp.${quoted(triggerName)}`);
       this.db.exec(`CREATE TEMP TRIGGER ${quoted(triggerName)} AFTER ${operation} ON main.${quoted(table)} WHEN (SELECT operation_id FROM temp.operator_write_context LIMIT 1) IS NOT NULL${operation === "UPDATE" ? ` AND (${before} IS NOT ${after})` : ""} BEGIN

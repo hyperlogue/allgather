@@ -107,7 +107,7 @@ try {
       child.exited,
     ]);
     if (code) throw new Error(err);
-    return JSON.parse(out) as { id: string; status?: string };
+    return JSON.parse(out) as { id: string; status?: string; is_done?: boolean };
   };
   const guide = await invoke("guide");
   if (!(guide as { workflow?: string }).workflow?.includes("context"))
@@ -121,8 +121,9 @@ try {
     "--title",
     "Standalone workflow",
   );
-  const completed = await invoke("task", "finish", task.id);
-  if (completed.status !== "done") throw new Error("Packaged CLI did not complete the task");
+  const completed = await invoke("task", "resolve", task.id);
+  if (completed.status !== "closed" || !completed.is_done)
+    throw new Error("Packaged CLI did not complete the task");
   const artifact = await invoke(
     "artifact",
     "create",

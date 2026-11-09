@@ -73,7 +73,6 @@ test("one role per stable session, immutable role snapshots, and atomic handoff 
       w.one<{ role_id: null }>("SELECT role_id FROM task_comments WHERE id=?", early.id)!.role_id,
     ).toBeNull();
     expect(w.all("SELECT * FROM agent_sessions")).toHaveLength(1);
-    call("tasks_claim", { task_id: task.id, expected_revision: 1, session_id: "run" }, agent);
     const stale = call<TaskContext>("tasks_context", { task_id: task.id });
     call("task_comments_add", { task_id: task.id, body: "New evidence" });
     expect(() =>
@@ -81,7 +80,7 @@ test("one role per stable session, immutable role snapshots, and atomic handoff 
         "tasks_handoff",
         {
           task_id: task.id,
-          expected_revision: 2,
+          expected_revision: 1,
           expected_log_sequence: stale.log_sequence,
           assignee: { kind: "role", id: other.id },
           comment: "Handoff",
@@ -95,7 +94,7 @@ test("one role per stable session, immutable role snapshots, and atomic handoff 
       "tasks_handoff",
       {
         task_id: task.id,
-        expected_revision: 2,
+        expected_revision: 1,
         expected_log_sequence: current.log_sequence,
         assignee: { kind: "role", id: other.id },
         comment: "Please implement this finding",
@@ -103,7 +102,7 @@ test("one role per stable session, immutable role snapshots, and atomic handoff 
       },
       agent,
     );
-    expect(handed.claim).toBeNull();
+    expect(handed).not.toHaveProperty("claim");
     expect(handed.assignee).toEqual({ kind: "role", id: other.id });
     expect(handed.status).toBe("open");
     expect(w.one<{ n: number }>("SELECT COUNT(*) n FROM legacy_handoffs")!.n).toBe(0);

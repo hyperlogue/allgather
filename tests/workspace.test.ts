@@ -44,25 +44,33 @@ test("prerequisites and hierarchy are task-owned, reject cycles, and survive arb
   const { call, task, w } = setup(),
     a = task("A"),
     b = task("B");
-  const waiting = call<Task>("tasks_set_dependency", {
+  const waiting = call<Task>("tasks_block", {
+    waiting_on: "task",
+    body: "Required result",
     task_id: b.id,
-    depends_on: a.id,
+    waiting_on_task_id: a.id,
     expected_revision: 1,
   });
-  expect(waiting.status).toBe("open");
+  expect(waiting.status).toBe("blocked");
   expect(waiting.blocked).toBe(true);
-  expect(() => call("tasks_finish", { task_id: b.id, expected_revision: 2 })).toThrow(
+  expect(() => call("tasks_resolve", { task_id: b.id, expected_revision: 2 })).toThrow(
     "prerequisites",
   );
   expect(() =>
-    call("tasks_set_dependency", { task_id: a.id, depends_on: b.id, expected_revision: 1 }),
+    call("tasks_block", {
+      waiting_on: "task",
+      body: "Required result",
+      task_id: a.id,
+      waiting_on_task_id: b.id,
+      expected_revision: 1,
+    }),
   ).toThrow("cycle");
   call("links_add", { source_id: a.id, target_id: b.id, type: "depends_on" });
   expect(w.task(a.id).blocked).toBe(false);
   call("tasks_cancel", { task_id: a.id, expected_revision: 1 });
   expect(w.task(b.id).blocked).toBe(true);
   call("tasks_reopen", { task_id: a.id, expected_revision: 2, reason: "Needed" });
-  call("tasks_finish", { task_id: a.id, expected_revision: 3 });
+  call("tasks_resolve", { task_id: a.id, expected_revision: 3 });
   expect(w.task(b.id).blocked).toBe(false);
   const c = task("C");
   call("tasks_update", { task_id: c.id, parent_id: b.id, expected_revision: 1 });
@@ -71,7 +79,7 @@ test("prerequisites and hierarchy are task-owned, reject cycles, and survive arb
   ).toThrow("cycle");
   expect(w.task(b.id).revision).toBe(2);
 });
-test("plain deferral does not hide available work, release a claim, or block completion", () => {
+test("plain deferral does not hide available work or block completion", () => {
   const { call, task, w } = setup(),
     t = task("Later", { defer_until: "2099-01-01T00:00:00Z", labels: ["P0", "p0"] });
   expect(t.labels).toEqual(["p0"]);
@@ -79,14 +87,13 @@ test("plain deferral does not hide available work, release a claim, or block com
   expect(
     call<{ total: number }>("tasks_ready", { deferred_before: "2026-01-01T00:00:00Z" }).total,
   ).toBe(0);
-  call("tasks_claim", { task_id: t.id, expected_revision: 1 });
   call("tasks_update", {
     task_id: t.id,
-    expected_revision: 2,
+    expected_revision: 1,
     defer_until: "2100-01-01T00:00:00Z",
   });
-  expect(w.task(t.id).claim?.holder).toBe("owner");
-  expect(call<Task>("tasks_finish", { task_id: t.id, expected_revision: 3 }).status).toBe("done");
+  expect(w.task(t.id).status).toBe("open");
+  expect(call<Task>("tasks_resolve", { task_id: t.id, expected_revision: 2 }).is_done).toBe(true);
 });
 
 test("ready uses explicit assignment filters independent of the caller", () => {
@@ -127,8 +134,8 @@ test("ready uses explicit assignment filters independent of the caller", () => {
   ).toThrow("either assignee or unassigned");
   expect(Object.keys(operations)).not.toContain("tasks_next");
 });
-test("claims distinguish sessions, expire without changing outcomes, and guard concurrent work", () => {
-  const { call, task, tick, w } = setup(),
+test("sessions contribute without claims and revisions reject stale task edits", () => {
+  const { call, task, w } = setup(),
     t = task("Shared");
   const agent: Principal = {
     id: "agent-connection",
@@ -137,26 +144,21 @@ test("claims distinguish sessions, expire without changing outcomes, and guard c
     scopes: ["tasks:read", "tasks:write"],
     inlet: "mcp",
   };
+  call("task_comments_add", { task_id: t.id, body: "A finding", session_id: "one" }, agent);
+  call("task_comments_add", { task_id: t.id, body: "Another finding", session_id: "two" }, agent);
   call(
-    "tasks_claim",
-    { task_id: t.id, expected_revision: 1, session_id: "one", lease_seconds: 30 },
+    "tasks_update",
+    { task_id: t.id, expected_revision: 1, title: "Updated", session_id: "one" },
     agent,
   );
   expect(() =>
-    call("tasks_claim", { task_id: t.id, expected_revision: 2, session_id: "two" }, agent),
-  ).toThrow("Another session");
-  expect(() =>
-    call("tasks_finish", { task_id: t.id, expected_revision: 2, session_id: "two" }, agent),
-  ).toThrow("Another session");
-  call("task_comments_add", { task_id: t.id, body: "A finding", session_id: "two" }, agent);
-  tick(31000);
-  expect(w.task(t.id).status).toBe("open");
-  expect(call<{ total: number }>("tasks_ready").total).toBe(1);
-  call("tasks_claim", { task_id: t.id, expected_revision: 2, session_id: "two" }, agent);
+    call("tasks_resolve", { task_id: t.id, expected_revision: 1, session_id: "two" }, agent),
+  ).toThrow("revision");
   expect(
-    call<Task>("tasks_finish", { task_id: t.id, expected_revision: 3, session_id: "two" }, agent)
-      .status,
-  ).toBe("done");
+    call<Task>("tasks_resolve", { task_id: t.id, expected_revision: 2, session_id: "two" }, agent)
+      .is_done,
+  ).toBe(true);
+  expect(w.tasks.comments(t.id, {}).items.map((c) => c.session_id)).toEqual(["one", "two"]);
 });
 test("mutations replay exact retries, reject stale edits, and roll back when audit capture fails", () => {
   const { call, task, w, db } = setup(),
@@ -227,13 +229,20 @@ test("atomic plans reject invalid structure and compute leaf progress", () => {
       { key: "b", title: "B", parent_key: "root" },
     ],
   });
-  call("tasks_finish", { task_id: plan.mapping.a, expected_revision: 1 });
+  call("tasks_resolve", { task_id: plan.mapping.a, expected_revision: 1 });
   call("tasks_cancel", { task_id: plan.mapping.b, expected_revision: 1 });
   const progress = w.tasks.progress(plan.mapping.root);
-  expect(progress).toMatchObject({ total: 2, done: 1, cancelled: 1, open: 0, percent_done: 50 });
-  expect(() => call("tasks_finish", { task_id: plan.mapping.root, expected_revision: 1 })).toThrow(
-    "descendant",
-  );
+  expect(progress).toMatchObject({
+    total: 2,
+    done: 1,
+    closed_without_completion: 1,
+    open: 0,
+    percent_done: 50,
+  });
+  expect(
+    call<Task>("tasks_resolve", { task_id: plan.mapping.root, expected_revision: 1 }).is_done,
+  ).toBe(true);
+  expect(w.task(plan.mapping.nested).status).toBe("open");
 });
 
 test("bulk plan keys are opaque strings, including inherited object names", () => {

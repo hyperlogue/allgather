@@ -13,6 +13,7 @@ import { controlRequest } from "../server/control.ts";
 import { startServer } from "../server/index.ts";
 import { serverConfigCommand } from "../server/server-config.ts";
 import { openDatabase } from "../server/storage.ts";
+import { restoreTaskSchema36 } from "./fixtures/task-schema.ts";
 
 test("browser login codes are single-use and expire and revocation invalidates dependent sessions", () => {
   const db = openDatabase(":memory:"),
@@ -315,6 +316,7 @@ test("legacy master keys retire on upgrade and local recovery resets credentials
   const priorAuth = new Auth(db, "http://127.0.0.1:4390");
   const oldCookie = priorAuth.signIn(priorAuth.createLoginToken("Old browser").token).split(";")[0];
   db.query("INSERT INTO settings VALUES('owner_key_hash',?)").run(hash(legacy));
+  restoreTaskSchema36(db);
   db.exec(
     "DROP TABLE oauth_requests; ALTER TABLE oauth_clients DROP COLUMN pairing_id; DROP TABLE mcp_pairings; DROP TRIGGER session_events_immutable; UPDATE session_events SET payload_hash=(SELECT payload FROM session_event_content WHERE id=session_events.id); ALTER TABLE session_events RENAME COLUMN payload_hash TO payload; CREATE TRIGGER session_events_immutable BEFORE UPDATE ON session_events BEGIN SELECT RAISE(ABORT,'Session events are append-only'); END; DROP TABLE session_event_content; DROP TRIGGER session_asset_retired; DROP TRIGGER session_asset_no_revival; DROP TABLE session_asset_identity; DROP TABLE transcript_deletions; DROP TRIGGER artifact_context_cleanup; DROP TRIGGER artifact_thread_context_cleanup; CREATE TRIGGER artifact_context_cleanup BEFORE DELETE ON artifacts BEGIN SELECT 1; END; CREATE TRIGGER artifact_thread_context_cleanup BEFORE DELETE ON threads BEGIN SELECT 1; END; DROP TRIGGER entity_tombstone_immutable; DROP TRIGGER artifact_comment_context_cleanup; DROP TRIGGER artifact_lifecycle_comment_context_cleanup; DROP TRIGGER artifact_version_context_cleanup; ALTER TABLE entities DROP COLUMN deleted_at; ALTER TABLE entities DROP COLUMN label; ALTER TABLE task_blockers DROP COLUMN resolved_comment_id; DROP TABLE tower_invitations; DROP TABLE approval_requests; ALTER TABLE oauth_tokens DROP COLUMN grant_id; DROP TABLE oauth_grants; ALTER TABLE agent_sessions DROP COLUMN project_id; ALTER TABLE oauth_clients DROP COLUMN audience; ALTER TABLE login_tokens DROP COLUMN expires_at; ALTER TABLE login_tokens DROP COLUMN consumed_at; PRAGMA user_version=20;",
   );

@@ -516,7 +516,7 @@ select:focus-visible {
   border: 1px dashed var(--bad);
   background: transparent;
 }
-.state-dot.done {
+.state-dot.closed {
   border-color: var(--acc);
   background: var(--acc);
 }
@@ -1400,10 +1400,10 @@ dialog::backdrop {
   font: 10px var(--mono);
   padding: 2px 5px;
 }
-.state-dot.done {
+.state-dot.closed {
   position: relative;
 }
-.state-dot.done::after {
+.state-dot.closed::after {
   content: "";
   position: absolute;
   left: 3px;

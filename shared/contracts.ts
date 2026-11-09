@@ -36,7 +36,7 @@ export class AppError extends Error {
     super(message);
   }
 }
-export const taskStates = ["open", "done", "cancelled"] as const;
+export const taskStates = ["open", "blocked", "closed"] as const;
 export type TaskState = (typeof taskStates)[number];
 export type Assignment = { kind: "owner"; id: "owner" } | { kind: "session" | "role"; id: string };
 export interface Operator {
@@ -88,12 +88,13 @@ export interface TaskComment {
 export interface Blocker {
   id: string;
   task_id: string;
-  waiting_on: "owner" | "external" | "task";
+  waiting_on: "human" | "external" | "task";
+  waiting_on_task_id: string | null;
   body: string;
-  dependency_id?: string;
-  resolved_comment_id?: string | null;
+  resolution_comment_id: string | null;
   created_at: string;
-  resolved_at: string | null;
+  cleared_at: string | null;
+  satisfied: boolean;
 }
 export interface Relation {
   id: string;
@@ -103,22 +104,16 @@ export interface Relation {
   reason: string;
   created_at: string;
 }
-export interface Claim {
-  task_id: string;
-  holder: "owner" | "session";
-  session_id: string | null;
-  lease_until: string;
-}
 export interface EpicProgress {
   id: string;
   title: string;
   total: number;
   done: number;
-  cancelled: number;
+  closed_without_completion: number;
   open: number;
   blocked: number;
   percent_done: number;
-  can_close: boolean;
+  can_resolve: boolean;
 }
 export interface Project {
   id: string;
@@ -134,6 +129,7 @@ export interface Task {
   title: string;
   body: string;
   status: TaskState;
+  is_done: boolean;
   labels: string[];
   defer_until: string | null;
   parent_id: string | null;
@@ -142,7 +138,6 @@ export interface Task {
   created_at: string;
   updated_at: string;
   closed_at: string | null;
-  claim: Claim | null;
   blocked: boolean;
   needs_owner: boolean;
   dependencies: string[];
@@ -155,7 +150,6 @@ export interface TaskContext {
   dependents: Task[];
   children: Task[];
   blockers: Blocker[];
-  resolved_blockers: Blocker[];
   comments: Page<TaskComment> & { older_count: number };
   log_sequence: number;
   commits: { repository_id: string; commit_id: string; verified: number }[];
@@ -287,7 +281,7 @@ export const spec = <S extends z.ZodObject>(
   write = false,
 ) => ({ schema: schema.safeExtend(operatorMetadata).strict(), scope, description, write });
 const target = { task_id: id };
-const change = { ...target, ...revision, override_claim: z.boolean().default(false) };
+const change = { ...target, ...revision };
 const taskFields = {
   title: text,
   body: note.default(""),
@@ -306,7 +300,7 @@ const taskFilters = {
   deferred_before: dateTime.optional(),
   deferred_after: dateTime.optional(),
   include_undated: z.boolean().default(true),
-  claimed: z.boolean().optional(),
+  is_done: z.boolean().optional(),
   blocked: z.boolean().optional(),
   needs_owner: z.boolean().optional(),
   assignee: assignment.optional(),
@@ -857,7 +851,7 @@ export const operations = {
   tasks_ready: spec(
     z.object(taskFilters),
     "tasks:read",
-    "List open, unblocked, unclaimed tasks. Filter by assignee or unassigned explicitly; caller identity does not filter work. Apply date filters explicitly.",
+    "List open, unblocked tasks. Filter by assignee or unassigned explicitly; caller identity does not filter work. Apply date filters explicitly.",
   ),
   tasks_get: spec(z.object(target), "tasks:read", "Read a task and revision."),
   tasks_context: spec(
@@ -888,47 +882,25 @@ export const operations = {
       parent_id: id.nullable().optional(),
     }),
     "tasks:write",
-    "Update task fields. Deferral never releases a claim or prohibits work.",
+    "Update task fields. Deferral is queryable data and does not prohibit work.",
     true,
   ),
-  tasks_claim: spec(
-    z.object({ ...change, lease_seconds: z.number().int().min(30).max(86400).default(3600) }),
+  tasks_resolve: spec(
+    z.object({ ...change, comment: note.optional(), labels: labels.optional() }),
     "tasks:write",
-    "Claim open, unblocked work for one session or the owner. Does not change task status.",
-    true,
-  ),
-  tasks_release: spec(z.object(change), "tasks:write", "Release the current claim.", true),
-  tasks_finish: spec(
-    z
-      .object({
-        ...change,
-        summary: note.optional(),
-        repository_id: id.optional(),
-        commit_id: sha.optional(),
-      })
-      .refine((v) => !v.commit_id || !!v.repository_id, {
-        message: "repository_id is required with commit_id",
-      }),
-    "tasks:write",
-    "Explicitly mark work done. Unmet prerequisites, blockers, or open descendants prevent completion.",
+    "Resolve the task with is_done=true. All blockers must be satisfied. Parenthood is grouping only.",
     true,
   ),
   tasks_cancel: spec(
-    z.object({ ...change, comment: note.optional() }),
+    z.object({ ...change, comment: note.optional(), labels: labels.optional() }),
     "tasks:write",
-    "Cancel work and release its claim. Cancellation does not satisfy prerequisites.",
+    "Close with is_done=false, even while blocked. Cancellation does not satisfy prerequisite blockers.",
     true,
   ),
   tasks_reopen: spec(
     z.object({ ...change, reason: text }),
     "tasks:write",
     "Reopen work while preserving its history.",
-    true,
-  ),
-  tasks_set_dependency: spec(
-    z.object({ ...change, depends_on: id, remove: z.boolean().default(false) }),
-    "tasks:write",
-    "Add or remove a task-owned prerequisite. Reject cycles.",
     true,
   ),
   tasks_link_commit: spec(
@@ -938,19 +910,30 @@ export const operations = {
     true,
   ),
   tasks_block: spec(
-    z.object({
-      ...change,
-      waiting_on: z.enum(["owner", "external"]),
-      body: z.string().trim().min(1).max(32000),
-    }),
+    z
+      .object({
+        ...change,
+        waiting_on: z.enum(["human", "task", "external"]),
+        waiting_on_task_id: id.optional(),
+        body: z.string().trim().min(1).max(32000),
+      })
+      .refine((v) => (v.waiting_on === "task") === !!v.waiting_on_task_id, {
+        message: "Supply waiting_on_task_id only for a task blocker",
+      }),
     "tasks:write",
-    "Record a blocker. Optional frontend questions use a fenced questions JSON array of {question,options}; answers are ordinary comments.",
+    "Add a lightweight blocker. Task targets automatically satisfy when closed with is_done=true; human and external waits clear explicitly.",
     true,
   ),
-  tasks_resolve_blocker: spec(
+  tasks_clear_blocker: spec(
     z.object({ ...change, blocker_id: id, comment: z.string().trim().min(1).max(128000) }),
     "tasks:write",
-    "Resolve a blocking condition and record the reason.",
+    "Explicitly clear a human or external blocker and record a comment. Task-backed blockers are automatic.",
+    true,
+  ),
+  tasks_remove_blocker: spec(
+    z.object({ ...change, blocker_id: id, comment: z.string().trim().min(1).max(128000) }),
+    "tasks:write",
+    "Remove a condition that is no longer required, recording why. History remains in the audit.",
     true,
   ),
   tasks_handoff: spec(
@@ -961,7 +944,7 @@ export const operations = {
       comment: z.string().trim().min(1).max(32000),
     }),
     "tasks:write",
-    "Atomically change assignment, append context, and release the claim. No separate handoff lifecycle.",
+    "Atomically change assignment and append context. Execution coordination is separate.",
     true,
   ),
   task_comments_list: spec(
@@ -975,10 +958,9 @@ export const operations = {
       ...key,
       body: z.string().trim().min(1).max(128000),
       reply_to: id.optional(),
-      resolve_blocker_id: id.optional(),
     }),
     "tasks:write",
-    "Append a comment without holding the claim. resolve_blocker_id atomically answers and resolves one blocker; duplicate answers are rejected.",
+    "Append a contribution or answer. Comments never implicitly clear blockers.",
     true,
   ),
   tasks_labels: spec(
@@ -989,7 +971,7 @@ export const operations = {
   tasks_progress: spec(
     z.object({ project_id: id.optional(), epic_id: id.optional() }),
     "tasks:read",
-    "Count descendant leaf tasks, separating done and cancelled.",
+    "Count descendant leaf tasks, separating completed work from closure without completion.",
   ),
   tasks_plan_create: spec(
     z.object({

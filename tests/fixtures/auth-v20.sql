@@ -7,7 +7,11 @@ CREATE TABLE oauth_clients(id TEXT PRIMARY KEY,name TEXT NOT NULL,redirects TEXT
 CREATE TABLE oauth_tokens(hash TEXT PRIMARY KEY,refresh_hash TEXT UNIQUE,client_id TEXT NOT NULL REFERENCES oauth_clients(id),scopes TEXT NOT NULL,expires TEXT NOT NULL,refresh_expires TEXT NOT NULL,resource TEXT NOT NULL,revoked INTEGER NOT NULL DEFAULT 0,operator_name TEXT);
 CREATE TABLE tower_enrollments(id TEXT PRIMARY KEY,credential_id TEXT,state TEXT);
 CREATE TABLE task_comments(id TEXT PRIMARY KEY);
-CREATE TABLE task_blockers(id TEXT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY,project_id TEXT,status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','done','cancelled')),closed_at TEXT,created_at TEXT,updated_at TEXT);
+CREATE INDEX tasks_v5_project ON tasks(project_id,status,updated_at);
+CREATE TABLE task_blockers(id TEXT PRIMARY KEY,task_id TEXT REFERENCES tasks(id),waiting_on TEXT,body TEXT,created_at TEXT,resolved_at TEXT);
+CREATE TABLE task_prerequisites(task_id TEXT REFERENCES tasks(id),prerequisite_id TEXT REFERENCES tasks(id));
+CREATE TABLE task_claims(task_id TEXT PRIMARY KEY REFERENCES tasks(id));
 CREATE TABLE entities(id TEXT PRIMARY KEY,kind TEXT,project_id TEXT);
 CREATE TABLE artifacts(id TEXT PRIMARY KEY,title TEXT);
 CREATE TABLE threads(id TEXT PRIMARY KEY);

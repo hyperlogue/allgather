@@ -100,10 +100,9 @@ try {
     const op=async(name,input)=>{const r=await fetch('/api/operations/'+name,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...input,operation_key:crypto.randomUUID()})});const d=await r.json();if(!r.ok)throw new Error(JSON.stringify(d));return d.result;};
     const p=await op('projects_create',{name:'Example workspace'});
     const a=await op('tasks_create',{project_id:p.id,title:'Verify the workspace design',body:'Review the responsive shell and the exact request presentation.',labels:['web','design']});
-    await op('tasks_claim',{task_id:a.id,expected_revision:a.revision});
     await op('tasks_create',{project_id:p.id,title:'Retain source evidence',body:'Keep the original artifact linked to the task.',labels:['review']});
     const done=await op('tasks_create',{project_id:p.id,title:'Verify copied login command'});
-    await op('tasks_finish',{task_id:done.id,expected_revision:done.revision});
+    await op('tasks_resolve',{task_id:done.id,expected_revision:done.revision});
     await op('sessions_declare',{target_session_id:'design-recorded-session',project_id:p.id,label:'Design verification',harness:'codex'});
     await op('session_transcript_import',{target_session_id:'design-recorded-session',source_key:'design-fixture',coverage:'partial',events:[{key:'message-1',kind:'agent_message',payload:{text:'The workspace shell is ready for review. This is synthetic verification content.'}}]});
     const artifact=await op('artifacts_create',{kind:'html',title:'Workspace review',project_id:p.id});

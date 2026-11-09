@@ -19,17 +19,17 @@ export const HELP = `allgather — one work record for tasks, sessions, and evid
   login [HOSTNAME_OR_URL]
   project list | create --name NAME [--slug CL] [--body TEXT] | show ID | update ID
   task create --project ID --title TEXT [--body TEXT] [--parent ID]
-  task search [QUERY] [--project ID] [--status open|done|cancelled]
+  task search [QUERY] [--project ID] [--status open|blocked|closed]
   task ready [--assignee owner|session:ID|role:ID | --unassigned]
   task show ID | context ID
   task update ID [--title TEXT] [--body TEXT] [--parent ID]
-  task claim ID [--session ID] | release ID
   task comment ID --body TEXT [--reply ID] | comments ID
-  task finish ID [--summary TEXT] [--repository ID --commit SHA]
+  task resolve ID [--comment TEXT] [--label REASON]
   task cancel ID [--comment TEXT] | reopen ID --reason TEXT
-  task depend ID --on ID [--remove] | link ID --repository ID --commit SHA
-  task block ID --waiting-on owner|external --body TEXT
-  task unblock ID --blocker ID --comment TEXT
+  task link ID --repository ID --commit SHA
+  task block ID --waiting-on human|task|external [--waiting-on-task-id ID] --body TEXT
+  task clear ID --blocker ID --comment TEXT
+  task remove-blocker ID --blocker ID --comment TEXT
   task handoff ID --assignee KIND:ID --comment TEXT --expected-revision N --expected-log-sequence N
   role list | create --name NAME [--description TEXT] | update ID | delete ID
   session search [QUERY] [--project ID] [--task ID] [--machine ID] [--since ISO_DATE] [--until ISO_DATE]
@@ -84,7 +84,7 @@ Task fields: --label NAME (repeatable), --add-label NAME, --remove-label NAME,
 Use --body-file FILE for a multiline task body or comment.
 Filters: --labels-all NAME / --labels-any NAME, --parent ID, --epic ID,
   --deferred-before ISO_DATE / --deferred-after ISO_DATE, --exclude-undated,
-  --claimed / --unclaimed, --blocked, --needs-owner, --sort created|updated|title.
+  --is-done, --blocked, --needs-owner, --sort created|updated|title.
 Deferral never prevents work. p0/p1/p2 are ordinary labels with no implicit order.
 Project paths: --path-prefix is repeatable on repo add/attach/paths. Use . for the root.
   Empty lists provide no hint for shared repositories. Matching uses the longest prefix per file.
@@ -93,7 +93,7 @@ Git budgets: --initial-fetch-limit 10000 --max-indexed-commits 100000|unlimited.
 Operator: --operator-name NAME --operator-kind user|agent --agent-type TYPE --session ID.
 A session may bind one role. Names and role declarations grant no access.
 Session declare registers sessions started outside Allgather's Tower launch flow.
-Workflow: ready → context → claim → comment/update → finish.
+Workflow: ready → context → comment/update → resolve.
 Completion is explicit. Allgather fetches upstream Git; Tower observes local checkouts.
 `;
 export async function main(argv = process.argv.slice(2)) {
@@ -109,13 +109,13 @@ export async function main(argv = process.argv.slice(2)) {
     if (p.length > 1 || Object.keys(f).some((key) => key !== "json"))
       throw new Error("Use allgather guide without a project; task ready --project selects work.");
     const guide = {
-      workflow: "ready → context → claim → comment/update → finish",
+      workflow: "ready → context → comment/update → resolve",
       guidance: [
         "Log in with allgather login <hostname-or-url>.",
         "Default login excludes admin and repositories:write. Administrative access needs explicit login scopes and browser consent.",
-        "Use task ready --project PROJECT --unassigned, or filter with --assignee session:ID / role:ID / owner. Read task context TASK before claiming.",
-        "Claim work with task claim TASK --session SESSION. Keep work and evidence current.",
-        "Use task finish only when the requested work is complete.",
+        "Use task ready --project PROJECT --unassigned, or filter with --assignee session:ID / role:ID / owner. Read task context TASK before starting work.",
+        "Assign work with task update TASK --assignee session:ID or role:ID. Keep work and evidence current.",
+        "Use task resolve only when the requested work is complete.",
         "Keep the same --key, input, and revision guards when retrying an uncertain write.",
         "A handoff needs both --expected-revision and --expected-log-sequence from task context.",
         "Use --json for structured output and --body-file for multiline text.",
@@ -194,16 +194,15 @@ export async function main(argv = process.argv.slice(2)) {
       show: p[0] === "history" ? "get_commit" : "get",
       add: "create",
       connect: "update",
-      depend: "set_dependency",
       link: "link_commit",
       "bind-role": "bind_role",
       "clear-cache": "clear_cache",
-      start: "claim",
     };
     const taskSpecial: Record<string, string> = {
       comment: "task_comments_add",
       comments: "task_comments_list",
-      unblock: "tasks_resolve_blocker",
+      clear: "tasks_clear_blocker",
+      "remove-blocker": "tasks_remove_blocker",
     };
     const sessionOperations: Record<string, string> = {
       launch: "session_launch",
@@ -240,7 +239,6 @@ export async function main(argv = process.argv.slice(2)) {
       parent: "parent_id",
       repository: "repository_id",
       commit: "commit_id",
-      on: "depends_on",
       key: "operation_key",
       session: "session_id",
       label: p[0] === "task" ? "labels" : "label",
@@ -264,7 +262,6 @@ export async function main(argv = process.argv.slice(2)) {
       "clear-aliases",
       "clear-path-prefixes",
       "undefer",
-      "unclaimed",
       "exclude-undated",
       "pause",
       "resume",
@@ -274,7 +271,6 @@ export async function main(argv = process.argv.slice(2)) {
       "cursor",
       "limit",
       "expected_revision",
-      "lease_seconds",
       "expected_log_sequence",
       "initial_fetch_limit",
       "max_indexed_commits",
@@ -295,7 +291,6 @@ export async function main(argv = process.argv.slice(2)) {
       delete input.path;
     }
     if (f.undefer) input.defer_until = null;
-    if (f.unclaimed) input.claimed = false;
     if (f["exclude-undated"]) input.include_undated = false;
     if (f.pause) input.sync_enabled = false;
     if (f.resume) input.sync_enabled = true;
@@ -357,7 +352,8 @@ export async function main(argv = process.argv.slice(2)) {
       const t = await client.call<Task>("tasks_get", { task_id: input.task_id });
       input.expected_revision ??= t.revision;
       if (f["add-label"] || f["remove-label"]) {
-        if (name !== "tasks_update") throw new Error("Label changes require task update");
+        if (!["tasks_update", "tasks_resolve", "tasks_cancel"].includes(name))
+          throw new Error("Label changes require task update, resolve, or cancel");
         const removed = new Set(
           ((f["remove-label"] as string[]) ?? []).map((s) => s.trim().toLowerCase()),
         );

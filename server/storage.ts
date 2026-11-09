@@ -20,11 +20,12 @@ import { migrateGraphTombstones } from "./graph-migration.ts";
 import { migrateNotifications } from "./notification-migration.ts";
 import { migrateSessions } from "./session-migration.ts";
 import { migrateTaskWorkflow } from "./task-migration.ts";
+import { migrateTaskSchema } from "./task-schema-migration.ts";
 import { migrateTerminalSessions } from "./terminal-migration.ts";
 import { migrateTower } from "./tower-migration.ts";
 import { migrateTranscriptContent } from "./transcript-migration.ts";
 
-export const SCHEMA_VERSION = 36;
+export const SCHEMA_VERSION = 37;
 export function writeDatabaseSnapshot(db: Database, path: string) {
   writeFileSync(path, "", { mode: 0o600, flag: "wx" });
   db.query("VACUUM INTO ?").run(path);
@@ -228,6 +229,7 @@ export function openDatabase(path: string) {
       `);
       db.exec("PRAGMA user_version=36");
     }).immediate();
+  if (version < 37) migrateTaskSchema(db);
   return db;
 }
 export function setting(db: Database, key: string) {

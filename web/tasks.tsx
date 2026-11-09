@@ -281,7 +281,8 @@ function TaskDetail({
     [action, setAction] = useState(""),
     [actionBody, setActionBody] = useState(""),
     [target, setTarget] = useState(""),
-    [waiting, setWaiting] = useState("owner"),
+    [waiting, setWaiting] = useState("human"),
+    [closureLabels, setClosureLabels] = useState(""),
     [assignment, setAssignment] = useState(""),
     [repository, setRepository] = useState(repos[0]?.id ?? ""),
     [commit, setCommit] = useState(""),
@@ -323,6 +324,9 @@ function TaskDetail({
   };
   const openAction = (name: string) => {
     setGuards({ revision: t.revision, sequence: c.log_sequence });
+    setActionBody("");
+    setTarget("");
+    setClosureLabels(t.labels.join(", "));
     setAction(name);
   };
   const assigned =
@@ -350,16 +354,12 @@ function TaskDetail({
           </dd>
           <dt>Assignee</dt>
           <dd>{assigned || "Unassigned"}</dd>
-          <dt>Claim</dt>
-          <dd>
-            {t.claim ? (
-              <span className="agent-chip">
-                {t.claim.holder === "owner" ? "Owner" : t.claim.session_id}
-              </span>
-            ) : (
-              <span className="muted">Unclaimed</span>
-            )}
-          </dd>
+          {t.closed_at && (
+            <>
+              <dt>Completed</dt>
+              <dd>{t.is_done ? "Yes" : "No"}</dd>
+            </>
+          )}
           <dt>Labels</dt>
           <dd>
             <div className="labels">
@@ -383,33 +383,15 @@ function TaskDetail({
           <button type="button" onClick={() => setEdit(true)}>
             Edit
           </button>
-          {t.status === "open" ? (
+          {!t.closed_at ? (
             <>
-              <button
-                type="button"
-                disabled={busy || t.blocked}
-                onClick={() =>
-                  void run(() =>
-                    mutate(
-                      t.claim?.holder === "owner" ? "tasks_release" : "tasks_claim",
-                      t.claim?.holder === "session" ? { override_claim: true } : {},
-                    ),
-                  )
-                }
-              >
-                {t.claim?.holder === "owner"
-                  ? "Release claim"
-                  : t.claim
-                    ? "Take over claim"
-                    : "Claim"}
-              </button>
               <button
                 type="button"
                 className="primary"
                 disabled={busy || t.blocked}
-                onClick={() => void run(() => mutate("tasks_finish"))}
+                onClick={() => openAction("tasks_resolve")}
               >
-                Mark done
+                Resolve
               </button>
               <button
                 type="button"
@@ -441,7 +423,8 @@ function TaskDetail({
           <div className="epic-progress">
             <progress max={c.progress.total || 1} value={c.progress.done} />
             <p>
-              {c.progress.done} done · {c.progress.cancelled} cancelled · {c.progress.open} open
+              {c.progress.done} done · {c.progress.closed_without_completion} closed without
+              completion · {c.progress.open} open
             </p>
           </div>
         )}
@@ -461,64 +444,57 @@ function TaskDetail({
           </section>
         )}
         <section className="detail-section">
-          <div className="section-line">
-            <h3>Prerequisites and waits</h3>
-            <button
-              type="button"
-              className="quiet"
-              onClick={() => openAction("tasks_set_dependency")}
-            >
-              Add prerequisite
-            </button>
-          </div>
-          {c.dependencies.map((d) => (
-            <div className="section-line" key={d.id}>
-              <button type="button" className="link-button" onClick={() => select(d.id)}>
-                {d.title} · {d.status}
-              </button>
-              <button
-                type="button"
-                className="quiet"
-                disabled={busy}
-                onClick={() =>
-                  void run(() => mutate("tasks_set_dependency", { depends_on: d.id, remove: true }))
-                }
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-          {c.blockers
-            .filter((b) => b.waiting_on !== "task")
-            .map((b) => (
+          <h3>Blockers</h3>
+          {c.blockers.map((b) => (
+            <div key={b.id}>
+              {b.waiting_on === "task" && (
+                <div className="section-line">
+                  {b.waiting_on_task_id ? (
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={() => select(b.waiting_on_task_id!)}
+                    >
+                      {b.waiting_on_task_id} · {b.satisfied ? "Satisfied" : "Waiting"}
+                    </button>
+                  ) : (
+                    <span>Restricted prerequisite</span>
+                  )}
+                </div>
+              )}
               <TaskBlocker
-                key={b.id}
                 blocker={b}
                 busy={busy}
-                resolve={() => {
-                  openAction("tasks_resolve_blocker");
+                clear={() => {
+                  openAction("tasks_clear_blocker");
                   setTarget(b.id);
                 }}
                 answer={(body) =>
                   void run(async () => {
-                    await call("task_comments_add", {
-                      task_id: id,
-                      body,
-                      resolve_blocker_id: b.id,
-                      ...mutation(),
-                    });
+                    await call("task_comments_add", { task_id: id, body, ...mutation() });
                     changed();
                   })
                 }
               />
-            ))}
-          {c.resolved_blockers.map((b) => (
-            <TaskBlocker key={b.id} blocker={b} busy={busy} resolve={() => {}} answer={() => {}} />
+              <button
+                type="button"
+                className="quiet"
+                disabled={busy}
+                onClick={() => {
+                  openAction("tasks_remove_blocker");
+                  setTarget(b.id);
+                }}
+              >
+                Remove blocker
+              </button>
+            </div>
           ))}
-          {!c.blockers.length && <p className="muted">No unresolved waits.</p>}
-          {t.status === "open" && (
+          {!c.blockers.some((b) => !b.satisfied) && (
+            <p className="muted">No unsatisfied blockers.</p>
+          )}
+          {!t.closed_at && (
             <button type="button" className="quiet" onClick={() => openAction("tasks_block")}>
-              Add a wait
+              Add a blocker
             </button>
           )}
         </section>
@@ -645,11 +621,12 @@ function TaskDetail({
           title={
             {
               tasks_handoff: "Hand off work",
+              tasks_resolve: "Resolve task",
               tasks_cancel: "Cancel task",
               tasks_reopen: "Reopen task",
-              tasks_block: "Add a wait",
-              tasks_resolve_blocker: "Resolve wait",
-              tasks_set_dependency: "Add prerequisite",
+              tasks_block: "Add a blocker",
+              tasks_clear_blocker: "Clear blocker",
+              tasks_remove_blocker: "Remove blocker",
               tasks_link_commit: "Link commit",
               links_add: "Add context link",
             }[action] ?? action
@@ -666,15 +643,25 @@ function TaskDetail({
                   values.expected_log_sequence = guards.sequence;
                   values.comment = actionBody;
                 }
-                if (action === "tasks_cancel" || action === "tasks_resolve_blocker")
+                if (
+                  [
+                    "tasks_resolve",
+                    "tasks_cancel",
+                    "tasks_clear_blocker",
+                    "tasks_remove_blocker",
+                  ].includes(action)
+                )
                   values.comment = actionBody;
                 if (action === "tasks_reopen") values.reason = actionBody;
-                if (action === "tasks_resolve_blocker") values.blocker_id = target;
+                if (["tasks_clear_blocker", "tasks_remove_blocker"].includes(action))
+                  values.blocker_id = target;
+                if (["tasks_resolve", "tasks_cancel"].includes(action))
+                  values.labels = parseLabels(closureLabels);
                 if (action === "tasks_block") {
                   values.body = actionBody;
                   values.waiting_on = waiting;
+                  if (waiting === "task") values.waiting_on_task_id = target;
                 }
-                if (action === "tasks_set_dependency") values.depends_on = target;
                 if (action === "tasks_link_commit") {
                   values.repository_id = repository;
                   values.commit_id = commit;
@@ -707,12 +694,13 @@ function TaskDetail({
               <label>
                 Waiting on
                 <select value={waiting} onChange={(e) => setWaiting(e.target.value)}>
-                  <option value="owner">Owner</option>
+                  <option value="human">Human</option>
+                  <option value="task">Task</option>
                   <option value="external">External</option>
                 </select>
               </label>
             )}
-            {["tasks_set_dependency", "links_add"].includes(action) && (
+            {(action === "links_add" || (action === "tasks_block" && waiting === "task")) && (
               <label>
                 {action === "links_add" ? "Target entity ID" : "Prerequisite task ID"}
                 <input required value={target} onChange={(e) => setTarget(e.target.value)} />
@@ -747,14 +735,24 @@ function TaskDetail({
                 </label>
               </>
             )}
-            {!["tasks_set_dependency", "tasks_link_commit"].includes(action) && (
+            {action !== "tasks_link_commit" && (
               <label>
                 Context
                 <textarea
-                  required={action !== "links_add"}
+                  required={!["links_add", "tasks_resolve", "tasks_cancel"].includes(action)}
                   rows={4}
                   value={actionBody}
                   onChange={(e) => setActionBody(e.target.value)}
+                />
+              </label>
+            )}
+            {["tasks_resolve", "tasks_cancel"].includes(action) && (
+              <label>
+                Closure labels
+                <input
+                  value={closureLabels}
+                  onChange={(e) => setClosureLabels(e.target.value)}
+                  placeholder="Optional reasons, separated by commas"
                 />
               </label>
             )}
@@ -805,7 +803,7 @@ export function TasksView({
       call<Page<Task>>(view === "available" ? "tasks_ready" : "tasks_search", {
         project_id: project || undefined,
         query,
-        status: ["open", "done", "cancelled"].includes(view) ? view : undefined,
+        status: ["open", "blocked", "closed"].includes(view) ? view : undefined,
         needs_owner: view === "owner" ? true : undefined,
         labels_all: parseLabels(labels),
         assignee: assignedRole ? { kind: "role", id: assignedRole } : undefined,
@@ -838,20 +836,11 @@ export function TasksView({
     if (project) setCreate(true);
     else newProject();
   }, [project, newProject]);
-  const group = (task: Task) =>
-    task.status !== "open"
-      ? task.status
-      : task.blocked
-        ? "blocked"
-        : task.claim
-          ? "in_progress"
-          : "open";
+  const group = (task: Task) => task.status;
   const groups = [
-    ["in_progress", "In progress"],
-    ["blocked", "Needs attention"],
+    ["blocked", "Blocked"],
     ["open", "Open"],
-    ["done", "Done"],
-    ["cancelled", "Cancelled"],
+    ["closed", "Closed"],
   ]
     .map(([id, label]) => ({ id, label, items: page.items.filter((task) => group(task) === id) }))
     .filter((group) => group.items.length);
@@ -892,10 +881,9 @@ export function TasksView({
           {[
             ["all", "All"],
             ["open", "Open"],
-            ["available", "Available"],
             ["owner", "Needs owner"],
-            ["done", "Done"],
-            ["cancelled", "Cancelled"],
+            ["blocked", "Blocked"],
+            ["closed", "Closed"],
           ].map(([key, label]) => (
             <button
               type="button"
@@ -1014,15 +1002,9 @@ export function TasksView({
                       </span>
                     ))}
                   </span>
-                  {(task.blocked || task.claim) && (
-                    <span className={`agent-chip ${task.blocked ? "waiting" : ""}`}>
-                      {task.blocked
-                        ? task.needs_owner
-                          ? "Needs owner"
-                          : "Blocked"
-                        : task.claim?.holder === "owner"
-                          ? "Owner"
-                          : "Claimed"}
+                  {task.blocked && (
+                    <span className="agent-chip waiting">
+                      {task.needs_owner ? "Needs human" : "Blocked"}
                     </span>
                   )}
                 </button>

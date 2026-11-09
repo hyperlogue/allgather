@@ -59,10 +59,8 @@ test("CLI mutations, upstream configuration, and backup restore preserve work", 
       "--body",
       "Working change",
     );
-    const claimed = await invoke<Task>("task", "start", task.id, "--session", "agent-example");
-    expect(claimed.status).toBe("open");
-    const finished = await invoke<Task>("task", "finish", task.id, "--session", "agent-example");
-    expect(finished.status).toBe("done");
+    const finished = await invoke<Task>("task", "resolve", task.id, "--session", "agent-example");
+    expect(finished.is_done).toBe(true);
     const input = join(root, "repo-input.json");
     writeFileSync(
       input,
@@ -168,7 +166,7 @@ test("CLI mutations, upstream configuration, and backup restore preserve work", 
       "--labels-all",
       "review",
       "--status",
-      "done",
+      "closed",
     );
     expect(found.items.map((t) => t.id)).toEqual([task.id]);
     await invoke(
@@ -357,7 +355,7 @@ test("CLI mutations, upstream configuration, and backup restore preserve work", 
           await recovered.workspace.artifacts!.store.readFile(artifact.id, 1, "index.html")
         ).toString(),
       ).toBe("<h1>Retained plan</h1>");
-      expect(recovered.workspace.task(task.id).status).toBe("done");
+      expect(recovered.workspace.task(task.id).is_done).toBe(true);
       expect(recovered.workspace.project(project.id).name).toBe("CLI example");
       expect(recovered.workspace.history.repository(repo.id).project_links).toEqual(
         cleared.project_links,

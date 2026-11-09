@@ -796,7 +796,20 @@ export function TasksView({
     [sessions, setSessions] = useState<AgentSession[]>([]),
     [error, setError] = useState(""),
     [create, setCreate] = useState(false),
-    [plan, setPlan] = useState(false);
+    [plan, setPlan] = useState(false),
+    [loadedKey, setLoadedKey] = useState("");
+  const viewKey = JSON.stringify([
+    project,
+    query,
+    view,
+    labels,
+    assignedRole,
+    sort,
+    before,
+    undated,
+    cursor,
+  ]);
+  const loading = loadedKey !== viewKey;
   // biome-ignore lint/correctness/useExhaustiveDependencies: Refresh counters reload committed server state.
   useEffect(() => {
     let live = true;
@@ -822,13 +835,18 @@ export function TasksView({
           setRoles(r);
           setSessions(s.items);
           setError("");
+          setLoadedKey(viewKey);
         }
       })
-      .catch((e) => live && setError(e.message));
+      .catch((e) => {
+        if (!live) return;
+        setError(e.message);
+        setLoadedKey(viewKey);
+      });
     return () => {
       live = false;
     };
-  }, [project, refresh, query, view, labels, assignedRole, sort, before, undated, cursor]);
+  }, [viewKey, refresh]);
   useEffect(() => {
     const url = new URL(location.href);
     if (url.searchParams.get("action") !== "new-task") return;
@@ -843,7 +861,11 @@ export function TasksView({
     ["open", "Open"],
     ["closed", "Closed"],
   ]
-    .map(([id, label]) => ({ id, label, items: page.items.filter((task) => group(task) === id) }))
+    .map(([id, label]) => ({
+      id,
+      label,
+      items: loading ? [] : page.items.filter((task) => group(task) === id),
+    }))
     .filter((group) => group.items.length);
   const select = (id: string) => {
       setSelected(id);
@@ -861,7 +883,7 @@ export function TasksView({
       <PageHeading>
         <div>
           <h1>{title}</h1>
-          <p>{page.total} tasks</p>
+          <p>{loading ? "Loading tasks…" : `${page.total} tasks`}</p>
         </div>
         <div className="heading-actions">
           <button type="button" onClick={() => (project ? setPlan(true) : newProject())}>
@@ -973,7 +995,7 @@ export function TasksView({
       </div>
       <ErrorText>{error}</ErrorText>
       <div className={`work-area ${selected ? "has-detail" : ""}`}>
-        <section className="task-list" aria-label="Tasks">
+        <section className="task-list" aria-label="Tasks" aria-busy={loading}>
           {groups.map(({ id, label, items }) => (
             <Fragment key={id}>
               <h2 className="task-group-heading">
@@ -1012,7 +1034,13 @@ export function TasksView({
               ))}
             </Fragment>
           ))}
-          {!page.items.length && (
+          {loading && (
+            <div className="task-list-loading" role="status">
+              <span className="spinner" aria-hidden="true" />
+              Loading tasks…
+            </div>
+          )}
+          {!loading && !page.items.length && (
             <div className="empty">
               <h2>No tasks in this view</h2>
               <p>Create work or adjust the filters.</p>
@@ -1021,14 +1049,14 @@ export function TasksView({
           <div className="pagination">
             <button
               type="button"
-              disabled={!cursor}
+              disabled={loading || !cursor}
               onClick={() => setCursor(Math.max(0, cursor - 50))}
             >
               Previous
             </button>
             <button
               type="button"
-              disabled={page.next_cursor === null}
+              disabled={loading || page.next_cursor === null}
               onClick={() => setCursor(page.next_cursor!)}
             >
               Next

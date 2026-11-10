@@ -17,6 +17,7 @@ import { Login } from "./login.tsx";
 import { MachineConnections } from "./machine-connections.tsx";
 import { McpPairing } from "./mcp-pairing.tsx";
 import {
+  compactLayout,
   initialCollapsed,
   isEditing,
   isScopedView,
@@ -311,7 +312,7 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
     history.pushState(null, "", url);
     setView(next);
     if (Object.keys(params).length) setRouteRevision((value) => value + 1);
-    if (matchMedia("(max-width: 760px)").matches) setCollapsed(true);
+    if (matchMedia(compactLayout).matches) setCollapsed(true);
   }, []);
   const choose = useCallback((ids: string[]) => {
     const url = new URL(location.href);
@@ -323,7 +324,7 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
     try {
       localStorage.setItem("allgather-project-scope", ids.join(","));
     } catch {}
-    if (matchMedia("(max-width: 760px)").matches) setCollapsed(true);
+    if (matchMedia(compactLayout).matches) setCollapsed(true);
   }, []);
   const chooseProject = useCallback(
     (id: string) => {

@@ -7,6 +7,7 @@ import { ProjectIcon } from "./project-icon.tsx";
 import { projectColor, scopeFilter, scopeName, scopeRail } from "./project-scope.ts";
 import { usePopover } from "./ui.tsx";
 
+export const compactLayout = "(max-width: 760px)";
 export const scopedViews = [
   ["tasks", "Tasks"],
   ["sessions", "Sessions"],
@@ -36,9 +37,9 @@ export function isEditing(target: EventTarget | null) {
 export function initialCollapsed() {
   try {
     const saved = localStorage.getItem("allgather-sidebar-collapsed");
-    return saved === null ? matchMedia("(max-width: 760px)").matches : saved === "true";
+    return saved === null ? matchMedia(compactLayout).matches : saved === "true";
   } catch {
-    return matchMedia("(max-width: 760px)").matches;
+    return matchMedia(compactLayout).matches;
   }
 }
 function ProjectMarks({ selected, collapsed }: { selected: Project[]; collapsed: boolean }) {

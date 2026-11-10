@@ -1820,33 +1820,9 @@ textarea {
 .project-icon-upload input {
   max-width: 100%;
 }
-@media (max-width: 900px) {
-  .session-layout {
-    grid-template-columns: 1fr;
-  }
-  .session-list {
-    border-right: 0;
-    padding: 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .session-list .task-row {
-    min-height: 50px;
-  }
-  .session-detail {
-    max-width: none;
-  }
-}
-@media (min-width: 1100px) {
+@media (min-width: 1101px) {
   .artifact-frame {
     height: calc(100dvh - 132px);
-  }
-}
-@media (max-width: 600px) {
-  .permission-category summary {
-    flex-wrap: wrap;
-  }
-  .permission-choice {
-    flex-wrap: wrap;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -2092,6 +2068,12 @@ textarea {
     flex-direction: column;
     min-height: 0;
   }
+  .permission-category summary {
+    flex-wrap: wrap;
+  }
+  .permission-choice {
+    flex-wrap: wrap;
+  }
 }
 @media (max-width: 1100px) {
   .task-row-labels {
@@ -2103,5 +2085,19 @@ textarea {
   }
   .pairing-panels {
     grid-template-columns: 1fr;
+  }
+  .session-layout {
+    grid-template-columns: 1fr;
+  }
+  .session-list {
+    border-right: 0;
+    padding: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .session-list .task-row {
+    min-height: 50px;
+  }
+  .session-detail {
+    max-width: none;
   }
 }

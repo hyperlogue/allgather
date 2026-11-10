@@ -31,7 +31,7 @@ try {
     await op('sessions_declare',{target_session_id:'second',harness:'claude-code',source_namespace:'second-import',native_session_id:'same-native'});
   })()`);
   await b.command("Page.navigate", {
-    url: `${running.settings.ownerUrl}/?view=sessions&session=second`,
+    url: `${running.settings.ownerUrl}/?view=sessions&project=&session=second`,
   });
   await b.until(`new URL(location.href).searchParams.get('session')==='first'`);
   await b.until(

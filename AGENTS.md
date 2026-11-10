@@ -14,15 +14,25 @@ authoritative specification.
 
 Development uses a direnv-managed Nix shell; the agent may already be in it, so
 `nix develop` is unnecessary when the shell is active. Use `bun --no-env-file` for
-automated checks. Run the source-backed development instance with `bun run dev`
-(foreground, reloads server and web edits) or `bun run dev:server
-start|restart|status|stop`, and reach it with `bun run dev:cli`; these ignore
-inherited `ALLGATHER_*` settings and never touch the installed server or its data.
-`bun run server ARGS` and `bun run cli ARGS` run the same source against the
-installed instance and its normal configuration; a source server applies
-unreleased migrations to that database, so use them only when the user asks.
-Toolchain versions and dependencies come from the manifests and
+automated checks. Toolchain versions and dependencies come from the manifests and
 locks; dependency changes must keep `bun.lock` and generated `bun.nix` aligned.
+
+This machine runs the owner's production instance: `allgather-server` on port
+4390, data in `~/.local/state/allgather` (or the `dataDir` saved in
+`~/.config/allgather/server.json`), and CLI credentials in `~/.config/allgather`.
+`bun run server`, `bun run cli`, and the installed or `dist/` binaries all reach
+it. Treat it as the owner's live data:
+
+- Read and update tasks on it through the CLI as the user directs.
+- Start, stop, restart, or `run` a server on it, or change its configuration,
+  passkeys, or backups, only when the user asks for that action. A source server
+  applies unreleased migrations irreversibly, so save a fresh
+  `bun run server backup FILE` first.
+- Reach its data only through the server or CLI; leave the data directory and
+  its SQLite files untouched.
+- Give every test or verification server fresh temporary `ALLGATHER_DATA_DIR`,
+  `ALLGATHER_CONFIG_DIR`, HOME, and XDG directories, `ALLGATHER_PORT=0`, and
+  unset `ALLGATHER_URL` and `ALLGATHER_TOKEN`.
 
 Select Tower explicitly with `ALLGATHER_TEST_TOWER` for interoperability checks.
 Use synthetic credentials and isolated child HOME/XDG directories. Distinguish

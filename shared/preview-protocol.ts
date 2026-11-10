@@ -40,7 +40,7 @@ export interface PreviewDisplay {
     commentHere: string;
     commentHereHint: string;
     selectParent: string;
-    cancel: string;
+    selectChild: string;
     wholePage?: string;
   };
   // r3 appearance for retained Markdown; authored HTML retains its own styling.
@@ -72,9 +72,6 @@ export type PreviewTheme = "light" | "dark";
 
 // Transient Locate outcome, independent of historical persisted placements.
 export type PreviewLocateState = "anchored" | "ancestor" | "ambiguous" | "unplaced";
-
-// These are the entire publisher-page capability surface. There is no generic
-// HTTP, actor, version, path, lifecycle, publication, or host command argument.
 
 export interface ArtifactUtility {
   getTheme(): Promise<PreviewTheme | null>;

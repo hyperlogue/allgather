@@ -1,8 +1,16 @@
 import { afterEach, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { finalize, git, inventory, prepare, validateRun } from "../scripts/r3-integration.ts";
+import {
+  auditImport,
+  finalize,
+  git,
+  inventory,
+  prepare,
+  validateRun,
+} from "../scripts/r3-integration.ts";
 
 const directories: string[] = [];
 afterEach(() => {
@@ -41,6 +49,7 @@ function fixture() {
   };
   writeFileSync(statePath, JSON.stringify(state));
   const run = prepare(statePath, root, "main", runPath);
+  run.acceptanceTests = ["tests/artifacts.test.ts"];
   const save = () => writeFileSync(runPath, JSON.stringify(run));
   const finish = () => {
     run.selection.reason = `Selected local synthetic main at ${target}`;
@@ -67,6 +76,22 @@ test("prepare pins an immutable target and refuses to overwrite partial work", (
   expect(() => prepare(f.statePath, f.root, "main", f.runPath)).toThrow();
   expect(readFileSync(f.runPath, "utf8")).toBe(original);
   expect(validateRun(f.root, f.run).run.target).toBe(f.target);
+});
+
+test("source provenance verification does not require an imported runtime tree", () => {
+  const f = fixture();
+  const provenance = join(f.root, "third-party");
+  mkdirSync(provenance);
+  const manifest = {
+    commit: f.target,
+    sha256: { "feature.txt": createHash("sha256").update("new behavior").digest("hex") },
+  };
+  const path = join(provenance, "r3-source.json");
+  writeFileSync(path, JSON.stringify(manifest));
+  expect(auditImport(f.root, f.root)).toEqual({ commit: f.target, files: 1 });
+  manifest.sha256["feature.txt"] = "0".repeat(64);
+  writeFileSync(path, JSON.stringify(manifest));
+  expect(() => auditImport(f.root, f.root)).toThrow("Import provenance mismatch");
 });
 
 test("all reachable commits are inventoried even when endpoint changes cancel", () => {

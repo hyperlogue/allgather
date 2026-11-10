@@ -1,11 +1,11 @@
 import type { ArtifactDelivery, ArtifactNotificationSource } from "../shared/artifact-delivery.ts";
+import { artifactNudgeText } from "../shared/artifact-prompt.ts";
+import type { WorkerSubscription } from "../shared/artifact-subscription.ts";
+import type { ArtifactActor, ArtifactNudge, ArtifactWatcher } from "../shared/artifacts.ts";
 import { AppError, can, type Principal, type SessionCommand } from "../shared/contracts.ts";
 import { effectiveScopes } from "../shared/permissions.ts";
 import { resourceGrantsSchema } from "../shared/resource-grants.ts";
 import type { Artifacts } from "./artifacts.ts";
-import { artifactNudgeText } from "./r3/shared/artifact-prompt.ts";
-import type { ArtifactActor, ArtifactNudge, ArtifactWatcher } from "./r3/shared/artifacts.ts";
-import type { WorkerSubscription } from "./r3/shared/worker-protocol.ts";
 import { sessionProvider } from "./session-identity.ts";
 import { digest, uid, type Workspace } from "./workspace.ts";
 export class ArtifactNotifications {

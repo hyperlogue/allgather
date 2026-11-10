@@ -35,7 +35,7 @@ in
       install -Dm755 dist/allgather "$out/bin/allgather"
       install -Dm755 dist/allgather-server "$out/bin/allgather-server"
       install -Dm644 LICENSE "$out/share/licenses/allgather/LICENSE"
-      install -Dm644 third-party/r3/LICENSE "$out/share/licenses/allgather/r3-LICENSE"
+      install -Dm644 third-party/r3.LICENSE "$out/share/licenses/allgather/r3-LICENSE"
       wrapProgram "$out/bin/allgather" --prefix PATH : ${lib.makeBinPath [git openssh]}
       wrapProgram "$out/bin/allgather-server" --prefix PATH : ${lib.makeBinPath [git openssh]}
       runHook postInstall

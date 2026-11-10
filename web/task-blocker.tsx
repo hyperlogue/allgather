@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { renderMessageHtml } from "../server/r3/web/src/markdown.ts";
 import type { Blocker } from "../shared/contracts.ts";
+import { renderMessageHtml } from "./artifact/markdown.ts";
 import { taskAnswer, taskQuestions } from "./task-questions.ts";
 export function TaskMarkdown({ body }: { body: string }) {
   return (

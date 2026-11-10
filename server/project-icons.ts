@@ -7,7 +7,7 @@ import {
   type ProjectIconInfo,
   type ProjectIconUpload,
 } from "../shared/project-icon.ts";
-import { prepareAttachmentImage } from "./r3/server/attachment-image.ts";
+import { prepareAttachmentImage } from "./attachment-image.ts";
 
 export function projectIcon(db: Database, projectId: string) {
   return db

@@ -3,10 +3,11 @@ name: integrate-r3
 description: Selectively integrate R3 features into Allgather, or resume an unfinished integration using its recorded upstream baseline.
 ---
 
-Work from the Allgather repository root. `third-party/r3/integration.json` is the
-processed upstream baseline and decision history. `third-party/r3/source.json`
-and `LICENSE` preserve the original import provenance; their hashes describe
-upstream bytes, not a requirement for local files to remain identical.
+Work from the Allgather repository root. `integrations/r3.json` is the
+processed upstream baseline and decision history. R3 is a behavior and code
+reference; the implementation belongs to Allgather. `third-party/r3-source.json`
+and `third-party/r3.LICENSE` preserve the original import provenance; their hashes
+describe upstream bytes, not a requirement for local files to remain identical.
 
 ## Select and inventory
 
@@ -14,7 +15,8 @@ upstream bytes, not a requirement for local files to remain identical.
    Start with `server/artifacts.ts`, `server/artifact-api.ts`,
    `server/artifact-migration.ts`, `cli/artifacts.ts`, and their callers.
    Run `bun --no-env-file scripts/r3-integration.ts audit "$R3_CHECKOUT"` to
-   distinguish original imports from local adaptations and removals.
+   verify the historical source provenance against the reference checkout.
+   Its hashes do not describe current Allgather files.
 2. Resolve the intended upstream revision. Honor a requested branch, tag, or
    commit. Otherwise use the remote's default branch, discovered with
    `git ls-remote --symref "$R3_REPOSITORY" HEAD`, where `R3_REPOSITORY` comes from
@@ -49,8 +51,13 @@ baseline migration; this command intentionally has no force/reset switch.
 Implement equivalent behavior at Allgather's existing boundaries. Retain its
 owner/session authorization, project grants, audit and receipt transactions,
 shared blobs, task links, notification delivery, navigation, and packaging.
-Preserve attribution for reused code. Change imported modules individually when
-useful; relocating or replacing the whole imported tree is a separate migration.
+Use R3 code to understand requirements, edge cases and algorithms, then implement
+them in Allgather-owned modules. Preserve attribution when reusing source. Keep
+server behavior in `server/`, contracts in `shared/`, capture tools in `cli/`, and
+artifact UI in `web/artifact/`. Reuse Allgather authentication, storage, theme and
+navigation. Remove unused upstream application scaffolding and duplicate helpers.
+Do not introduce an R3 runtime directory, compatibility wrapper tree, or parallel
+application. Acceptance is observable Allgather behavior, not upstream file parity.
 Adapt upstream schema changes into Allgather's migration sequence and verify
 existing data upgrades, rather than replacing the initial schema snapshot.
 
@@ -75,7 +82,9 @@ appear exactly once; keep the generated changed-path inventory intact.
 
 Test behavior through Allgather's adapters. Translate relevant upstream tests
 into acceptance cases, covering success, rejection, persistence, and intentional
-differences. `acceptanceTests` covers shared regressions; integrated entries'
+differences. Keep `tests/artifact-runtime.test.ts` in the acceptance set so runtime
+modules remain independent of an upstream source tree. `acceptanceTests` covers
+shared regressions; integrated entries'
 `tests` identify their focused acceptance files. List paths under `tests/`.
 Browser-dependent changes also need actual browser evidence recorded in the
 entry before finalization; unit tests alone cannot establish visual behavior.

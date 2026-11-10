@@ -4,14 +4,14 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fixtureResources } from "../scripts/fixture-auth.ts";
+import { openDatabase } from "../server/storage.ts";
+import { Workspace } from "../server/workspace.ts";
 import type {
   Artifact,
   ArtifactComment,
   ArtifactThread,
   ArtifactVersion,
-} from "../server/r3/shared/artifacts.ts";
-import { openDatabase } from "../server/storage.ts";
-import { Workspace } from "../server/workspace.ts";
+} from "../shared/artifacts.ts";
 import {
   type Operation,
   operations,

@@ -1,7 +1,66 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
-  "formatter": { "indentStyle": "space", "lineWidth": 100 },
-  "linter": { "enabled": true, "rules": { "recommended": true } },
-  "javascript": { "formatter": { "quoteStyle": "double" } },
-  "files": { "includes": ["shared/**", "server/**", "cli/**", "web/**", "scripts/**", "tests/**", "!server/r3/**"] }
+  "formatter": {
+    "indentStyle": "space",
+    "lineWidth": 100
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true
+    }
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double"
+    }
+  },
+  "files": {
+    "includes": [
+      "shared/**",
+      "server/**",
+      "cli/**",
+      "web/**",
+      "scripts/**",
+      "tests/**"
+    ]
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
+  "overrides": [
+    {
+      "includes": [
+        "web/artifact/components/DiffView.tsx",
+        "web/artifact/components/SourceCode.tsx",
+        "web/artifact/components/Message.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "security": {
+            "noDangerouslySetInnerHtml": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "web/artifact/artifact-page.tsx",
+        "web/artifact/components/DiffView.tsx",
+        "web/artifact/components/SourceCode.tsx",
+        "web/artifact/components/FilePath.tsx",
+        "web/artifact/components/Message.tsx",
+        "web/artifact/components/Notifications.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "noStaticElementInteractions": "off"
+          }
+        }
+      }
+    }
+  ]
 }

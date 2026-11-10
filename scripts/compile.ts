@@ -8,7 +8,7 @@ for (const server of [false, true]) {
   const name = server ? "allgather-server" : "allgather";
   const result = await Bun.build({
     entrypoints: server
-      ? [join(root, "server/cli.ts"), join(root, "server/r3/server/highlight-worker.ts")]
+      ? [join(root, "server/cli.ts"), join(root, "server/highlight-worker.ts")]
       : [join(root, "cli/index.ts")],
     plugins: server ? [await artifactCssPlugin()] : [],
     minify: true,

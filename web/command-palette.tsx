@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Artifact } from "../server/r3/shared/artifacts.ts";
+import type { Artifact } from "../shared/artifacts.ts";
 import type { AgentSession, Page, Project, Task } from "../shared/contracts.ts";
 import { call } from "./api.ts";
 import { Icon, type IconName } from "./icons.tsx";

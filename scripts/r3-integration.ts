@@ -86,7 +86,7 @@ export function prepare(statePath: string, upstream: string, ref: string, runPat
       tests: [],
     })),
     changedPaths: changes.changedPaths,
-    acceptanceTests: ["tests/artifacts.test.ts"],
+    acceptanceTests: ["tests/artifacts.test.ts", "tests/artifact-runtime.test.ts"],
   };
   writeFileSync(runPath, `${JSON.stringify(run, null, 2)}\n`, { flag: "wx" });
   return run;
@@ -187,27 +187,21 @@ export function finalize(
 }
 
 export function auditImport(root: string, upstream: string) {
-  const source = JSON.parse(readFileSync(resolve(root, "third-party/r3/source.json"), "utf8"));
+  const source = JSON.parse(readFileSync(resolve(root, "third-party/r3-source.json"), "utf8"));
   const commit = revision(upstream, source.commit);
   const digest = (data: Uint8Array) => createHash("sha256").update(data).digest("hex");
-  const changed: string[] = [];
   for (const [path, expected] of Object.entries(source.sha256)) {
     const result = Bun.spawnSync(["git", "show", `${commit}:${path}`], { cwd: upstream });
     if (result.exitCode !== 0 || digest(result.stdout) !== expected)
       throw new Error(`Import provenance mismatch: ${path}`);
-    try {
-      if (digest(readFileSync(resolve(root, "server/r3", path))) !== expected) changed.push(path);
-    } catch {
-      changed.push(path);
-    }
   }
-  return { commit, files: Object.keys(source.sha256).length, adaptedOrRemoved: changed };
+  return { commit, files: Object.keys(source.sha256).length };
 }
 
 if (import.meta.main) {
   const [action, upstream, refOrRun, destination] = process.argv.slice(2);
   const root = resolve(import.meta.dir, "..");
-  const state = resolve(root, "third-party/r3/integration.json");
+  const state = resolve(root, "integrations/r3.json");
   if (!upstream) throw new Error("Supply the upstream checkout path");
   let result: unknown;
   if (action === "audit") result = auditImport(root, upstream);

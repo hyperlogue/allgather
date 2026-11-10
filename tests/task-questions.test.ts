@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { renderMessageHtml } from "../server/r3/web/src/markdown.ts";
 import { openDatabase } from "../server/storage.ts";
 import { Workspace } from "../server/workspace.ts";
 import {
@@ -12,6 +11,7 @@ import {
   type TaskComment,
   type TaskContext,
 } from "../shared/contracts.ts";
+import { renderMessageHtml } from "../web/artifact/markdown.ts";
 import { taskAnswer, taskQuestions } from "../web/task-questions.ts";
 
 const owner: Principal = { id: "owner", kind: "owner", scopes: ["admin"], inlet: "browser" };

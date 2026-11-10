@@ -2,17 +2,14 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { hashBytes } from "../server/blobs.ts";
-import { captureFiles } from "../server/r3/cli/capture.ts";
-import { captureGitCommit, captureGitDiff, captureGitFiles } from "../server/r3/cli/capture-git.ts";
-import { detectPublisherRemote } from "../server/r3/cli/publisher-remote.ts";
-import { buildArtifactPrompt } from "../server/r3/shared/artifact-prompt.ts";
-import type {
-  ArtifactCommentAcknowledgment,
-  ArtifactDetail,
-} from "../server/r3/shared/artifacts.ts";
-import type { ArtifactAttachment } from "../server/r3/shared/attachments.ts";
+import { buildArtifactPrompt } from "../shared/artifact-prompt.ts";
+import type { ArtifactCommentAcknowledgment, ArtifactDetail } from "../shared/artifacts.ts";
+import type { ArtifactAttachment } from "../shared/attachments.ts";
 import { type Operation, operations } from "../shared/contracts.ts";
+import { captureFiles } from "./capture.ts";
+import { captureGitCommit, captureGitDiff, captureGitFiles } from "./capture-git.ts";
 import type { Client } from "./client.ts";
+import { detectPublisherRemote } from "./publisher-remote.ts";
 
 type Flags = Record<string, string | boolean | string[]>;
 export async function artifactCommand(client: Client, p: string[], f: Flags) {

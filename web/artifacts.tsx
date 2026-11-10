@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Artifact, ArtifactVersion } from "../server/r3/shared/artifacts.ts";
+import type { Artifact, ArtifactVersion } from "../shared/artifacts.ts";
 import type { Page } from "../shared/contracts.ts";
 import { call } from "./api.ts";
 import { ContextLink } from "./context.tsx";

@@ -2,14 +2,14 @@ import "./theme.ts";
 import { QueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { ArtifactDetail } from "../server/r3/shared/artifacts.ts";
-import { api, loadBoot } from "../server/r3/web/src/api.ts";
-import { artifactApi } from "../server/r3/web/src/artifact-api.ts";
-import { ArtifactPage } from "../server/r3/web/src/artifact-page.tsx";
-import { ArtifactPreview } from "../server/r3/web/src/components/ArtifactPreview.tsx";
-import { WorkspaceHeader } from "../server/r3/web/src/components/WorkspaceHeader.tsx";
-import { useDarkTheme } from "../server/r3/web/src/hooks.ts";
 import type { ArtifactDelivery } from "../shared/artifact-delivery.ts";
+import type { ArtifactDetail } from "../shared/artifacts.ts";
+import { api, loadBoot } from "./artifact/api.ts";
+import { artifactApi } from "./artifact/artifact-api.ts";
+import { ArtifactPage } from "./artifact/artifact-page.tsx";
+import { ArtifactPreview } from "./artifact/components/ArtifactPreview.tsx";
+import { WorkspaceHeader } from "./artifact/components/WorkspaceHeader.tsx";
+import { useDarkTheme } from "./theme.ts";
 
 const data = { ...artifactApi, themeStyle: api.themeStyle };
 function Workspace() {

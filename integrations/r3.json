@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/hyperlogue/r3",
+  "baseline": "6178bc60f7413e3753b2284f376eae6ff5289df3",
+  "bootstrap": {
+    "commit": "6178bc60f7413e3753b2284f376eae6ff5289df3",
+    "sourceManifest": "third-party/r3-source.json",
+    "acceptanceTests": ["tests/artifacts.test.ts"]
+  },
+  "integrations": []
+}

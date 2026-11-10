@@ -1,19 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { type Context, Hono } from "hono";
-import { AppError, can, type Operation, type Principal } from "../shared/contracts.ts";
-import type { Auth } from "./auth.ts";
-import { artifactJson, artifactJsonResponse } from "./r3/server/artifact-http.ts";
-import { artifactResourceResponse } from "./r3/server/artifact-resources.ts";
-import { parseArtifactSearch } from "./r3/server/artifact-search.ts";
-import { artifactSourceResponse } from "./r3/server/artifact-source.ts";
+import { buildArtifactPrompt, commentAttachments } from "../shared/artifact-prompt.ts";
 import {
   ArtifactError,
   requireArtifactPath,
   requireSequence,
-} from "./r3/server/artifact-validation.ts";
-import { listThemes, themeStyle } from "./r3/server/highlight.ts";
-import { renderStoredPatch, storedPatchContext } from "./r3/server/patch-content.ts";
-import { buildArtifactPrompt, commentAttachments } from "./r3/shared/artifact-prompt.ts";
+} from "../shared/artifact-validation.ts";
+import { AppError, can, type Operation, type Principal } from "../shared/contracts.ts";
+import { artifactJson, artifactJsonResponse } from "./artifact-http.ts";
+import { artifactResourceResponse } from "./artifact-resources.ts";
+import { parseArtifactSearch } from "./artifact-search.ts";
+import { artifactSourceResponse } from "./artifact-source.ts";
+import type { Auth } from "./auth.ts";
+import { listThemes, themeStyle } from "./highlight.ts";
+import { renderStoredPatch, storedPatchContext } from "./patch-content.ts";
 import type { Workspace } from "./workspace.ts";
 
 type Input = Record<string, unknown>;

@@ -37,3 +37,7 @@ export function setTheme(theme: Theme) {
     return false;
   }
 }
+
+export function useDarkTheme() {
+  return useTheme() === "dark";
+}

@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import schema from "./r3/schema.json";
+import schema from "./artifact-schema.json";
 export function migrateArtifacts(db: Database) {
   db.transaction(() => {
     for (const statement of schema) db.exec(statement);

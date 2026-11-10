@@ -1,0 +1,1051 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { ArtifactApiError } from "../../../shared/artifact-client.ts";
+import {
+  type ArtifactFile,
+  type ArtifactPreviewContext,
+  type ArtifactPreviewNetwork,
+  artifactMediaKind,
+  MAX_RENDERED_HEIGHT,
+} from "../../../shared/artifacts.ts";
+import type {
+  PreviewCaptureState,
+  PreviewDevicePermissions,
+  PreviewDisplay,
+  PreviewTheme,
+} from "../../../shared/preview-protocol.ts";
+import { useDarkTheme } from "../../theme.ts";
+import { artifactApi } from "../artifact-api.ts";
+import type { ArtifactRenderedPaneProps } from "../artifact-page.tsx";
+import { t, useLocale } from "../i18n.ts";
+import { keysSuspended } from "../keys.ts";
+import { markdownCache } from "../markdown-cache.ts";
+import { previewBridgeCall, previewLocator, previewSelectionPosition } from "../preview-bridge.ts";
+import { PreviewCapture } from "../preview-capture.ts";
+import { previewLabels } from "../preview-labels.ts";
+import {
+  type PreviewVerification,
+  previewCompatibility,
+  useCompatibilityConsent,
+} from "../preview-protection.ts";
+import { previewSessions } from "../preview-sessions.ts";
+import { previewThemePreference } from "../preview-theme.ts";
+import { observePreviewViewport, scrollPreviewQuote } from "../preview-viewport.ts";
+import { isReadingPosition, readingKey, readingPositions } from "../reading-position.ts";
+import { Button, cn } from "../ui.tsx";
+import { ArtifactLoading } from "./ArtifactLoading.tsx";
+import { ArtifactPreviewCompatibilityConsent } from "./ArtifactPreviewCompatibilityConsent.tsx";
+import { ArtifactPreviewNetworkControl } from "./ArtifactPreviewNetworkControl.tsx";
+import { ArtifactPreviewSecuritySource } from "./ArtifactPreviewSecurity.tsx";
+import { Notification } from "./Notifications.tsx";
+import { PassiveMarkdown } from "./PassiveMarkdown.tsx";
+import { PreviewScreenshot } from "./PreviewScreenshot.tsx";
+
+const NO_DEVICES: PreviewDevicePermissions = { camera: false, microphone: false };
+
+function forgetDeniedMarkdown(error: unknown, artifactId?: string) {
+  if (!(error instanceof ArtifactApiError)) return;
+  if (error.status === 401 || error.status === 403) void markdownCache.suspend();
+  else if (artifactId && (error.status === 404 || error.status === 410))
+    void markdownCache.forget(artifactId);
+}
+
+export function ArtifactPreview(props: ArtifactRenderedPaneProps) {
+  // External resources and devices belong to this version visit. Compatibility
+  // acknowledgment belongs to the browser and survives version visits.
+  return <VersionPreview key={`${props.detail.id}:${props.version.seq}`} {...props} />;
+}
+
+function VersionPreview(props: ArtifactRenderedPaneProps) {
+  const [attempt, retry] = useState(0);
+  const compatibilityAccepted = useCompatibilityConsent();
+  const [external, setExternal] = useState(false);
+  const network: ArtifactPreviewNetwork = external
+    ? "external"
+    : compatibilityAccepted
+      ? "compatible"
+      : "blocked";
+  const currentNetwork = useRef(network);
+  currentNetwork.current = network;
+  const [checked, setChecked] = useState<{
+    network: ArtifactPreviewNetwork;
+    state: PreviewVerification;
+  } | null>(null);
+  const verification = checked?.network === network ? checked.state : "checking";
+  const setVerification = useCallback(
+    (state: PreviewVerification) => {
+      setChecked({ network, state });
+      if (state === "error") props.onLocated?.("unplaced");
+    },
+    [network, props.onLocated],
+  );
+  const [compatibilityRequired, setCompatibilityRequired] = useState(false);
+  const [confirmCompatibility, setConfirmCompatibility] = useState(false);
+  const [warningOwner] = useState(() => ({}));
+  const previousConsent = useRef(compatibilityAccepted);
+  useEffect(() => () => previewCompatibility.closeWarning(warningOwner), [warningOwner]);
+  const closeCompatibilityWarning = () => {
+    previewCompatibility.closeWarning(warningOwner);
+    setConfirmCompatibility(false);
+  };
+  const [devices, setDevices] = useState(NO_DEVICES);
+  const [deviceEpoch, setDeviceEpoch] = useState(0);
+  const [captureState, setCaptureState] = useState<PreviewCaptureState>({
+    phase: "idle",
+    ...NO_DEVICES,
+  });
+  const [capture] = useState(
+    () =>
+      new PreviewCapture({
+        onState: setCaptureState,
+        onRevoked: () => {
+          setDevices(NO_DEVICES);
+          setDeviceEpoch((epoch) => epoch + 1);
+        },
+      }),
+  );
+  useEffect(() => {
+    const close = () => capture.close();
+    window.addEventListener("pagehide", close);
+    return () => {
+      window.removeEventListener("pagehide", close);
+      close();
+    };
+  }, [capture]);
+  const resetDevices = () => {
+    capture.revoke();
+    setDevices(NO_DEVICES);
+    setDeviceEpoch((epoch) => epoch + 1);
+  };
+  const changeNetwork = (nextNetwork: ArtifactPreviewNetwork, nextDevices = NO_DEVICES) => {
+    capture.revoke();
+    if (network === "external" && nextNetwork === "external") capture.allow(nextDevices);
+    setDevices(nextNetwork === "external" ? nextDevices : NO_DEVICES);
+    if (network !== nextNetwork) setVerification("checking");
+    setCompatibilityRequired(false);
+    closeCompatibilityWarning();
+    setExternal(nextNetwork === "external");
+  };
+  useEffect(() => {
+    if (previousConsent.current && !compatibilityAccepted) previewCompatibility.suppressWarning();
+    previousConsent.current = compatibilityAccepted;
+    if (compatibilityAccepted) {
+      setConfirmCompatibility(false);
+      previewCompatibility.closeWarning(warningOwner);
+      setCompatibilityRequired(false);
+    }
+  }, [compatibilityAccepted, warningOwner]);
+  const files = useQuery({
+    queryKey: ["artifact-files", props.detail.id, props.version.seq],
+    queryFn: () => artifactApi.files(props.detail.id, props.version.seq),
+    staleTime: Infinity,
+  });
+  const file = files.data?.find((file) => file.path === props.path);
+  const media = !!file && !!artifactMediaKind(file.mediaType);
+  return (
+    <div className="flex min-h-0 flex-1 flex-col" data-artifact-preview>
+      <ArtifactPreviewSecuritySource
+        path={props.previewLabel ?? props.path}
+        network={network}
+        verification={verification}
+        devices={devices}
+        capture={captureState}
+      >
+        <ArtifactPreviewNetworkControl
+          key={deviceEpoch}
+          network={network}
+          verification={verification}
+          html={props.detail.kind === "html"}
+          compatibilityAccepted={compatibilityAccepted}
+          onForgetCompatibility={previewCompatibility.forget}
+          devices={devices}
+          capture={captureState}
+          onStopSharing={resetDevices}
+          onChange={changeNetwork}
+        />
+      </ArtifactPreviewSecuritySource>
+      {confirmCompatibility && (
+        <ArtifactPreviewCompatibilityConsent
+          onCancel={closeCompatibilityWarning}
+          onContinue={() => {
+            previewCompatibility.accept();
+            changeNetwork("compatible");
+          }}
+        />
+      )}
+      <PreviewSession
+        key={`${media ? props.path : "document"}:${network}:${attempt}`}
+        {...props}
+        network={network}
+        retainContext={() => currentNetwork.current === network}
+        devices={devices}
+        capture={capture}
+        capturing={captureState.phase === "requesting" || captureState.phase === "sharing"}
+        onDevicesReset={resetDevices}
+        onVerification={setVerification}
+        onNetworkUnsupported={() => {
+          if (previewCompatibility.accepted()) {
+            changeNetwork("compatible");
+          } else {
+            setCompatibilityRequired(true);
+            if (previewCompatibility.requestWarning(warningOwner)) {
+              setConfirmCompatibility(true);
+            }
+          }
+        }}
+        onReviewCompatibility={
+          compatibilityRequired
+            ? () => {
+                if (previewCompatibility.requestWarning(warningOwner, true))
+                  setConfirmCompatibility(true);
+              }
+            : undefined
+        }
+        paths={files.data?.map((file) => file.path) ?? []}
+        documentPaths={
+          files.data
+            ?.filter((file) => file.renderedHash || file.mediaType.split(";")[0] === "text/html")
+            .map((file) => file.path) ?? []
+        }
+        fittedPaths={
+          files.data
+            ?.filter((file) => file.renderedHash || artifactMediaKind(file.mediaType) === "video")
+            .map((file) => file.path) ?? []
+        }
+        markdownFiles={files.data?.filter((file) => file.renderedHash) ?? []}
+        onRetry={() => {
+          setVerification("checking");
+          setCompatibilityRequired(false);
+          retry((value) => value + 1);
+        }}
+      />
+    </div>
+  );
+}
+
+function PreviewSession(
+  props: ArtifactRenderedPaneProps & {
+    paths: string[];
+    documentPaths: string[];
+    fittedPaths: string[];
+    markdownFiles: ArtifactFile[];
+    network: ArtifactPreviewNetwork;
+    devices: PreviewDevicePermissions;
+    capture: PreviewCapture;
+    capturing: boolean;
+    onDevicesReset: () => void;
+    onVerification: (state: PreviewVerification) => void;
+    onNetworkUnsupported: () => void;
+    retainContext: () => boolean;
+    onReviewCompatibility?: () => void;
+    onRetry: () => void;
+  },
+) {
+  const locale = useLocale();
+  const qc = useQueryClient();
+  const dark = useDarkTheme();
+  const theme = useRef<PreviewTheme>(dark ? "dark" : "light");
+  theme.current = dark ? "dark" : "light";
+  const [initialPath] = useState(props.path);
+  const [context, setContext] = useState<ArtifactPreviewContext | null>(null);
+  const [src, setSrc] = useState("");
+  const [documentEpoch, resetDocument] = useState(0);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [ready, setReady] = useState(false);
+  const [documentHeight, setDocumentHeight] = useState<{ path: string; height: number } | null>(
+    null,
+  );
+  const fittedPath = useRef<string | null>(null);
+  const iframe = useRef<HTMLIFrameElement>(null);
+  const currentPath = useRef(initialPath);
+  // Admission comes from the gate or the owner's remembered compatibility
+  // choice. The document bridge still validates its frame, opaque origin/path.
+  const admitted = useRef(false);
+  const connection = useRef<MessagePort | null>(null);
+  const checkDocument = useRef(() => {});
+  const current = useRef(props);
+  current.current = props;
+  const id = props.detail.id;
+  const seq = props.version.seq;
+  const network = props.network;
+  const [screenshotRoute, setScreenshotRoute] = useState("#");
+  const capture = props.capture;
+  useEffect(() => {
+    if (!context || !ready) return;
+    const dismiss = () =>
+      connection.current?.postMessage({
+        contextId: context.id,
+        type: "r3-preview-dismiss-locate",
+      });
+    // Preview events do not bubble through the opaque frame. The runtime owns
+    // its input; this listener handles returning to the workspace or scrolling
+    // the outer Markdown pane. Comparison highlighting remains explicit.
+    const events = ["pointerdown", "wheel", "keydown"] as const;
+    for (const event of events)
+      window.addEventListener(event, dismiss, { capture: true, passive: true });
+    return () => {
+      for (const event of events) window.removeEventListener(event, dismiss, true);
+    };
+  }, [context, ready]);
+  const markdown = props.markdownFiles.find((file) => file.path === props.path);
+  const renderedHash = markdown?.renderedHash;
+  const rendererRevision = markdown?.rendererRevision ?? "unknown";
+  const cacheKey = JSON.stringify([id, seq, props.path, renderedHash, rendererRevision]);
+  const [cached, setCached] = useState<{ key: string; html: string; height?: number } | null>(null);
+  const cachedDocument = cached?.key === cacheKey ? cached : null;
+  useEffect(() => {
+    if (!renderedHash) return;
+    let closed = false;
+    const unsubscribe = markdownCache.subscribe((artifactId) => {
+      if (artifactId === null || artifactId === id) {
+        closed = true;
+        setCached(null);
+      }
+    });
+    void markdownCache
+      .read({ artifactId: id, versionSeq: seq, path: props.path, renderedHash, rendererRevision })
+      .then((html) => {
+        if (!closed && html !== null) setCached({ key: cacheKey, html });
+      });
+    return () => {
+      closed = true;
+      unsubscribe();
+    };
+  }, [id, seq, props.path, renderedHash, rendererRevision, cacheKey]);
+
+  useEffect(() => {
+    let closed = false;
+    let grant: ArtifactPreviewContext | null = null;
+    let renewing = false;
+    let timer: ReturnType<typeof setInterval>;
+    setContext(null);
+    setSrc("");
+    setError("");
+    setNotice("");
+    setReady(false);
+    setDocumentHeight(null);
+    current.current.onVerification("checking");
+    admitted.current = false;
+    const renew = async () => {
+      if (!grant || closed || renewing) return;
+      renewing = true;
+      try {
+        grant = await artifactApi.renewPreview(grant.id);
+      } catch (error) {
+        if (closed) return;
+        // A missing context can mean expiry or restart, not artifact deletion.
+        forgetDeniedMarkdown(error);
+        capture.close();
+        current.current.onDevicesReset();
+        if (error instanceof ArtifactApiError && error.status === 404) {
+          // Remount through normal setup so the current document gets a fresh
+          // context and repeats admission before connecting its new bridge.
+          closed = true;
+          clearInterval(timer);
+          current.current.onRetry();
+          return;
+        }
+        current.current.onVerification("error");
+        setError(error instanceof Error ? error.message : t("preview.previewExpired"));
+        setSrc("");
+      } finally {
+        renewing = false;
+      }
+    };
+    void previewSessions
+      .acquire(id, seq, initialPath, network)
+      .then((value) => {
+        grant = value;
+        if (closed) {
+          previewSessions.release(value, current.current.retainContext());
+          return;
+        }
+        if (network === "compatible") {
+          if (!previewCompatibility.accepted() || !isSecureContext) {
+            previewSessions.release(value, false);
+            grant = null;
+            throw new Error(t("preview.previewCompatibilityIsUnavailableRetryToVerify"));
+          }
+          admitted.current = true;
+        }
+        setContext(value);
+        setSrc(network === "compatible" ? value.documentUrl : value.gateUrl);
+        timer = setInterval(() => {
+          void renew();
+        }, 10 * 60_000);
+      })
+      .catch((error) => {
+        forgetDeniedMarkdown(error, id);
+        if (!closed) {
+          current.current.onVerification("error");
+          setError(error instanceof Error ? error.message : t("preview.previewUnavailable"));
+        }
+      });
+    const resume = () => {
+      if (document.visibilityState === "visible") void renew();
+    };
+    document.addEventListener("visibilitychange", resume);
+    return () => {
+      closed = true;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", resume);
+      if (grant) previewSessions.release(grant, current.current.retainContext());
+    };
+  }, [id, seq, initialPath, network, capture]);
+
+  useEffect(() => {
+    if (!context) return;
+    let closed = false;
+    let pending = 0;
+    let connected = false;
+    let check: { nonce: string; timer: ReturnType<typeof setTimeout> } | null = null;
+    const clearCheck = () => {
+      if (check) clearTimeout(check.timer);
+      check = null;
+    };
+    checkDocument.current = () => {
+      const { capturing, devices } = current.current;
+      if (!capturing && !devices.camera && !devices.microphone) return;
+      if (check) return;
+      const port = connection.current;
+      if (!port) {
+        if (connected) current.current.onDevicesReset();
+        return;
+      }
+      const nonce = crypto.randomUUID();
+      check = {
+        nonce,
+        timer: setTimeout(() => {
+          if (connection.current !== port) return;
+          capture.close();
+          current.current.onDevicesReset();
+          current.current.onVerification("error");
+          port.close();
+          connection.current = null;
+          setError(t("preview.previewStoppedRespondingRetryToReconnect"));
+          setSrc("");
+        }, 1000),
+      };
+      // Only the currently displayed document receives the challenge. Its
+      // response must return on the already-bound port before consent survives.
+      iframe.current?.contentWindow?.postMessage({ type: "r3-preview-document-check", nonce }, "*");
+    };
+    const seen = new Set<string>();
+    const send = (value: Record<string, unknown>) =>
+      connection.current?.postMessage({ contextId: context.id, ...value });
+    const display = () => {
+      const props = current.current;
+      const fitContent =
+        props.detail.kind === "files" && props.fittedPaths.includes(currentPath.current);
+      const value: PreviewDisplay = {
+        labels: previewLabels(),
+        theme: theme.current,
+        noteHasText: props.noteHasText,
+        composerVisible: props.composerVisible,
+        fitContent,
+        filePaths: props.detail.kind === "files" ? props.documentPaths : undefined,
+        navigation:
+          props.path === currentPath.current && (!fitContent || fittedPath.current === props.path)
+            ? props.navigation
+            : null,
+        highlightLocated: props.highlightLocated,
+        replaceLocateRoute: props.independentReading,
+        commenting:
+          props.active !== false && props.commenting && context.presentation === "document",
+        targets: props.targets.flatMap(({ threadId, target }) =>
+          target.kind === "rendered" &&
+          target.versionSeq === seq &&
+          target.path === currentPath.current
+            ? [{ threadId, locator: target.locator }]
+            : [],
+        ),
+        jump:
+          props.path === currentPath.current && (!fitContent || fittedPath.current === props.path)
+            ? props.jump
+            : null,
+      };
+      send({ type: "r3-preview-display", display: value });
+    };
+    const listener = (event: MessageEvent) => {
+      if (event.source !== iframe.current?.contentWindow || event.origin !== "null") return;
+      const message = event.data;
+      if (!message || typeof message !== "object" || message.contextId !== context.id) return;
+      if (message.type === "r3-preview-gate") {
+        // After the trusted gate finishes, publisher code knows the context id.
+        // It must never forge a failure to downgrade policy or solicit consent.
+        if (admitted.current) return;
+        if (message.state === "ready" && !admitted.current) {
+          admitted.current = true;
+          current.current.onVerification("ready");
+          setReady(false);
+          setSrc(context.documentUrl);
+        } else if (message.state === "unsupported" || message.state === "error") {
+          capture.close();
+          current.current.onDevicesReset();
+          current.current.onVerification("error");
+          setError(
+            typeof message.message === "string"
+              ? message.message.slice(0, 2048)
+              : t("preview.previewVerificationFailed"),
+          );
+          if (
+            message.state === "unsupported" &&
+            message.reason === "network" &&
+            network === "blocked"
+          )
+            current.current.onNetworkUnsupported();
+        }
+        return;
+      }
+      if (message.type !== "r3-preview-connect" || event.ports.length !== 1) return;
+      if (
+        !admitted.current ||
+        typeof message.path !== "string" ||
+        !current.current.paths.includes(message.path)
+      )
+        return;
+      if (network === "compatible") current.current.onVerification("ready");
+      clearCheck();
+      connection.current?.close();
+      const port = event.ports[0];
+      connection.current = port;
+      fittedPath.current = null;
+      setDocumentHeight(null);
+      const path = message.path;
+      let documentOpened = false;
+      let markdownRequested = false;
+      const independentScroll = () =>
+        !current.current.independentReading &&
+        context.presentation === "document" &&
+        !(current.current.detail.kind === "files" && current.current.fittedPaths.includes(path));
+      const scrollKey = (route: unknown) =>
+        typeof route === "string" && route.length <= 4096 && /^[?#]/.test(route)
+          ? readingKey(id, seq, path, `rendered:${route}`)
+          : null;
+      const initiallyAllowed =
+        !connected &&
+        network === "external" &&
+        context.network === "external" &&
+        current.current.detail.kind === "html";
+      if (connected) current.current.onDevicesReset();
+      connected = true;
+      const receiveCapture = capture.bind(
+        (value) => port.postMessage({ contextId: context.id, ...value }),
+        initiallyAllowed ? current.current.devices : NO_DEVICES,
+      );
+      port.onmessage = (event) => {
+        if (closed || connection.current !== port) return;
+        const message = event.data;
+        if (!message || message.contextId !== context.id || message.path !== path) return;
+        const comment = (value: Record<string, unknown>) =>
+          port.postMessage({ contextId: context.id, ...value });
+        if (message.type === "r3-preview-markdown-needed") {
+          const file = current.current.markdownFiles.find((file) => file.path === path);
+          if (!file?.renderedHash || markdownRequested) return;
+          markdownRequested = true;
+          void markdownCache
+            .load(
+              {
+                artifactId: id,
+                versionSeq: seq,
+                path,
+                renderedHash: file.renderedHash,
+                rendererRevision: file.rendererRevision ?? "unknown",
+              },
+              async () => {
+                const url = new URL("../r3/markdown", context.resourceRoot);
+                url.searchParams.set("path", path);
+                const response = await fetch(url, {
+                  credentials: "omit",
+                  redirect: "error",
+                  referrerPolicy: "no-referrer",
+                  cache: "no-store",
+                });
+                if (!response.ok)
+                  throw new Error(t("preview.renderedMarkdownIsUnavailableRetryToReconnect"));
+                return response.text();
+              },
+            )
+            .then((html) => {
+              if (!closed && connection.current === port)
+                comment({ type: "r3-preview-markdown", html });
+            })
+            .catch((error) => {
+              if (!closed && connection.current === port) {
+                current.current.onVerification("error");
+                setError(
+                  error instanceof Error
+                    ? error.message
+                    : t("preview.renderedMarkdownIsUnavailable"),
+                );
+                setSrc("");
+              }
+            });
+        } else if (message.type === "r3-preview-document-checked") {
+          if (message.nonce === check?.nonce) clearCheck();
+        } else if (message.type === "r3-preview-capture") {
+          receiveCapture(message);
+        } else if (message.type === "r3-preview-disconnect") {
+          clearCheck();
+          capture.close();
+          current.current.onDevicesReset();
+          port.close();
+          connection.current = null;
+        } else if (message.type === "r3-preview-navigate") {
+          if (
+            current.current.detail.kind === "files" &&
+            typeof message.targetPath === "string" &&
+            current.current.documentPaths.includes(message.targetPath) &&
+            typeof message.route === "string" &&
+            message.route.length <= 4096 &&
+            /^[?#]/.test(message.route)
+          )
+            current.current.onDocument(message.targetPath, message.route);
+        } else if (message.type === "r3-preview-document") {
+          const route =
+            typeof message.route === "string" &&
+            message.route.length <= 4096 &&
+            /^[?#]/.test(message.route)
+              ? message.route
+              : "#";
+          if (current.current.detail.kind === "files" && path !== current.current.path) {
+            // Script/native replacement can bypass the ordinary link handoff.
+            // Recreate the source frame even when React's src value is unchanged.
+            current.current.onDocument(path, route);
+            capture.close();
+            current.current.onDevicesReset();
+            port.close();
+            connection.current = null;
+            currentPath.current = current.current.path;
+            setReady(false);
+            setDocumentHeight(null);
+            setSrc(
+              `${context.resourceRoot}${current.current.path.split("/").map(encodeURIComponent).join("/")}`,
+            );
+            resetDocument((epoch) => epoch + 1);
+            return;
+          }
+          setScreenshotRoute(route);
+          currentPath.current = message.path;
+          current.current.onDocument(message.path, route);
+          setReady(true);
+          setNotice("");
+          display();
+          const key = scrollKey(message.route);
+          // Native fragments and Locate take precedence. Subsequent document
+          // announcements on this port are hash navigation, not a reopening.
+          if (
+            !documentOpened &&
+            independentScroll() &&
+            !current.current.jump &&
+            key &&
+            (message.route === "#" || !message.route.includes("#"))
+          ) {
+            const point = readingPositions.get(key);
+            if (point) comment({ type: "r3-preview-restore-scroll", route: message.route, point });
+          }
+          documentOpened = true;
+        } else if (message.type === "r3-preview-scroll") {
+          const key = scrollKey(message.route);
+          if (independentScroll() && key && isReadingPosition(message.point))
+            readingPositions.set(key, message.point);
+        } else if (message.type === "r3-preview-height") {
+          // Only the verified current port and an approved Markdown/video member
+          // may size a file card. Authored HTML keeps its own viewport.
+          if (
+            current.current.detail.kind === "files" &&
+            current.current.fittedPaths.includes(path) &&
+            typeof message.height === "number" &&
+            Number.isFinite(message.height) &&
+            message.height > 0 &&
+            message.height <= MAX_RENDERED_HEIGHT
+          )
+            setDocumentHeight({ path, height: Math.ceil(message.height) });
+        } else if (message.type === "r3-preview-toggle-commenting") {
+          if (
+            context.presentation === "document" &&
+            current.current.active !== false &&
+            document.activeElement === iframe.current &&
+            !keysSuspended()
+          )
+            current.current.onToggleCommenting?.();
+        } else if (message.type === "r3-preview-composer-key") {
+          if (
+            context.presentation === "document" &&
+            current.current.active !== false &&
+            document.activeElement === iframe.current &&
+            !keysSuspended() &&
+            (message.action === "focus" || message.action === "escape")
+          )
+            current.current.onComposerKey?.(message.action);
+        } else if (message.type === "r3-preview-selection") {
+          if (
+            context.presentation !== "document" ||
+            current.current.active === false ||
+            document.activeElement !== iframe.current ||
+            keysSuspended() ||
+            !iframe.current
+          )
+            return;
+          try {
+            const locator = previewLocator(message.locator);
+            if (!locator?.quote?.trim() || typeof message.quote !== "boolean") return;
+            const frame = iframe.current.getBoundingClientRect();
+            const pane =
+              iframe.current.closest("[data-artifact-content]")?.getBoundingClientRect() ?? frame;
+            const rect = previewSelectionPosition(message.rect, frame, {
+              top: Math.max(0, frame.top, pane.top),
+              right: Math.min(innerWidth, frame.right, pane.right),
+              bottom: Math.min(innerHeight, frame.bottom, pane.bottom),
+              left: Math.max(0, frame.left, pane.left),
+            });
+            current.current.onSelection?.(
+              { kind: "rendered", versionSeq: seq, path, locator },
+              rect,
+              message.quote,
+            );
+          } catch (error) {
+            setNotice(
+              error instanceof Error ? error.message : t("preview.unableToCaptureThisSelection"),
+            );
+          }
+        } else if (message.type === "r3-preview-target") {
+          if (
+            current.current.active === false ||
+            !current.current.commenting ||
+            context.presentation !== "document" ||
+            document.activeElement !== iframe.current ||
+            keysSuspended()
+          )
+            return;
+          try {
+            const locator = previewLocator(message.locator);
+            current.current.onTarget({
+              kind: "rendered",
+              versionSeq: seq,
+              path: message.path,
+              locator,
+            });
+          } catch (error) {
+            setNotice(
+              error instanceof Error ? error.message : t("preview.unableToCaptureThisElement"),
+            );
+          }
+        } else if (message.type === "r3-preview-threads") {
+          if (
+            current.current.active !== false &&
+            current.current.detail.threads.some((threads) => threads.id === message.threadId)
+          )
+            current.current.onThread(message.threadId);
+        } else if (
+          message.type === "r3-preview-located" &&
+          message.nonce === current.current.jump?.nonce
+        ) {
+          if (
+            message.state === "anchored" &&
+            iframe.current &&
+            current.current.detail.kind === "files" &&
+            current.current.fittedPaths.includes(currentPath.current)
+          )
+            scrollPreviewQuote(iframe.current, message.rect);
+          if (["anchored", "ancestor", "ambiguous", "unplaced"].includes(message.state))
+            current.current.onLocated?.(message.state, message.nonce);
+          setNotice(
+            message.state === "ambiguous"
+              ? t("common.thisTargetMatchesMoreThanOnePlace")
+              : message.state === "ancestor"
+                ? t("common.showingContextForUnavailableTarget")
+                : message.state === "unplaced"
+                  ? t("common.thisTargetIsUnavailableInTheCurrent")
+                  : "",
+          );
+        } else if (
+          message.type === "r3-preview-call" &&
+          typeof message.id === "string" &&
+          message.id.length <= 128 &&
+          typeof message.method === "string"
+        ) {
+          if (seen.has(message.id)) return;
+          if (pending >= 32) {
+            send({
+              type: "r3-preview-result",
+              id: message.id,
+              error: t("preview.tooManyPendingR3Requests"),
+            });
+            return;
+          }
+          seen.add(message.id);
+          if (seen.size > 512) seen.delete(seen.values().next().value!);
+          pending++;
+          const props = current.current;
+          void previewBridgeCall(
+            message.method,
+            message.input,
+            {
+              artifactId: id,
+              versionSeq: seq,
+              path: message.path,
+              resourceRoot: context.resourceRoot,
+              representation: context.presentation === "media" ? "source" : "rendered",
+              state: props.detail.state,
+            },
+            props.detail,
+            artifactApi,
+            props.active !== false && navigator.userActivation?.isActive === true,
+            previewThemePreference(() => localStorage, id),
+          )
+            .then((value) => {
+              if (!closed) comment({ type: "r3-preview-result", id: message.id, value });
+              if (["createThread", "comment", "submit"].includes(message.method))
+                void qc.invalidateQueries({ queryKey: ["artifact", id] });
+            })
+            .catch((error) => {
+              if (!closed)
+                comment({
+                  type: "r3-preview-result",
+                  id: message.id,
+                  error: error instanceof Error ? error.message : "r3 request failed",
+                });
+            })
+            .finally(() => {
+              pending--;
+            });
+        }
+      };
+    };
+    window.addEventListener("message", listener);
+    return () => {
+      closed = true;
+      clearCheck();
+      checkDocument.current = () => {};
+      connection.current?.close();
+      connection.current = null;
+      capture.close();
+      window.removeEventListener("message", listener);
+    };
+  }, [context, id, seq, qc, capture, network]);
+
+  useEffect(() => {
+    if (!context || !admitted.current || !ready || props.path === currentPath.current) return;
+    currentPath.current = props.path;
+    capture.revoke();
+    current.current.onDevicesReset();
+    setReady(false);
+    setNotice("");
+    setSrc(
+      context.presentation === "media"
+        ? context.documentUrl
+        : `${context.resourceRoot}${props.path.split("/").map(encodeURIComponent).join("/")}`,
+    );
+  }, [context, props.path, ready, capture]);
+
+  useEffect(() => {
+    if (!props.capturing) return;
+    // Covers a replacement whose load never finishes and an unresponsive page.
+    const timer = setInterval(() => checkDocument.current(), 2000);
+    return () => clearInterval(timer);
+  }, [props.capturing]);
+
+  // Notify utility subscribers on thread/lifecycle changes as well as display changes.
+  useEffect(() => {
+    if (!context || !ready) return;
+    const send = (value: Record<string, unknown>) =>
+      connection.current?.postMessage({ contextId: context.id, ...value });
+    const display: PreviewDisplay = {
+      labels: previewLabels(locale),
+      theme: dark ? "dark" : "light",
+      noteHasText: props.noteHasText,
+      composerVisible: props.composerVisible,
+      fitContent: props.detail.kind === "files" && props.fittedPaths.includes(props.path),
+      filePaths: props.detail.kind === "files" ? props.documentPaths : undefined,
+      navigation:
+        props.detail.kind !== "files" ||
+        !props.fittedPaths.includes(props.path) ||
+        documentHeight?.path === props.path
+          ? props.navigation
+          : null,
+      highlightLocated: props.highlightLocated,
+      replaceLocateRoute: props.independentReading,
+      commenting: props.active !== false && props.commenting && context.presentation === "document",
+      targets: props.targets.flatMap(({ threadId, target }) =>
+        target.kind === "rendered" && target.versionSeq === seq && target.path === props.path
+          ? [{ threadId, locator: target.locator }]
+          : [],
+      ),
+      jump:
+        props.detail.kind !== "files" ||
+        !props.fittedPaths.includes(props.path) ||
+        documentHeight?.path === props.path
+          ? props.jump
+          : null,
+    };
+    send({ type: "r3-preview-display", display });
+    send({ type: "r3-preview-changed" });
+  }, [
+    locale,
+    context,
+    ready,
+    seq,
+    props.active,
+    props.highlightLocated,
+    props.independentReading,
+    props.commenting,
+    props.noteHasText,
+    props.composerVisible,
+    props.targets,
+    props.jump,
+    props.navigation,
+    props.path,
+    props.detail,
+    props.fittedPaths,
+    props.documentPaths,
+    documentHeight,
+    dark,
+  ]);
+
+  const height =
+    documentHeight?.path === props.path && props.fittedPaths.includes(props.path)
+      ? documentHeight.height
+      : undefined;
+  // Entry-point setup can overlap the manifest. Publisher bytes always wait
+  // for membership; an acknowledged preview waits without loading a gate.
+  const frameSrc =
+    context && src === context.documentUrl && !props.paths.includes(initialPath)
+      ? network === "compatible"
+        ? ""
+        : context.gateUrl
+      : src;
+  const fitMarkdown = props.detail.kind === "files" && !!renderedHash;
+  const reading = !error && !!cachedDocument && (!ready || (fitMarkdown && height === undefined));
+  const visibleHeight = height ?? (fitMarkdown ? cachedDocument?.height : undefined);
+
+  // A cold Markdown Locate must wait until the frame has its measured height;
+  // scrolling its provisional viewport would be lost as that viewport grows.
+  useLayoutEffect(() => {
+    fittedPath.current = height === undefined ? null : (documentHeight?.path ?? null);
+  }, [height, documentHeight]);
+
+  useEffect(() => {
+    if (!context || !ready || !iframe.current) return;
+    return observePreviewViewport(iframe.current, (viewport) => {
+      connection.current?.postMessage({
+        type: "r3-preview-viewport",
+        contextId: context.id,
+        viewport,
+      });
+    });
+  }, [context, ready]);
+
+  return (
+    <div
+      aria-busy={
+        !error &&
+        !(reading && cachedDocument?.height !== undefined) &&
+        (!ready ||
+          (props.detail.kind === "files" &&
+            props.fittedPaths.includes(props.path) &&
+            height === undefined))
+      }
+      className={cn(
+        "relative flex flex-col bg-white dark:bg-neutral-950",
+        visibleHeight === undefined && "flex-1",
+        visibleHeight === undefined &&
+          (props.detail.kind === "files" && props.fittedPaths.includes(props.path)
+            ? "min-h-dvh"
+            : props.independentReading
+              ? "min-h-0"
+              : "min-h-80"),
+      )}
+    >
+      {ready &&
+        !error &&
+        props.detail.kind === "html" &&
+        props.captureContainer &&
+        createPortal(
+          <PreviewScreenshot
+            key={`${context?.id}:${documentEpoch}:${props.path}:${screenshotRoute}`}
+            artifactId={id}
+            versionSeq={seq}
+            path={props.path}
+            route={screenshotRoute}
+            frame={iframe}
+            onTarget={props.onTarget}
+          />,
+          props.captureContainer,
+        )}
+      {error ? (
+        <div role="alert" className="p-6 text-sm text-neutral-700 dark:text-neutral-300">
+          <p>{error}</p>
+          <Button className="mt-3" onClick={props.onRetry}>
+            {t("preview.retryPreview")}
+          </Button>
+          {props.onReviewCompatibility && (
+            <Button className="ml-2 mt-3" onClick={props.onReviewCompatibility}>
+              {t("preview.reviewBrowserRisk")}
+            </Button>
+          )}
+        </div>
+      ) : !ready && !reading ? (
+        <ArtifactLoading className="absolute inset-0 z-10" />
+      ) : null}
+      {reading && cachedDocument && (
+        <PassiveMarkdown
+          key={cacheKey}
+          html={cachedDocument.html}
+          theme={dark ? "dark" : "light"}
+          fitContent={fitMarkdown}
+          height={visibleHeight}
+          scrollKey={
+            !fitMarkdown && !props.jump ? readingKey(id, seq, props.path, "rendered:#") : null
+          }
+          onHeight={(height) =>
+            setCached((value) =>
+              value?.key === cacheKey && value.height !== height ? { ...value, height } : value,
+            )
+          }
+        />
+      )}
+      {notice && (
+        <Notification
+          title={t("preview.previewNotice")}
+          message={notice}
+          tone="warning"
+          onDismiss={() => setNotice("")}
+        />
+      )}
+      {frameSrc && !error && (
+        <iframe
+          // A controlled URL change starts a fresh frame so the verification
+          // gate never becomes an extra Back/Forward entry. Native links keep
+          // their own history within the mounted published document.
+          key={`${frameSrc}:${documentEpoch}`}
+          ref={iframe}
+          src={frameSrc}
+          title={`${props.previewLabel ?? props.detail.title ?? t("common.artifact")} preview`}
+          sandbox="allow-scripts"
+          {...{ credentialless: "" }}
+          allow="camera 'none'; microphone 'none'; display-capture 'none'"
+          referrerPolicy="no-referrer"
+          aria-hidden={!ready || props.active === false}
+          inert={!ready || props.active === false}
+          // Verify the current port after every load. A count of gate/document
+          // loads is unreliable when a page redirects before finishing loading.
+          onLoad={() => checkDocument.current()}
+          style={{ height: visibleHeight }}
+          className={cn(
+            "w-full border-0 bg-white",
+            visibleHeight === undefined
+              ? props.independentReading
+                ? "min-h-0 flex-1"
+                : "min-h-80 flex-1"
+              : "flex-none",
+            (!ready || reading) && "invisible",
+            reading && "absolute inset-0",
+          )}
+        />
+      )}
+    </div>
+  );
+}

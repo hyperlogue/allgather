@@ -1,27 +1,26 @@
 import type { ArtifactDelivery } from "../shared/artifact-delivery.ts";
-import { AppError, can, type Operation, operations, type Principal } from "../shared/contracts.ts";
-import { ArtifactNotifications } from "./artifact-notifications.ts";
-import type { BlobStore } from "./blobs.ts";
-import { ArtifactConversations } from "./r3/server/artifact-conversations.ts";
-import { renderArtifactDocument } from "./r3/server/artifact-document.ts";
-import { ArtifactLifecycle } from "./r3/server/artifact-lifecycle.ts";
-import { ArtifactSearch } from "./r3/server/artifact-search.ts";
-import { ArtifactUsageStore } from "./r3/server/artifact-usage.ts";
-import { ArtifactError } from "./r3/server/artifact-validation.ts";
-import { type ArtifactCommit, ArtifactStore } from "./r3/server/artifacts.ts";
-import { PreviewHost } from "./r3/server/preview-host.ts";
-import { previewSupport } from "./r3/server/preview-support.ts";
-import { WorkerRecords } from "./r3/server/worker-records.ts";
+import { ArtifactError } from "../shared/artifact-validation.ts";
 import {
   type ArtifactActor,
   type ArtifactCommentAcknowledgment,
   type ArtifactDetail,
   artifactAgentIds,
-} from "./r3/shared/artifacts.ts";
+} from "../shared/artifacts.ts";
+import { AppError, can, type Operation, operations, type Principal } from "../shared/contracts.ts";
+import { ArtifactConversations } from "./artifact-conversations.ts";
+import { renderArtifactDocument } from "./artifact-document.ts";
+import { ArtifactLifecycle } from "./artifact-lifecycle.ts";
+import { ArtifactNotifications } from "./artifact-notifications.ts";
+import { ArtifactSearch } from "./artifact-search.ts";
+import { type ArtifactCommit, ArtifactStore } from "./artifact-store.ts";
+import { ArtifactUsageStore } from "./artifact-usage.ts";
+import type { BlobStore } from "./blobs.ts";
+import { PreviewHost } from "./preview-host.ts";
+import { previewSupport } from "./preview-support.ts";
+import { WorkerRecords } from "./worker-records.ts";
 import type { Workspace } from "./workspace.ts";
 
 type Input = Record<string, unknown>;
-/** r3 retains its native model; each authoritative commit joins Allgather's audit/receipt transaction. */
 export class Artifacts {
   readonly store: ArtifactStore;
   readonly conversations: ArtifactConversations;

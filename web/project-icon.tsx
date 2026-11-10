@@ -6,7 +6,7 @@ import {
   projectIconUrl,
 } from "../shared/project-icon.ts";
 import { call, mutation } from "./api.ts";
-import { Dialog, ErrorText, useAction } from "./ui.tsx";
+import { Button, Checkbox, Dialog, ErrorText, useAction } from "./ui.tsx";
 
 export function ProjectIcon({ project }: { project: Project }) {
   const src = projectIconUrl(project);
@@ -123,9 +123,8 @@ export function ProjectIconInput({
               }}
             />
           </label>
-          <button
-            type="button"
-            className="quiet"
+          <Button
+            variant="quiet"
             disabled={disabled || (!src && !loading)}
             onClick={() => {
               generation.current++;
@@ -137,7 +136,7 @@ export function ProjectIconInput({
             }}
           >
             Remove icon
-          </button>
+          </Button>
         </div>
       </div>
       <p className="muted small">
@@ -195,15 +194,12 @@ export function ProjectEditorDialog({
         <p className="muted small">
           Task ID prefix: {project.slug}. This cannot change after creation.
         </p>
-        <label>
-          <input
-            type="checkbox"
-            checked={fallback}
-            disabled={project.is_fallback}
-            onChange={(e) => setFallback(e.target.checked)}
-          />
-          Use when no project can be inferred
-        </label>
+        <Checkbox
+          label="Use when no project can be inferred"
+          checked={fallback}
+          disabled={project.is_fallback}
+          onChange={(e) => setFallback(e.target.checked)}
+        />
         {project.is_fallback && (
           <p className="muted small">
             To change the fallback, select another project. Existing tasks stay here.
@@ -221,9 +217,9 @@ export function ProjectEditorDialog({
           <button type="button" onClick={close}>
             Cancel
           </button>
-          <button
+          <Button
             type="submit"
-            className="primary"
+            variant="primary"
             disabled={
               busy ||
               loading ||
@@ -234,7 +230,7 @@ export function ProjectEditorDialog({
             }
           >
             Save changes
-          </button>
+          </Button>
         </div>
       </form>
     </Dialog>

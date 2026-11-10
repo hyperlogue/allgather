@@ -7,7 +7,7 @@ import {
 } from "@simplewebauthn/browser";
 import { useState } from "react";
 import { request } from "./api.ts";
-import { Brand, ErrorText, LoginFrame, useAction } from "./ui.tsx";
+import { Brand, Button, ErrorText, LoginFrame, useAction } from "./ui.tsx";
 
 let enrollmentSecret: string | null = null;
 if (location.pathname === "/welcome") {
@@ -63,9 +63,9 @@ export function Login({ done, welcome = false }: { done: () => void; welcome?: b
           link with the command below.
         </p>
       ) : (
-        <button
-          type="button"
-          className="primary login-enter"
+        <Button
+          variant="primary"
+          className="login-enter"
           disabled={busy || !supported}
           onClick={() => void run(enter)}
         >
@@ -74,7 +74,7 @@ export function Login({ done, welcome = false }: { done: () => void; welcome?: b
             : welcome
               ? "Create passkey and enter"
               : "Sign in with passkey"}
-        </button>
+        </Button>
       )}
       <ErrorText>{error}</ErrorText>
       {welcome && (

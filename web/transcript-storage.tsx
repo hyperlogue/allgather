@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { call, mutation } from "./api.ts";
-import { Dialog, ErrorText, useAction } from "./ui.tsx";
+import { Button, Dialog, ErrorText, useAction } from "./ui.tsx";
 
 type Settings = { days: number | null; revision: number };
 type Preview = {
@@ -27,9 +27,8 @@ export function TranscriptStorage({
   const { busy, error, run } = useAction();
   return (
     <>
-      <button
-        type="button"
-        className="quiet"
+      <Button
+        variant="quiet"
         onClick={() => {
           setOpen(true);
           setConfirmed(false);
@@ -46,7 +45,7 @@ export function TranscriptStorage({
         }}
       >
         Transcript storage
-      </button>
+      </Button>
       {open && (
         <Dialog title="Transcript storage" close={() => setOpen(false)}>
           <ErrorText>{error}</ErrorText>

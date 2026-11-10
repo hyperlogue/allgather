@@ -3,7 +3,7 @@ import type { Machine, Repository } from "../shared/contracts.ts";
 import type { CheckoutObservation } from "../shared/tower-catalog.ts";
 import { call } from "./api.ts";
 import { CopyId } from "./copy-id.tsx";
-import { ErrorText } from "./ui.tsx";
+import { Banner, ErrorText } from "./ui.tsx";
 
 export function Checkouts({
   repositories,
@@ -60,9 +60,9 @@ export function Checkouts({
       {machines
         .filter((m) => m.catalog_sync?.catalog_error || m.catalog_sync?.checkout_error)
         .map((m) => (
-          <p key={m.id} className="error">
+          <Banner key={m.id} tone="danger">
             {m.name}: {m.catalog_sync?.catalog_error ?? m.catalog_sync?.checkout_error}
-          </p>
+          </Banner>
         ))}
       {visible.map((row) => {
         const machine = machines.find((m) => m.id === row.machine_id),

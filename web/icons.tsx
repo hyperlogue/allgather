@@ -56,6 +56,24 @@ const paths = {
   html: <path d="M5.5 4.5 2 8l3.5 3.5m5-7L14 8l-3.5 3.5" />,
   diff: <path d="M5 2v6M2 5h6M2 12h6M10 3h4M10 13h4" />,
   files: <path d="M2 4h4l1.5 1.5H14V13H2z" />,
+  close: <path d="m4 4 8 8M12 4l-8 8" />,
+  check: <path d="m3 8.5 3.2 3L13 4.5" />,
+  chevron: <path d="m5 6.5 3 3 3-3" />,
+  edit: <path d="M10.5 2.5 13.5 5.5 6 13H3v-3zM9 4l3 3" />,
+  more: (
+    <>
+      <circle cx="3.5" cy="8" r="0.6" fill="currentColor" />
+      <circle cx="8" cy="8" r="0.6" fill="currentColor" />
+      <circle cx="12.5" cy="8" r="0.6" fill="currentColor" />
+    </>
+  ),
+  copy: (
+    <>
+      <rect x="5.5" y="5.5" width="8" height="8" />
+      <path d="M10.5 5.5v-3h-8v8h3" />
+    </>
+  ),
+  external: <path d="M9 2.5h4.5V7M13.5 2.5 7 9M11.5 9.5v4h-9v-9h4" />,
 } satisfies Record<string, ReactNode>;
 export type IconName = keyof typeof paths;
 export function Icon({ name }: { name: IconName }) {

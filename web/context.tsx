@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Page, Relation } from "../shared/contracts.ts";
 import { call } from "./api.ts";
-import { Dialog, ErrorText, useAction } from "./ui.tsx";
+import { Banner, Button, Dialog, ErrorText, useAction } from "./ui.tsx";
 
 interface Entity {
   id: string;
@@ -44,9 +44,9 @@ export function ContextLink({ id, label = "View context" }: { id: string; label?
   };
   return (
     <>
-      <button type="button" className="quiet" disabled={busy} onClick={() => load(id)}>
+      <Button variant="quiet" disabled={busy} onClick={() => load(id)}>
         {label}
-      </button>
+      </Button>
       {open && (
         <Dialog title="Connected work" close={() => setOpen(false)}>
           <ErrorText>{error}</ErrorText>
@@ -62,10 +62,10 @@ export function ContextLink({ id, label = "View context" }: { id: string; label?
                 </p>
               )}
               {data.entity.deleted_at && (
-                <p className="notice">
+                <Banner>
                   Deleted {new Date(data.entity.deleted_at).toLocaleString()}. Its identity and
                   context links remain; the content is unavailable.
-                </p>
+                </Banner>
               )}
               {data.entity.value?.body !== undefined && (
                 <p className="context-body">{String(data.entity.value.body)}</p>
@@ -81,9 +81,9 @@ export function ContextLink({ id, label = "View context" }: { id: string; label?
                         <small>
                           {r.type} · {other.kind.replaceAll("_", " ")}
                         </small>
-                        <button type="button" className="quiet" onClick={() => load(other.id)}>
+                        <Button variant="quiet" onClick={() => load(other.id)}>
                           {title(other)}
-                        </button>
+                        </Button>
                         {r.reason && <p>{r.reason}</p>}
                       </span>
                     </li>

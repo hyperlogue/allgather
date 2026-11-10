@@ -18,7 +18,17 @@ import { CopyId } from "./copy-id.tsx";
 import { scopeFilter, singleProject } from "./project-scope.ts";
 import { TowerPairing } from "./tower-enrollment.tsx";
 import { TranscriptStorage } from "./transcript-storage.tsx";
-import { Dialog, ErrorText, FeaturePlaceholder, PageHeading, useAction } from "./ui.tsx";
+import {
+  Banner,
+  Button,
+  Chip,
+  Dialog,
+  EmptyState,
+  ErrorText,
+  FeaturePlaceholder,
+  PageHeading,
+  useAction,
+} from "./ui.tsx";
 
 type Data = Record<string, unknown>;
 const managedAvailable = (machine: Machine | null | undefined) =>
@@ -296,9 +306,9 @@ function RequestCard({
             ),
           )}
           <div className="heading-actions">
-            <button type="submit" className="primary" disabled={busy}>
+            <Button type="submit" variant="primary" disabled={busy}>
               Send response
-            </button>
+            </Button>
             <button
               type="button"
               disabled={busy}
@@ -603,20 +613,20 @@ function SessionDetail({
         </div>
         <ErrorText>{error || actionError}</ErrorText>
         {canResume && forceResume && (
-          <p className="notice">
+          <Banner>
             Clean up and resume stops the previous execution before starting a replacement. Current
             work is interrupted; stored conversation history is retained.
-          </p>
+          </Banner>
         )}
         {controls?.cancel_mode === "runtime" &&
           !["ended", "error"].includes(runtime?.state ?? "") && (
-            <p className="notice">
+            <Banner>
               {runtime?.stop_requested
                 ? "Stopping this runtime. New work is blocked until termination is confirmed."
                 : runtime?.protocol === "terminal"
                   ? "Stopping this terminal ends its runtime. Remote resume is not supported."
                   : "Stopping this agent ends its runtime. Continuing requires an explicit resume; AllGather will not restart it automatically."}
-            </p>
+            </Banner>
           )}
         {runtime &&
           controls &&
@@ -630,7 +640,7 @@ function SessionDetail({
             </p>
           )}
         {runtime?.protocol === "terminal" && (
-          <p className="notice">
+          <Banner>
             This is a terminal session. AllGather stores lifecycle metadata, not terminal output.
             Prompts, permission replies, configuration, and resume are unavailable.
             {runtime.tower_session_id && (
@@ -640,15 +650,15 @@ function SessionDetail({
                 <code>tower-cli attach {runtime.tower_session_id}</code>
               </>
             )}
-          </p>
+          </Banner>
         )}
         {runtime?.fenced && runtime.termination === "unknown" && (
-          <p className="notice">
+          <Banner>
             Contact with this execution was lost. Its process may still run. Controls are disabled,
             {runtime.protocol === "terminal"
               ? " Inspect or stop the terminal with Tower; remote replacement is unavailable."
               : " and force resume must confirm cleanup before starting a replacement."}
-          </p>
+          </Banner>
         )}
         <div className="session-coverage">
           {sources.length ? (
@@ -799,13 +809,13 @@ function SessionDetail({
                 {assets.map((a) => (
                   <small key={String(a.id)}>{String(a.name)}</small>
                 ))}
-                <button
+                <Button
                   type="submit"
-                  className="primary"
+                  variant="primary"
                   disabled={busy || (!prompt.trim() && !assets.length)}
                 >
                   Send
-                </button>
+                </Button>
               </div>
             </form>
           )}
@@ -829,10 +839,10 @@ function SessionDetail({
                   </p>
                 )}
                 {c.state === "unknown" && (
-                  <p className="notice">
+                  <Banner>
                     Acceptance is unknown. AllGather will query Tower’s receipt and will not resend
                     this command automatically.
-                  </p>
+                  </Banner>
                 )}
                 {c.result !== null && <pre>{JSON.stringify(c.result, null, 2)}</pre>}
               </div>
@@ -1051,9 +1061,9 @@ export function SessionsView({
           <button type="button" onClick={() => setManage(true)}>
             Machines
           </button>
-          <button type="button" className="primary" onClick={() => setLaunch(true)}>
+          <Button variant="primary" onClick={() => setLaunch(true)}>
             New session
-          </button>
+          </Button>
         </div>
       </PageHeading>
       <ErrorText>{loadError || error}</ErrorText>
@@ -1135,9 +1145,7 @@ export function SessionsView({
               <span>
                 <strong>{s.label ?? s.id}</strong>
                 {!!s.identity_warnings?.length && (
-                  <span className="agent-chip waiting">
-                    {s.identity_warnings.length} identity warnings
-                  </span>
+                  <Chip tone="attention">{s.identity_warnings.length} identity warnings</Chip>
                 )}
                 <small>
                   {s.agent_type}
@@ -1149,7 +1157,7 @@ export function SessionsView({
             </button>
           ))}
           {!page.items.length && (
-            <p className="empty-copy">Declared agent runs and imported history appear here.</p>
+            <EmptyState>Declared agent runs and imported history appear here.</EmptyState>
           )}
           <div className="pagination">
             <button
@@ -1177,10 +1185,9 @@ export function SessionsView({
             changed={changed}
           />
         ) : (
-          <section className="empty">
-            <h2>Select a session</h2>
-            <p>Stored transcripts remain readable while a machine is offline.</p>
-          </section>
+          <EmptyState as="section" title="Select a session">
+            Stored transcripts remain readable while a machine is offline.
+          </EmptyState>
         )}
       </div>
       {manage && (
@@ -1241,11 +1248,11 @@ export function SessionsView({
               </select>
             </label>
             {chosen && !supported && (
-              <p className="notice">
+              <Banner>
                 {launchMode === "terminal"
                   ? "Terminal launch requires a connected Tower with terminal support and explicit terminal:control consent."
                   : "Managed sessions are not enabled for this connection."}
-              </p>
+              </Banner>
             )}
             <label>
               Agent
@@ -1259,11 +1266,11 @@ export function SessionsView({
               </select>
             </label>
             {launchControls?.[harness]?.cancel_mode === "runtime" && (
-              <p className="notice">
+              <Banner>
                 {launchMode === "terminal"
                   ? "This starts a terminal immediately. Attach with Tower on the development machine. Remote prompt and resume are unavailable."
                   : "Stopping this agent terminates its runtime. Resume requires a new explicit action."}
-              </p>
+              </Banner>
             )}
             <label>
               Working directory
@@ -1290,13 +1297,13 @@ export function SessionsView({
               </select>
             </label>
             <ErrorText>{error}</ErrorText>
-            <button
+            <Button
               type="submit"
-              className="primary"
+              variant="primary"
               disabled={busy || !supported || !launchControls?.[harness]}
             >
               Start session
-            </button>
+            </Button>
           </form>
           <details className="detail-section">
             <summary>Create a role</summary>

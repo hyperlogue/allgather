@@ -13,7 +13,7 @@ import {
 import { request } from "./api.ts";
 import { CopyId } from "./copy-id.tsx";
 import { Category, ResourceCategory } from "./permission-picker.tsx";
-import { Dialog, ErrorText, useAction } from "./ui.tsx";
+import { Banner, Button, Dialog, ErrorText, useAction } from "./ui.tsx";
 
 export function ClientGrants({
   client,
@@ -140,10 +140,10 @@ function GrantEditor({
             ))}
           </div>
           {modes.admin && (
-            <p className="notice">
+            <Banner>
               Administrative access includes all operations. Remove it to restrict this client to
               individual permissions.
-            </p>
+            </Banner>
           )}
           <div className="permission-tree">
             <ResourceCategory
@@ -188,13 +188,13 @@ function GrantEditor({
         >
           Reload
         </button>
-        <button
+        <Button
           type="submit"
-          className="primary"
+          variant="primary"
           disabled={busy || !options || client.revoked !== 0 || Object.keys(modes).length === 0}
         >
           Save access
-        </button>
+        </Button>
       </div>
       {!Object.keys(modes).length && (
         <p className="muted">Select a permission, or revoke the client to remove all access.</p>

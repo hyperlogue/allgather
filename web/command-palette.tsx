@@ -6,6 +6,7 @@ import { Icon, type IconName } from "./icons.tsx";
 import { type View, views } from "./navigation.tsx";
 import { ProjectIcon } from "./project-icon.tsx";
 import { scopeFilter, scopeName, singleProject } from "./project-scope.ts";
+import { Button, EmptyState } from "./ui.tsx";
 
 interface Result {
   id: string;
@@ -233,9 +234,9 @@ export function CommandPalette({
             }
           }}
         />
-        <button type="button" className="quiet" aria-label="Close search" onClick={close}>
+        <Button variant="quiet" aria-label="Close search" onClick={close}>
           <kbd>esc</kbd>
-        </button>
+        </Button>
       </div>
       <div className="palette-scope">
         {scopeName(projects.filter((p) => scope.includes(p.id)))}
@@ -265,7 +266,7 @@ export function CommandPalette({
             </button>
           </div>
         ))}
-        {!results.length && !loading && <p className="empty-copy">No matching results.</p>}
+        {!results.length && !loading && <EmptyState>No matching results.</EmptyState>}
         <p className={error ? "error" : "palette-status"} role="status">
           {error || (loading ? "Searching…" : "")}
         </p>

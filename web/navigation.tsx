@@ -5,6 +5,7 @@ import logoUrl from "./brand/logo-small.svg";
 import { Icon, type IconName } from "./icons.tsx";
 import { ProjectIcon } from "./project-icon.tsx";
 import { projectColor, scopeFilter, scopeName, scopeRail } from "./project-scope.ts";
+import { usePopover } from "./ui.tsx";
 
 export const scopedViews = [
   ["tasks", "Tasks"],
@@ -103,40 +104,11 @@ function ProjectSwitcher({
     : selected.length === 1
       ? selected[0].slug
       : selected.map((p) => p.name).join(", ");
-  useEffect(() => {
-    if (!open) return;
-    (
-      root.current?.querySelector<HTMLElement>('.scope-option[aria-current="true"]') ??
-      root.current?.querySelector<HTMLElement>(".scope-option")
-    )?.focus();
-    const outside = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        setOpen(false);
-        root.current?.querySelector<HTMLElement>(".scope-switch")?.focus();
-      }
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        const options = [
-          ...(root.current?.querySelectorAll<HTMLElement>(".scope-popover button, .scope-check") ??
-            []),
-        ];
-        const index = options.indexOf(document.activeElement as HTMLElement);
-        options[
-          (index + (e.key === "ArrowDown" ? 1 : -1) + options.length) % options.length
-        ]?.focus();
-        e.preventDefault();
-      }
-    };
-    document.addEventListener("pointerdown", outside);
-    document.addEventListener("keydown", key, true);
-    return () => {
-      document.removeEventListener("pointerdown", outside);
-      document.removeEventListener("keydown", key, true);
-    };
-  }, [open]);
+  usePopover(open, setOpen, root, {
+    items: ".scope-popover button, .scope-check",
+    initial: '.scope-option[aria-current="true"]',
+    trigger: ".scope-switch",
+  });
   const pick = (ids: string[]) => {
     choose(ids);
     setOpen(false);
@@ -200,7 +172,7 @@ function ProjectSwitcher({
                       editProject(p);
                     }}
                   >
-                    <Icon name="settings" />
+                    <Icon name="edit" />
                   </button>
                   <input
                     type="checkbox"

@@ -5,7 +5,7 @@ import { Checkouts } from "./checkouts.tsx";
 import { ContextLink } from "./context.tsx";
 import { CopyId } from "./copy-id.tsx";
 import { scopeFilter, singleProject } from "./project-scope.ts";
-import { Dialog, ErrorText, PageHeading, useAction } from "./ui.tsx";
+import { Banner, Button, Checkbox, Dialog, ErrorText, PageHeading, useAction } from "./ui.tsx";
 export interface Repo extends Repository {
   indexed_count: number;
   sync: {
@@ -204,10 +204,11 @@ function RepositoryEditor({
             <option value="allow_full_cache">Allow full cache</option>
           </select>
         </label>
-        <label className="checkbox">
-          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-          Automatic refresh
-        </label>
+        <Checkbox
+          label="Automatic refresh"
+          checked={enabled}
+          onChange={(e) => setEnabled(e.target.checked)}
+        />
         <p className="muted small">
           AllGather fetches upstream using the server’s SSH or HTTPS credentials. At the retained
           limit, the oldest metadata is removed. Switching cache policy queues a rebuild.
@@ -217,9 +218,9 @@ function RepositoryEditor({
           <button type="button" onClick={close}>
             Cancel
           </button>
-          <button className="primary" type="submit" disabled={busy}>
+          <Button variant="primary" type="submit" disabled={busy}>
             Save connection
-          </button>
+          </Button>
         </div>
       </form>
     </Dialog>
@@ -319,9 +320,8 @@ function RepositoryProjectsEditor({
         <ErrorText>{error}</ErrorText>
         <div className="actions">
           {link && (
-            <button
-              type="button"
-              className="danger"
+            <Button
+              variant="danger"
               disabled={busy}
               onClick={() => {
                 if (
@@ -342,14 +342,14 @@ function RepositoryProjectsEditor({
               }}
             >
               Unlink project
-            </button>
+            </Button>
           )}
           <button type="button" onClick={close}>
             Cancel
           </button>
-          <button type="submit" className="primary" disabled={busy || !selected}>
+          <Button type="submit" variant="primary" disabled={busy || !selected}>
             {link ? "Save project paths" : "Link project"}
-          </button>
+          </Button>
         </div>
       </form>
     </Dialog>
@@ -419,14 +419,9 @@ export function HistoryView({
           <h1>Git history</h1>
           <p>Published work across your upstream repositories.</p>
         </div>
-        <button
-          type="button"
-          className="primary"
-          disabled={!project}
-          onClick={() => setConnection("new")}
-        >
+        <Button variant="primary" disabled={!project} onClick={() => setConnection("new")}>
           Connect upstream
-        </button>
+        </Button>
       </PageHeading>
       <ErrorText>{loadError || error}</ErrorText>
       {summary && (
@@ -526,7 +521,7 @@ export function HistoryView({
               {r.sync.status} · {r.indexed_count.toLocaleString()} retained /{" "}
               {r.max_indexed_commits?.toLocaleString() ?? "unlimited"} · {r.branches.join(", ")}
             </p>
-            {r.sync.error && <p className="error">{r.sync.error}</p>}
+            {r.sync.error && <Banner tone="danger">{r.sync.error}</Banner>}
             <p className="muted small">
               {r.sync.last_success
                 ? `Last collected ${new Date(r.sync.last_success.at).toLocaleString()}`
@@ -534,17 +529,16 @@ export function HistoryView({
               · {r.actual_cache_mode} cache · {size(storage?.cache_bytes_by_repo?.[r.id])}
             </p>
             <div className="heading-actions">
-              <button type="button" className="quiet" onClick={() => setBackfill(r)}>
+              <Button variant="quiet" onClick={() => setBackfill(r)}>
                 Fetch older history
-              </button>
-              <button
-                type="button"
-                className="quiet"
+              </Button>
+              <Button
+                variant="quiet"
                 disabled={busy}
                 onClick={() => action("repositories_clear_cache", r.id)}
               >
                 Clear cache
-              </button>
+              </Button>
               <small>Cleanup: {r.cache_cleanup}</small>
             </div>
           </article>
@@ -611,9 +605,9 @@ export function HistoryView({
       <section className="history-section">
         <h2>Paths that change most</h2>
         {summary?.commits_with_partial_files ? (
-          <p className="notice">
+          <Banner>
             Path coverage is incomplete for {summary.commits_with_partial_files} commits.
-          </p>
+          </Banner>
         ) : null}
         <ul className="plain-list">
           {summary?.paths.slice(0, 20).map((p) => (
@@ -704,9 +698,9 @@ export function HistoryView({
               />
             </label>
             <ErrorText>{error}</ErrorText>
-            <button type="submit" className="primary" disabled={busy}>
+            <Button type="submit" variant="primary" disabled={busy}>
               Request backfill
-            </button>
+            </Button>
           </form>
         </Dialog>
       )}
@@ -719,7 +713,7 @@ export function HistoryView({
             {selected.author?.name} · {new Date(selected.committed_at).toLocaleString()}
           </p>
           {!selected.files_complete && (
-            <p className="notice">Some parent tree data is outside the retained cache.</p>
+            <Banner>Some parent tree data is outside the retained cache.</Banner>
           )}
           <ul className="plain-list">
             {selected.files.map((f) => (

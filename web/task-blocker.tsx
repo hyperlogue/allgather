@@ -3,6 +3,7 @@ import type { Blocker } from "../shared/contracts.ts";
 import { renderMessageHtml } from "./artifact/markdown.ts";
 import { CopyId } from "./copy-id.tsx";
 import { taskAnswer, taskQuestions } from "./task-questions.ts";
+import { Button } from "./ui.tsx";
 export function TaskMarkdown({ body }: { body: string }) {
   return (
     // biome-ignore lint/security/noDangerouslySetInnerHtml: renderer disables HTML and unsafe URLs
@@ -101,9 +102,9 @@ export function TaskBlocker({
         </form>
       ) : null}
       {blocker.waiting_on !== "task" && (
-        <button type="button" className="quiet" disabled={busy} onClick={clear}>
+        <Button variant="quiet" disabled={busy} onClick={clear}>
           Clear blocker
-        </button>
+        </Button>
       )}
     </div>
   );

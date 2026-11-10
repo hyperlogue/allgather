@@ -17,7 +17,18 @@ import { ContextLink } from "./context.tsx";
 import { CopyId } from "./copy-id.tsx";
 import { scopeFilter, singleProject } from "./project-scope.ts";
 import { TaskBlocker, TaskMarkdown } from "./task-blocker.tsx";
-import { Dialog, ErrorText, PageHeading, useAction } from "./ui.tsx";
+import {
+  Button,
+  Checkbox,
+  Chip,
+  Dialog,
+  EmptyState,
+  ErrorText,
+  PageHeading,
+  Segmented,
+  StateDot,
+  useAction,
+} from "./ui.tsx";
 
 function useDraft<T>(key: string, initial: T): [T, (value: T) => void, () => void] {
   const [value, setValue] = useState<T>(() => {
@@ -210,13 +221,9 @@ function TaskEditor({
           or complete the task before then.
         </p>
         {draft.defer_until && (
-          <button
-            type="button"
-            className="quiet"
-            onClick={() => set({ ...draft, defer_until: "" })}
-          >
+          <Button variant="quiet" onClick={() => set({ ...draft, defer_until: "" })}>
             Clear deferral
-          </button>
+          </Button>
         )}
         <details>
           <summary>Parent task</summary>
@@ -233,9 +240,9 @@ function TaskEditor({
           <button type="button" onClick={close}>
             Keep draft
           </button>
-          <button type="submit" className="primary" disabled={busy}>
+          <Button type="submit" variant="primary" disabled={busy}>
             {task ? "Save changes" : "Create task"}
-          </button>
+          </Button>
         </div>
       </form>
     </Dialog>
@@ -295,9 +302,9 @@ function AddPlan({
           />
         </label>
         <ErrorText>{error}</ErrorText>
-        <button className="primary" disabled={busy} type="submit">
+        <Button variant="primary" disabled={busy} type="submit">
           Create plan
-        </button>
+        </Button>
       </form>
     </Dialog>
   );
@@ -385,9 +392,9 @@ function TaskDetail({
         : (sessions.find((s) => s.id === t.assignee?.id)?.label ?? t.assignee?.id);
   return (
     <section className="detail-container" aria-label="Task details">
-      <button type="button" className="quiet close-detail" onClick={close}>
+      <Button variant="quiet" className="close-detail" onClick={close}>
         Close task
-      </button>
+      </Button>
       <div className="task-detail">
         <div className="detail-top">
           <CopyId value={t.id} />
@@ -397,7 +404,7 @@ function TaskDetail({
         <dl className="task-properties">
           <dt>Status</dt>
           <dd>
-            <span className={`state-dot ${t.status}`} aria-hidden="true" />
+            <StateDot state={t.status} />
             {t.status}
           </dd>
           <dt>Assignee</dt>
@@ -412,11 +419,7 @@ function TaskDetail({
           <dd>
             <div className="labels">
               {t.labels.length ? (
-                t.labels.map((label) => (
-                  <span className="label-chip" key={label}>
-                    {label}
-                  </span>
-                ))
+                t.labels.map((label) => <Chip key={label}>{label}</Chip>)
               ) : (
                 <span className="muted">None</span>
               )}
@@ -429,14 +432,13 @@ function TaskDetail({
           </button>
           {!t.closed_at ? (
             <>
-              <button
-                type="button"
-                className="primary"
+              <Button
+                variant="primary"
                 disabled={busy || t.blocked}
                 onClick={() => openAction("tasks_resolve")}
               >
                 Resolve
-              </button>
+              </Button>
               <button
                 type="button"
                 onClick={() => {
@@ -478,9 +480,9 @@ function TaskDetail({
             <ul className="plain-list">
               {c.children.map((child) => (
                 <li key={child.id}>
-                  <button type="button" className="link-button" onClick={() => select(child.id)}>
+                  <Button variant="link" onClick={() => select(child.id)}>
                     {child.title}
-                  </button>
+                  </Button>
                   <small>{child.status}</small>
                 </li>
               ))}
@@ -494,13 +496,9 @@ function TaskDetail({
               {b.waiting_on === "task" && (
                 <div className="section-line">
                   {b.waiting_on_task_id ? (
-                    <button
-                      type="button"
-                      className="link-button"
-                      onClick={() => select(b.waiting_on_task_id!)}
-                    >
+                    <Button variant="link" onClick={() => select(b.waiting_on_task_id!)}>
                       {b.waiting_on_task_id} · {b.satisfied ? "Satisfied" : "Waiting"}
-                    </button>
+                    </Button>
                   ) : (
                     <span>Restricted prerequisite</span>
                   )}
@@ -520,9 +518,8 @@ function TaskDetail({
                   })
                 }
               />
-              <button
-                type="button"
-                className="quiet"
+              <Button
+                variant="quiet"
                 disabled={busy}
                 onClick={() => {
                   openAction("tasks_remove_blocker");
@@ -530,32 +527,28 @@ function TaskDetail({
                 }}
               >
                 Remove blocker
-              </button>
+              </Button>
             </div>
           ))}
           {!c.blockers.some((b) => !b.satisfied) && (
             <p className="muted">No unsatisfied blockers.</p>
           )}
           {!t.closed_at && (
-            <button type="button" className="quiet" onClick={() => openAction("tasks_block")}>
+            <Button variant="quiet" onClick={() => openAction("tasks_block")}>
               Add a blocker
-            </button>
+            </Button>
           )}
         </section>
         <section className="detail-section">
           <div className="section-line">
             <h3>Evidence and context</h3>
             <div>
-              <button
-                type="button"
-                className="quiet"
-                onClick={() => openAction("tasks_link_commit")}
-              >
+              <Button variant="quiet" onClick={() => openAction("tasks_link_commit")}>
                 Link commit
-              </button>
-              <button type="button" className="quiet" onClick={() => openAction("links_add")}>
+              </Button>
+              <Button variant="quiet" onClick={() => openAction("links_add")}>
                 Add link
-              </button>
+              </Button>
             </div>
           </div>
           {c.related.map((r) => (
@@ -607,9 +600,9 @@ function TaskDetail({
                 </small>
                 {entry.reply_to && <small>Reply to {entry.reply_to}</small>}
                 <TaskMarkdown body={entry.body} />
-                <button type="button" className="quiet" onClick={() => setReply(entry.id)}>
+                <Button variant="quiet" onClick={() => setReply(entry.id)}>
                   Reply
-                </button>
+                </Button>
               </li>
             ))}
           </ol>
@@ -640,9 +633,9 @@ function TaskDetail({
               />
             </label>
             {reply && (
-              <button type="button" className="quiet" onClick={() => setReply(undefined)}>
+              <Button variant="quiet" onClick={() => setReply(undefined)}>
                 Cancel reply
-              </button>
+              </Button>
             )}
             <button type="submit" disabled={busy || !comment.trim()}>
               Add comment
@@ -801,15 +794,22 @@ function TaskDetail({
               </label>
             )}
             <ErrorText>{error}</ErrorText>
-            <button type="submit" className="primary" disabled={busy}>
+            <Button type="submit" variant="primary" disabled={busy}>
               Save
-            </button>
+            </Button>
           </form>
         </Dialog>
       )}
     </section>
   );
 }
+const taskViews: readonly (readonly [string, string])[] = [
+  ["all", "All"],
+  ["open", "Open"],
+  ["owner", "Needs owner"],
+  ["blocked", "Blocked"],
+  ["closed", "Closed"],
+];
 export function TasksView({
   scope,
   title,
@@ -898,11 +898,13 @@ export function TasksView({
     setCreate(true);
   }, []);
   const group = (task: Task) => task.status;
-  const groups = [
-    ["blocked", "Blocked"],
-    ["open", "Open"],
-    ["closed", "Closed"],
-  ]
+  const groups = (
+    [
+      ["blocked", "Blocked"],
+      ["open", "Open"],
+      ["closed", "Closed"],
+    ] as const
+  )
     .map(([id, label]) => ({
       id,
       label,
@@ -936,40 +938,26 @@ export function TasksView({
           >
             Add a plan
           </button>
-          <button
-            type="button"
-            className="primary"
+          <Button
+            variant="primary"
             disabled={scope.length > 1}
             title={scope.length > 1 ? "Choose one project to add a task" : undefined}
             onClick={() => setCreate(true)}
           >
             New task
-          </button>
+          </Button>
         </div>
       </PageHeading>
       <div className="task-toolbar">
-        <fieldset className="filters">
-          <legend className="sr-only">Task view</legend>
-          {[
-            ["all", "All"],
-            ["open", "Open"],
-            ["owner", "Needs owner"],
-            ["blocked", "Blocked"],
-            ["closed", "Closed"],
-          ].map(([key, label]) => (
-            <button
-              type="button"
-              key={key}
-              aria-pressed={view === key}
-              onClick={() => {
-                setView(key);
-                setCursor(0);
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </fieldset>
+        <Segmented
+          label="Task view"
+          options={taskViews}
+          value={view}
+          change={(key) => {
+            setView(key);
+            setCursor(0);
+          }}
+        />
         <label className="search">
           <span className="sr-only">Search tasks</span>
           <input
@@ -1031,14 +1019,11 @@ export function TasksView({
                 }}
               />
             </label>
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                checked={undated}
-                onChange={(e) => setUndated(e.target.checked)}
-              />
-              Include tasks without a date
-            </label>
+            <Checkbox
+              label="Include tasks without a date"
+              checked={undated}
+              onChange={(e) => setUndated(e.target.checked)}
+            />
           </div>
         </details>
       </div>
@@ -1048,13 +1033,13 @@ export function TasksView({
           {groups.map(({ id, label, items }) => (
             <Fragment key={id}>
               <h2 className="task-group-heading">
-                <span className={`state-dot ${id}`} aria-hidden="true" />
+                <StateDot state={id} />
                 {label}
                 <span className="count">{items.length}</span>
               </h2>
               {items.map((task) => (
                 <div key={task.id} className={`task-row ${selected === task.id ? "selected" : ""}`}>
-                  <span className={`state-dot ${group(task)}`} aria-hidden="true" />
+                  <StateDot state={group(task)} />
                   <span className="task-id">
                     <CopyId value={task.id}>{task.id.slice(-8)}</CopyId>
                   </span>
@@ -1065,15 +1050,11 @@ export function TasksView({
                     </span>
                     <span className="task-row-labels">
                       {task.labels.slice(0, 2).map((label) => (
-                        <span className="label-chip" key={label}>
-                          {label}
-                        </span>
+                        <Chip key={label}>{label}</Chip>
                       ))}
                     </span>
                     {task.blocked && (
-                      <span className="agent-chip waiting">
-                        {task.needs_owner ? "Needs human" : "Blocked"}
-                      </span>
+                      <Chip tone="attention">{task.needs_owner ? "Needs human" : "Blocked"}</Chip>
                     )}
                   </button>
                 </div>
@@ -1087,10 +1068,9 @@ export function TasksView({
             </div>
           )}
           {!loading && !page.items.length && (
-            <div className="empty">
-              <h2>No tasks in this view</h2>
-              <p>Create work or adjust the filters.</p>
-            </div>
+            <EmptyState title="No tasks in this view">
+              Create work or adjust the filters.
+            </EmptyState>
           )}
           <div className="pagination">
             <button

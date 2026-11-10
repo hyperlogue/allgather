@@ -31,7 +31,17 @@ import { SessionsView } from "./sessions.tsx";
 import { SettingsView } from "./settings.tsx";
 import { TasksView } from "./tasks.tsx";
 import { TowerEnrollmentView } from "./tower-enrollment.tsx";
-import { Brand, Dialog, ErrorText, LoginFrame, useAction } from "./ui.tsx";
+import {
+  Banner,
+  Brand,
+  Button,
+  Checkbox,
+  Dialog,
+  EmptyState,
+  ErrorText,
+  LoginFrame,
+  useAction,
+} from "./ui.tsx";
 
 function NewProject({ close, created }: { close: () => void; created: (p: Project) => void }) {
   const [name, setName] = useState("");
@@ -77,14 +87,11 @@ function NewProject({ close, created }: { close: () => void; created: (p: Projec
           Task IDs start at {slug ?? suggestedProjectSlug(name)}-1. The slug cannot change after
           creation.
         </p>
-        <label>
-          <input
-            type="checkbox"
-            checked={fallback}
-            onChange={(e) => setFallback(e.target.checked)}
-          />
-          Use when no project can be inferred
-        </label>
+        <Checkbox
+          label="Use when no project can be inferred"
+          checked={fallback}
+          onChange={(e) => setFallback(e.target.checked)}
+        />
         <ProjectIconInput
           value={icon}
           change={setIcon}
@@ -96,9 +103,9 @@ function NewProject({ close, created }: { close: () => void; created: (p: Projec
           <button type="button" onClick={close}>
             Cancel
           </button>
-          <button type="submit" className="primary" disabled={busy || iconLoading}>
+          <Button type="submit" variant="primary" disabled={busy || iconLoading}>
             Create project
-          </button>
+          </Button>
         </div>
       </form>
     </Dialog>
@@ -158,10 +165,10 @@ function Connections({
         code on the page it opens.
       </p>
       {mcp.startsWith("http:") && (
-        <p className="notice">
+        <Banner>
           This server uses a local address. Configure an HTTPS public URL before connecting a hosted
           agent.
-        </p>
+        </Banner>
       )}
       <ErrorText>{error}</ErrorText>
       <h2>Registered clients</h2>
@@ -217,9 +224,8 @@ function Connections({
                   </button>
                 )}
                 {!!client.revoked && (
-                  <button
-                    type="button"
-                    className="danger"
+                  <Button
+                    variant="danger"
                     disabled={busy}
                     onClick={() => {
                       if (
@@ -235,16 +241,16 @@ function Connections({
                     }}
                   >
                     Delete connection
-                  </button>
+                  </Button>
                 )}
               </div>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="empty-copy">
+        <EmptyState>
           No clients yet. Each pairing connects one client with the access you choose.
-        </p>
+        </EmptyState>
       )}
       {selected && (
         <ClientGrants client={selected} close={() => setEditing(null)} saved={reloadAccess} />
@@ -444,15 +450,15 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
                 .map((p) =>
                   scope.length === 1 ? (
                     <span key={p.id} className="scope-single">
-                      <button
-                        type="button"
-                        className="quiet project-icon-button"
+                      <Button
+                        variant="quiet"
+                        className="project-icon-button"
                         aria-label="Edit project"
                         title={`Edit ${p.name}`}
                         onClick={() => setEditingProject(p)}
                       >
                         <ProjectIcon project={p} />
-                      </button>
+                      </Button>
                       <span className="scope-project-name">{p.name}</span>
                     </span>
                   ) : (

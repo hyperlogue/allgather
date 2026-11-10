@@ -6,7 +6,7 @@ import {
 } from "../shared/approval-content.ts";
 import { type ConnectionIdentity, connectionActorLabel } from "../shared/client-access.ts";
 import { request } from "./api.ts";
-import { ErrorText, useAction } from "./ui.tsx";
+import { Banner, Button, EmptyState, ErrorText, useAction } from "./ui.tsx";
 
 export interface ApprovalView {
   connection?: ConnectionIdentity | null;
@@ -148,7 +148,7 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
               </span>
             </button>
           ))}
-          {!rows.length && <p className="empty-copy">No requests need review.</p>}
+          {!rows.length && <EmptyState>No requests need review.</EmptyState>}
         </section>
         {current && (
           <section className="approval-detail">
@@ -196,17 +196,17 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
               </p>
             )}
             {current.input.force === true && (
-              <p className="notice">
+              <Banner>
                 Force resume stops and cleans up the recorded earlier executions before starting a
                 replacement.
-              </p>
+              </Banner>
             )}
             {!reviewable && (
-              <p className="notice">
+              <Banner>
                 This request or its identity/target metadata contains unsupported characters. It
                 cannot be approved. Submit a new request with visible, assigned Unicode text.
                 Prompts require text-only parts.
-              </p>
+              </Banner>
             )}
             {textParts?.success && (
               <section aria-label="Complete prompt">
@@ -232,7 +232,7 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
             </details>
             {current.error && <ErrorText>{current.error.message}</ErrorText>}
             {current.state === "succeeded" && (
-              <p className="notice">
+              <Banner>
                 Request admitted. Use the session and command status to check execution.
                 {sessionId && (
                   <>
@@ -242,21 +242,21 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
                     </a>
                   </>
                 )}
-              </p>
+              </Banner>
             )}
             {current.state === "needs_approval" && (
               <div className="actions">
                 <button type="button" disabled={busy} onClick={() => decide("deny")}>
                   Deny request
                 </button>
-                <button
-                  type="button"
-                  className="primary success"
+                <Button
+                  variant="primary"
+                  className="success"
                   disabled={busy || !reviewable}
                   onClick={() => decide("approve")}
                 >
                   Approve this request
-                </button>
+                </Button>
               </div>
             )}
           </section>

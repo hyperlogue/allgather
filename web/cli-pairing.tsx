@@ -8,7 +8,7 @@ import {
 import { noResources, type ResourceGrants } from "../shared/resource-grants.ts";
 import { request } from "./api.ts";
 import { Category, ResourceCategory } from "./permission-picker.tsx";
-import { ErrorText, useAction } from "./ui.tsx";
+import { Button, ErrorText, useAction } from "./ui.tsx";
 
 interface PairingRow {
   pairing_id: string;
@@ -153,9 +153,8 @@ export function CliPairing({ changed, refresh = 0 }: { changed: () => void; refr
           <p className="muted small">
             This CLI stays signed in until you revoke it in Registered clients.
           </p>
-          <button
-            type="button"
-            className="primary"
+          <Button
+            variant="primary"
             disabled={busy || !name.trim() || Object.keys(modes).length === 0}
             onClick={() =>
               void run(async () => {
@@ -173,7 +172,7 @@ export function CliPairing({ changed, refresh = 0 }: { changed: () => void; refr
             }
           >
             Create CLI pairing code
-          </button>
+          </Button>
         </>
       )}
       {opened && options?.pairings.some((p) => p.pairing_id === opened.pairing_id) && (

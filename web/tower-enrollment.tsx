@@ -3,7 +3,7 @@ import type { Machine } from "../shared/contracts.ts";
 import type { MachineScope } from "../shared/tower-acp.ts";
 import { request } from "./api.ts";
 import { CopyId } from "./copy-id.tsx";
-import { Brand, ErrorText, LoginFrame, useAction } from "./ui.tsx";
+import { Banner, Brand, Button, ErrorText, LoginFrame, useAction } from "./ui.tsx";
 
 const labels: Record<MachineScope, string> = {
   read: "Read status and the repository catalog; report checkout observations",
@@ -184,14 +184,14 @@ export function TowerPairing({ machines, changed }: { machines: Machine[]; chang
             local terminal:control permission. An existing node must be selected before re-pairing.
           </p>
           {machine && (
-            <p className="notice">
+            <Banner>
               Confirmation replaces this node's earlier keys. Its identity, local checkouts, and
               cached policy remain.
-            </p>
+            </Banner>
           )}
-          <button type="submit" className="primary" disabled={busy || !scopes.length}>
+          <Button type="submit" variant="primary" disabled={busy || !scopes.length}>
             Create pairing code
-          </button>
+          </Button>
         </form>
       )}
       {rows

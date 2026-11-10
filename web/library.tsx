@@ -5,7 +5,7 @@ import { call } from "./api.ts";
 import { ContextLink } from "./context.tsx";
 import { Icon } from "./icons.tsx";
 import { scopeFilter, singleProject } from "./project-scope.ts";
-import { Dialog, ErrorText, PageHeading, useAction } from "./ui.tsx";
+import { Button, Dialog, EmptyState, ErrorText, PageHeading, Segmented, useAction } from "./ui.tsx";
 
 async function encode(file: File) {
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -163,14 +163,18 @@ function Publication({
           <button type="button" onClick={close}>
             Cancel
           </button>
-          <button type="submit" className="primary" disabled={busy}>
+          <Button type="submit" variant="primary" disabled={busy}>
             {busy ? "Publishing…" : "Publish"}
-          </button>
+          </Button>
         </div>
       </form>
     </Dialog>
   );
 }
+const artifactStates: readonly (readonly [string, string])[] = [
+  ["active", "Active"],
+  ["archived", "Archived"],
+];
 export function LibraryView({
   scope,
   refresh,
@@ -259,9 +263,9 @@ export function LibraryView({
     return (
       <div className="artifact-workspace">
         <div className="artifact-bar">
-          <button type="button" className="quiet" onClick={back}>
+          <Button variant="quiet" onClick={back}>
             ← Library
-          </button>
+          </Button>
           <span>{detail?.title ?? "Artifact"}</span>
           <ContextLink id={selected} />
           <div className="heading-actions">
@@ -305,27 +309,20 @@ export function LibraryView({
           <h1>Library</h1>
           <p>Published results and the discussion that moves work forward.</p>
         </div>
-        <button type="button" className="primary" onClick={() => setCreate(true)}>
+        <Button variant="primary" onClick={() => setCreate(true)}>
           New artifact
-        </button>
+        </Button>
       </PageHeading>
       <div className="task-toolbar">
-        <fieldset className="filters">
-          <legend className="sr-only">Artifact state</legend>
-          {["active", "archived"].map((v) => (
-            <button
-              type="button"
-              key={v}
-              aria-pressed={state === v}
-              onClick={() => {
-                setState(v);
-                setCursor(0);
-              }}
-            >
-              {v === "active" ? "Active" : "Archived"}
-            </button>
-          ))}
-        </fieldset>
+        <Segmented
+          label="Artifact state"
+          options={artifactStates}
+          value={state}
+          change={(v) => {
+            setState(v);
+            setCursor(0);
+          }}
+        />
         <label className="search">
           <span className="sr-only">Search library</span>
           <input
@@ -359,10 +356,9 @@ export function LibraryView({
           </button>
         ))}
         {!page.items.length && (
-          <div className="empty">
-            <h2>No artifacts here yet</h2>
-            <p>Publish a page, document, or diff from the browser or CLI.</p>
-          </div>
+          <EmptyState title="No artifacts here yet">
+            Publish a page, document, or diff from the browser or CLI.
+          </EmptyState>
         )}
       </section>
       <div className="pagination">

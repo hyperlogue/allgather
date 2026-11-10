@@ -8,7 +8,7 @@ import {
 import { noResources, type ResourceGrants } from "../shared/resource-grants.ts";
 import { request } from "./api.ts";
 import { Category, ResourceCategory } from "./permission-picker.tsx";
-import { ErrorText, useAction } from "./ui.tsx";
+import { Button, ErrorText, useAction } from "./ui.tsx";
 
 interface PairingRow {
   pairing_id: string;
@@ -157,9 +157,8 @@ export function McpPairing({ changed, refresh = 0 }: { changed: () => void; refr
           </div>
           <p className="muted small">Paired clients stay signed in until you revoke them below.</p>
           <div className="actions">
-            <button
-              type="button"
-              className="primary"
+            <Button
+              variant="primary"
               disabled={busy || !name.trim() || selected.size === 0}
               onClick={() =>
                 void run(async () => {
@@ -177,7 +176,7 @@ export function McpPairing({ changed, refresh = 0 }: { changed: () => void; refr
               }
             >
               Open pairing for 1 minute
-            </button>
+            </Button>
           </div>
         </>
       )}

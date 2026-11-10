@@ -184,14 +184,12 @@ export function CliPairing({ changed, refresh = 0 }: { changed: () => void; refr
               <p>Paste this code at the hidden prompt:</p>
               <textarea readOnly aria-label="CLI pairing code" value={opened.pairing_code} />
               <div className="actions">
-                <button
-                  type="button"
+                <Button
                   onClick={() => void run(() => navigator.clipboard.writeText(opened.pairing_code))}
                 >
                   Copy CLI code
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
                   disabled={busy}
                   onClick={() =>
                     void run(async () => {
@@ -201,7 +199,7 @@ export function CliPairing({ changed, refresh = 0 }: { changed: () => void; refr
                   }
                 >
                   Cancel CLI code
-                </button>
+                </Button>
               </div>
               <p className="muted small">
                 {current?.state === "claimed"
@@ -229,8 +227,7 @@ export function CliPairing({ changed, refresh = 0 }: { changed: () => void; refr
                 <small>{row.state}</small>
               </span>
               {["open", "claimed"].includes(row.state) && row.pairing_id !== opened?.pairing_id && (
-                <button
-                  type="button"
+                <Button
                   disabled={busy}
                   onClick={() =>
                     void run(async () => {
@@ -240,7 +237,7 @@ export function CliPairing({ changed, refresh = 0 }: { changed: () => void; refr
                   }
                 >
                   Cancel CLI code
-                </button>
+                </Button>
               )}
             </li>
           ))}

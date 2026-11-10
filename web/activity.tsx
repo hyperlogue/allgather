@@ -4,7 +4,7 @@ import type { Page } from "../shared/contracts.ts";
 import { call } from "./api.ts";
 import { CopyId } from "./copy-id.tsx";
 import { scopeFilter } from "./project-scope.ts";
-import { ErrorText, PageHeading } from "./ui.tsx";
+import { Button, ErrorText, PageHeading } from "./ui.tsx";
 
 interface Entry {
   connection?: ConnectionIdentity | null;
@@ -172,14 +172,10 @@ export function Activity({ scope, refresh }: { scope: string[]; refresh: number 
       <div className="pagination">
         <span className="muted small">{page.total} operations</span>
         {cursor > 0 && (
-          <button type="button" onClick={() => setCursor(Math.max(0, cursor - 25))}>
-            Previous
-          </button>
+          <Button onClick={() => setCursor(Math.max(0, cursor - 25))}>Previous</Button>
         )}
         {page.next_cursor !== null && (
-          <button type="button" onClick={() => setCursor(page.next_cursor ?? 0)}>
-            Next
-          </button>
+          <Button onClick={() => setCursor(page.next_cursor ?? 0)}>Next</Button>
         )}
       </div>
     </div>

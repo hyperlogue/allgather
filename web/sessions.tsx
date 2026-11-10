@@ -176,24 +176,22 @@ function RequestCard({
       ) : item.kind === "permission" ? (
         <div className="heading-actions">
           {(Array.isArray(p.options) ? p.options : []).map((o: Data) => (
-            <button
+            <Button
               key={String(o.optionId)}
-              type="button"
               disabled={busy}
               onClick={() =>
                 void run(() => send({ outcome: { outcome: "selected", optionId: o.optionId } }))
               }
             >
               {String(o.name ?? o.optionId)}
-            </button>
+            </Button>
           ))}
-          <button
-            type="button"
+          <Button
             disabled={busy}
             onClick={() => void run(() => send({ outcome: { outcome: "cancelled" } }))}
           >
             Cancel request
-          </button>
+          </Button>
         </div>
       ) : p.mode === "url" ? (
         <>
@@ -209,13 +207,9 @@ function RequestCard({
               Open external request
             </a>
           )}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void run(() => send({ action: "decline" }))}
-          >
+          <Button disabled={busy} onClick={() => void run(() => send({ action: "decline" }))}>
             Decline
-          </button>
+          </Button>
         </>
       ) : (
         <form
@@ -309,20 +303,12 @@ function RequestCard({
             <Button type="submit" variant="primary" disabled={busy}>
               Send response
             </Button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void run(() => send({ action: "decline" }))}
-            >
+            <Button disabled={busy} onClick={() => void run(() => send({ action: "decline" }))}>
               Decline
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void run(() => send({ action: "cancel" }))}
-            >
+            </Button>
+            <Button disabled={busy} onClick={() => void run(() => send({ action: "cancel" }))}>
               Cancel
-            </button>
+            </Button>
           </div>
         </form>
       )}
@@ -575,8 +561,7 @@ function SessionDetail({
             controls?.cancel_mode &&
             !runtime.stop_requested &&
             !["ended", "error"].includes(runtime.state) && (
-              <button
-                type="button"
+              <Button
                 disabled={busy}
                 onClick={() =>
                   void run(async () => {
@@ -588,11 +573,10 @@ function SessionDetail({
                 {controls.cancel_mode === "runtime"
                   ? "Stop runtime and queued work"
                   : "Stop queued and current work"}
-              </button>
+              </Button>
             )}
           {canResume && runtime && (
-            <button
-              type="button"
+            <Button
               disabled={busy}
               onClick={() =>
                 void run(async () => {
@@ -608,7 +592,7 @@ function SessionDetail({
               }
             >
               {forceResume ? "Clean up and resume" : "Resume session"}
-            </button>
+            </Button>
           )}
         </div>
         <ErrorText>{error || actionError}</ErrorText>
@@ -713,11 +697,7 @@ function SessionDetail({
               )}
             </article>
           ))}
-          {hasMore && (
-            <button type="button" onClick={() => setBatch((b) => b + 1)}>
-              Load more history
-            </button>
-          )}
+          {hasMore && <Button onClick={() => setBatch((b) => b + 1)}>Load more history</Button>}
         </section>
         {runtime &&
           canPrompt &&
@@ -923,8 +903,7 @@ function MachineManager({
           {k.revoked_at ? (
             <small>Revoked</small>
           ) : (
-            <button
-              type="button"
+            <Button
               disabled={busy}
               onClick={() =>
                 void run(async () => {
@@ -935,7 +914,7 @@ function MachineManager({
               }
             >
               Revoke
-            </button>
+            </Button>
           )}
         </div>
       ))}
@@ -1058,9 +1037,7 @@ export function SessionsView({
         </div>
         <div className="heading-actions">
           <TranscriptStorage changed={changed} />
-          <button type="button" onClick={() => setManage(true)}>
-            Machines
-          </button>
+          <Button onClick={() => setManage(true)}>Machines</Button>
           <Button variant="primary" onClick={() => setLaunch(true)}>
             New session
           </Button>
@@ -1160,20 +1137,15 @@ export function SessionsView({
             <EmptyState>Declared agent runs and imported history appear here.</EmptyState>
           )}
           <div className="pagination">
-            <button
-              type="button"
-              disabled={!cursor}
-              onClick={() => setCursor(Math.max(0, cursor - 50))}
-            >
+            <Button disabled={!cursor} onClick={() => setCursor(Math.max(0, cursor - 50))}>
               Previous
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
               disabled={page.next_cursor === null}
               onClick={() => setCursor(page.next_cursor ?? 0)}
             >
               Next
-            </button>
+            </Button>
           </div>
         </section>
         {current ? (
@@ -1329,9 +1301,9 @@ export function SessionsView({
                 value={newRole}
                 onChange={(e) => setNewRole(e.target.value)}
               />
-              <button type="submit" disabled={busy}>
+              <Button type="submit" disabled={busy}>
                 Create role
-              </button>
+              </Button>
             </form>
           </details>
         </Dialog>

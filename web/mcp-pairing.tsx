@@ -202,8 +202,7 @@ export function McpPairing({ changed, refresh = 0 }: { changed: () => void; refr
                 The code works once and expires in {seconds(opened.expires_at)} seconds. Enter it
                 only on a page at {new URL(opened.mcp_url).host}.
               </p>
-              <button
-                type="button"
+              <Button
                 disabled={busy}
                 onClick={() =>
                   void run(async () => {
@@ -213,7 +212,7 @@ export function McpPairing({ changed, refresh = 0 }: { changed: () => void; refr
                 }
               >
                 Close pairing
-              </button>
+              </Button>
             </>
           ) : (
             <p>This pairing is {stateLabels[current.state].toLowerCase()}. Open a new one.</p>

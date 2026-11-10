@@ -101,9 +101,7 @@ function NewProject({ close, created }: { close: () => void; created: (p: Projec
         />
         <ErrorText>{error}</ErrorText>
         <div className="actions">
-          <button type="button" onClick={close}>
-            Cancel
-          </button>
+          <Button onClick={close}>Cancel</Button>
           <Button type="submit" variant="primary" disabled={busy || iconLoading}>
             Create project
           </Button>
@@ -150,8 +148,7 @@ function Connections({
           MCP server URL
           <input readOnly value={mcp} />
         </label>
-        <button
-          type="button"
+        <Button
           onClick={() =>
             void run(async () => {
               await navigator.clipboard.writeText(mcp);
@@ -159,7 +156,7 @@ function Connections({
           }
         >
           Copy URL
-        </button>
+        </Button>
       </div>
       <p className="muted">
         Open pairing below, then add this URL in your client's MCP settings and enter the pairing
@@ -206,12 +203,9 @@ function Connections({
                 </small>
               </span>
               <div className="actions">
-                <button type="button" onClick={() => setEditing(client)}>
-                  Manage access
-                </button>
+                <Button onClick={() => setEditing(client)}>Manage access</Button>
                 {!client.revoked && (
-                  <button
-                    type="button"
+                  <Button
                     disabled={busy}
                     onClick={() => {
                       if (confirm(`Revoke ${client.name}'s access?`))
@@ -222,7 +216,7 @@ function Connections({
                     }}
                   >
                     Revoke
-                  </button>
+                  </Button>
                 )}
                 {!!client.revoked && (
                   <Button
@@ -571,9 +565,7 @@ function App() {
       <LoginFrame>
         <Brand />
         <ErrorText>{error}</ErrorText>
-        <button type="button" onClick={load}>
-          Try again
-        </button>
+        <Button onClick={load}>Try again</Button>
       </LoginFrame>
     );
   if (!session)

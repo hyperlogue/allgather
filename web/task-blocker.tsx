@@ -96,9 +96,9 @@ export function TaskBlocker({
             Answers are saved as comments. Clear the blocker explicitly when its condition is
             satisfied.
           </p>
-          <button type="submit" disabled={busy || !answers.every(Boolean)}>
+          <Button type="submit" disabled={busy || !answers.every(Boolean)}>
             Post answers
-          </button>
+          </Button>
         </form>
       ) : null}
       {blocker.waiting_on !== "task" && (

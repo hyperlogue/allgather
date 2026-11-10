@@ -106,9 +106,9 @@ export function TranscriptStorage({
                   <span>Apply deletion to existing and future captured history.</span>
                 </label>
               )}
-              <button type="submit" disabled={busy || (days !== "" && !apply)}>
+              <Button type="submit" disabled={busy || (days !== "" && !apply)}>
                 Save retention
-              </button>
+              </Button>
             </form>
           )}
           {preview && (
@@ -127,8 +127,7 @@ export function TranscriptStorage({
                 />
                 <span>Delete the captured history shown above.</span>
               </label>
-              <button
-                type="button"
+              <Button
                 disabled={busy || !confirmed}
                 onClick={() =>
                   void run(async () => {
@@ -144,7 +143,7 @@ export function TranscriptStorage({
                 }
               >
                 Delete captured history
-              </button>
+              </Button>
             </section>
           )}
         </Dialog>

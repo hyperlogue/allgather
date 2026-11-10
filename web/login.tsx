@@ -89,8 +89,7 @@ export function Login({ done, welcome = false }: { done: () => void; welcome?: b
       </p>
       <div className="login-command">
         <code>allgather-server login</code>
-        <button
-          type="button"
+        <Button
           aria-label="Copy login command"
           onClick={async () => {
             try {
@@ -102,7 +101,7 @@ export function Login({ done, welcome = false }: { done: () => void; welcome?: b
           }}
         >
           Copy
-        </button>
+        </Button>
       </div>
       <p className="muted small" role="status">
         {copyStatus}

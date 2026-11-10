@@ -171,8 +171,7 @@ function GrantEditor({
       )}
       <ErrorText>{error}</ErrorText>
       <div className="actions">
-        <button
-          type="button"
+        <Button
           disabled={busy}
           onClick={() =>
             void run(async () => {
@@ -187,7 +186,7 @@ function GrantEditor({
           }
         >
           Reload
-        </button>
+        </Button>
         <Button
           type="submit"
           variant="primary"

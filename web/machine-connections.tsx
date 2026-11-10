@@ -3,7 +3,7 @@ import type { Machine } from "../shared/contracts.ts";
 import { call } from "./api.ts";
 import { CopyId } from "./copy-id.tsx";
 import { Icon } from "./icons.tsx";
-import { EmptyState, ErrorText } from "./ui.tsx";
+import { Button, EmptyState, ErrorText } from "./ui.tsx";
 
 export function MachineConnections({ refresh, manage }: { refresh: number; manage: () => void }) {
   const [machines, setMachines] = useState<Machine[]>([]);
@@ -29,9 +29,7 @@ export function MachineConnections({ refresh, manage }: { refresh: number; manag
     <section className="history-section machine-connections">
       <div className="section-line">
         <h2>Development machines</h2>
-        <button type="button" onClick={manage}>
-          Manage machines
-        </button>
+        <Button onClick={manage}>Manage machines</Button>
       </div>
       <ErrorText>{error}</ErrorText>
       <ul className="plain-list">

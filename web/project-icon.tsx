@@ -214,9 +214,7 @@ export function ProjectEditorDialog({
         />
         <ErrorText>{error}</ErrorText>
         <div className="actions">
-          <button type="button" onClick={close}>
-            Cancel
-          </button>
+          <Button onClick={close}>Cancel</Button>
           <Button
             type="submit"
             variant="primary"

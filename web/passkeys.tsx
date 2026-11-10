@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { request } from "./api.ts";
-import { ErrorText, useAction } from "./ui.tsx";
+import { Button, ErrorText, useAction } from "./ui.tsx";
 
 interface Passkey {
   id: string;
@@ -40,8 +40,7 @@ export function Passkeys() {
               </small>
             </span>
             {!key.revoked_at && (
-              <button
-                type="button"
+              <Button
                 disabled={busy}
                 onClick={() => {
                   if (
@@ -58,7 +57,7 @@ export function Passkeys() {
                 }}
               >
                 Revoke passkey
-              </button>
+              </Button>
             )}
           </li>
         ))}

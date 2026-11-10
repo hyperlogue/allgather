@@ -160,9 +160,7 @@ function Publication({
         </label>
         <ErrorText>{error}</ErrorText>
         <div className="actions">
-          <button type="button" onClick={close}>
-            Cancel
-          </button>
+          <Button onClick={close}>Cancel</Button>
           <Button type="submit" variant="primary" disabled={busy}>
             {busy ? "Publishing…" : "Publish"}
           </Button>
@@ -276,13 +274,12 @@ export function LibraryView({
             >
               Open separately
             </a>
-            <button
-              type="button"
+            <Button
               disabled={!detail || detail.state === "archived"}
               onClick={() => setPublish(true)}
             >
               Publish version
-            </button>
+            </Button>
           </div>
         </div>
         <ErrorText>{error}</ErrorText>
@@ -362,20 +359,15 @@ export function LibraryView({
         )}
       </section>
       <div className="pagination">
-        <button
-          type="button"
-          disabled={!cursor}
-          onClick={() => setCursor(Math.max(0, cursor - 50))}
-        >
+        <Button disabled={!cursor} onClick={() => setCursor(Math.max(0, cursor - 50))}>
           Previous
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
           disabled={page.next_cursor === null}
           onClick={() => setCursor(page.next_cursor ?? 0)}
         >
           Next
-        </button>
+        </Button>
       </div>
       {create && (
         <Publication project={project} close={() => setCreate(false)} published={opened} />

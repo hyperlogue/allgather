@@ -246,9 +246,9 @@ export function ApprovalsView({ rows, changed }: { rows: ApprovalView[]; changed
             )}
             {current.state === "needs_approval" && (
               <div className="actions">
-                <button type="button" disabled={busy} onClick={() => decide("deny")}>
+                <Button disabled={busy} onClick={() => decide("deny")}>
                   Deny request
-                </button>
+                </Button>
                 <Button
                   variant="primary"
                   className="success"

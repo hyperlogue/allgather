@@ -237,9 +237,7 @@ function TaskEditor({
         </details>
         <ErrorText>{error}</ErrorText>
         <div className="actions">
-          <button type="button" onClick={close}>
-            Keep draft
-          </button>
+          <Button onClick={close}>Keep draft</Button>
           <Button type="submit" variant="primary" disabled={busy}>
             {task ? "Save changes" : "Create task"}
           </Button>
@@ -427,9 +425,7 @@ function TaskDetail({
           </dd>
         </dl>
         <div className="task-actions">
-          <button type="button" onClick={() => setEdit(true)}>
-            Edit
-          </button>
+          <Button onClick={() => setEdit(true)}>Edit</Button>
           {!t.closed_at ? (
             <>
               <Button
@@ -439,23 +435,18 @@ function TaskDetail({
               >
                 Resolve
               </Button>
-              <button
-                type="button"
+              <Button
                 onClick={() => {
                   openAction("tasks_handoff");
                   setAssignment(assignmentValue(t.assignee));
                 }}
               >
                 Hand off
-              </button>
-              <button type="button" onClick={() => openAction("tasks_cancel")}>
-                Cancel task
-              </button>
+              </Button>
+              <Button onClick={() => openAction("tasks_cancel")}>Cancel task</Button>
             </>
           ) : (
-            <button type="button" onClick={() => openAction("tasks_reopen")}>
-              Reopen
-            </button>
+            <Button onClick={() => openAction("tasks_reopen")}>Reopen</Button>
           )}
         </div>
         <ErrorText>{error}</ErrorText>
@@ -571,8 +562,7 @@ function TaskDetail({
         <section className="detail-section">
           <h3>Work log</h3>
           {c.comments.older_count > older.length && (
-            <button
-              type="button"
+            <Button
               disabled={busy}
               onClick={() =>
                 void run(async () => {
@@ -587,7 +577,7 @@ function TaskDetail({
               }
             >
               Load older comments
-            </button>
+            </Button>
           )}
           <ol className="comments">
             {[...older, ...c.comments.items].map((entry) => (
@@ -637,9 +627,9 @@ function TaskDetail({
                 Cancel reply
               </Button>
             )}
-            <button type="submit" disabled={busy || !comment.trim()}>
+            <Button type="submit" disabled={busy || !comment.trim()}>
               Add comment
-            </button>
+            </Button>
           </form>
         </section>
       </div>
@@ -930,14 +920,13 @@ export function TasksView({
           <p>{loading ? "Loading tasks…" : `${page.total} tasks`}</p>
         </div>
         <div className="heading-actions">
-          <button
-            type="button"
+          <Button
             disabled={scope.length > 1}
             title={scope.length > 1 ? "Choose one project to add a plan" : undefined}
             onClick={() => setPlan(true)}
           >
             Add a plan
-          </button>
+          </Button>
           <Button
             variant="primary"
             disabled={scope.length > 1}
@@ -1075,20 +1064,18 @@ export function TasksView({
             </EmptyState>
           )}
           <div className="pagination">
-            <button
-              type="button"
+            <Button
               disabled={loading || !cursor}
               onClick={() => setCursor(Math.max(0, cursor - 50))}
             >
               Previous
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
               disabled={loading || page.next_cursor === null}
               onClick={() => setCursor(page.next_cursor!)}
             >
               Next
-            </button>
+            </Button>
           </div>
         </section>
         {selected && (

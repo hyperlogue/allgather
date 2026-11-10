@@ -5,7 +5,7 @@ import logoUrl from "./brand/logo-small.svg";
 import { Icon, type IconName } from "./icons.tsx";
 import { ProjectIcon } from "./project-icon.tsx";
 import { projectColor, scopeFilter, scopeName, scopeRail } from "./project-scope.ts";
-import { usePopover } from "./ui.tsx";
+import { Button, IconButton, usePopover } from "./ui.tsx";
 
 export const compactLayout = "(max-width: 760px)";
 export const scopedViews = [
@@ -163,18 +163,15 @@ function ProjectSwitcher({
                     <span>{p.name}</span>
                     <small>{p.slug}</small>
                   </button>
-                  <button
-                    type="button"
+                  <IconButton
+                    icon="edit"
                     className="scope-edit"
-                    aria-label={`Edit ${p.name}`}
-                    title={`Edit ${p.name}`}
+                    label={`Edit ${p.name}`}
                     onClick={() => {
                       setOpen(false);
                       editProject(p);
                     }}
-                  >
-                    <Icon name="edit" />
-                  </button>
+                  />
                   <input
                     type="checkbox"
                     className="scope-check"
@@ -279,8 +276,7 @@ export function Sidebar({
   const selected = projects.filter((p) => scope.includes(p.id));
   const rail = scopeRail(selected);
   const viewButton = ([name, label]: readonly [View, string]) => (
-    <button
-      type="button"
+    <Button
       key={name}
       aria-label={label}
       title={collapsed ? label : undefined}
@@ -292,7 +288,7 @@ export function Sidebar({
       {name === "approvals" && pending > 0 && (
         <span className="nav-count" data-count={pending} aria-hidden="true" />
       )}
-    </button>
+    </Button>
   );
   return (
     <aside className="app-header" aria-label="Workspace sidebar">
@@ -305,15 +301,13 @@ export function Sidebar({
           newProject={newProject}
           editProject={editProject}
         />
-        <button
-          type="button"
+        <IconButton
+          icon="search"
           className="sidebar-search"
-          aria-label="Search or jump"
+          label="Search or jump"
           title="Search or jump (Ctrl/⌘ K)"
           onClick={search}
-        >
-          <Icon name="search" />
-        </button>
+        />
       </div>
       <div className="sidebar-scroll">
         <div
@@ -336,8 +330,7 @@ export function Sidebar({
           </div>
           <nav aria-label="Recent sessions">
             {sessions.rows.map(({ session, runtime }) => (
-              <button
-                type="button"
+              <Button
                 key={session.id}
                 title={`${session.label ?? session.id} · ${runtime?.state ?? "Recorded"}`}
                 onClick={() => navigate("sessions", { session: session.id })}
@@ -351,7 +344,7 @@ export function Sidebar({
                     aria-label={runtime.connected ? runtime.state : "Offline"}
                   />
                 )}
-              </button>
+              </Button>
             ))}
           </nav>
           {!sessions.rows.length && (
@@ -381,16 +374,14 @@ export function Sidebar({
             {connected ? "Connected" : "Reconnecting"}
           </span>
         </span>
-        <button
-          type="button"
+        <IconButton
+          icon="panel"
           className="sidebar-fold"
           onClick={toggle}
           aria-expanded={!collapsed}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           title={collapsed ? "Expand sidebar ([)" : "Collapse sidebar ([)"}
-        >
-          <Icon name="panel" />
-        </button>
+        />
       </div>
     </aside>
   );

@@ -69,8 +69,7 @@ export function TowerPairing({ machines, changed }: { machines: Machine[]; chang
                 tower-cli login {issued.server_url} {issued.pairing_code}
               </pre>
               <textarea readOnly aria-label="Pairing code" value={issued.pairing_code} />
-              <button
-                type="button"
+              <Button
                 onClick={() =>
                   void run(() =>
                     navigator.clipboard.writeText(
@@ -80,13 +79,12 @@ export function TowerPairing({ machines, changed }: { machines: Machine[]; chang
                 }
               >
                 Copy pairing command
-              </button>
+              </Button>
               <p className="muted small">
                 Expires {new Date(issued.expires_at).toLocaleTimeString()}. No second browser
                 approval is needed.
               </p>
-              <button
-                type="button"
+              <Button
                 disabled={busy}
                 onClick={() =>
                   void run(async () => {
@@ -96,7 +94,7 @@ export function TowerPairing({ machines, changed }: { machines: Machine[]; chang
                 }
               >
                 Cancel code
-              </button>
+              </Button>
             </>
           ) : (
             <p>
@@ -111,9 +109,9 @@ export function TowerPairing({ machines, changed }: { machines: Machine[]; chang
               Granted: {current.granted_scopes.join(", ")}. Local Tower restrictions still apply.
             </p>
           )}
-          <button type="button" disabled={busy} onClick={() => setIssued(null)}>
+          <Button disabled={busy} onClick={() => setIssued(null)}>
             Create another code
-          </button>
+          </Button>
         </>
       ) : (
         <form
@@ -204,8 +202,7 @@ export function TowerPairing({ machines, changed }: { machines: Machine[]; chang
             <span>
               {row.node_label ?? "Tower node"} · {row.state}
             </span>
-            <button
-              type="button"
+            <Button
               disabled={busy}
               onClick={() =>
                 void run(async () => {
@@ -215,7 +212,7 @@ export function TowerPairing({ machines, changed }: { machines: Machine[]; chang
               }
             >
               Cancel code
-            </button>
+            </Button>
           </div>
         ))}
     </section>

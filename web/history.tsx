@@ -215,9 +215,7 @@ function RepositoryEditor({
         </p>
         <ErrorText>{error}</ErrorText>
         <div className="actions">
-          <button type="button" onClick={close}>
-            Cancel
-          </button>
+          <Button onClick={close}>Cancel</Button>
           <Button variant="primary" type="submit" disabled={busy}>
             Save connection
           </Button>
@@ -344,9 +342,7 @@ function RepositoryProjectsEditor({
               Unlink project
             </Button>
           )}
-          <button type="button" onClick={close}>
-            Cancel
-          </button>
+          <Button onClick={close}>Cancel</Button>
           <Button type="submit" variant="primary" disabled={busy || !selected}>
             {link ? "Save project paths" : "Link project"}
           </Button>
@@ -490,15 +486,13 @@ export function HistoryView({
                 </small>
               </div>
               <div className="heading-actions">
-                <button
-                  type="button"
+                <Button
                   disabled={busy || r.sync.status === "running"}
                   onClick={() => action("repositories_sync", r.id)}
                 >
                   Sync now
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
                   disabled={busy}
                   onClick={() =>
                     void run(async () => {
@@ -511,10 +505,8 @@ export function HistoryView({
                   }
                 >
                   Manage projects
-                </button>
-                <button type="button" onClick={() => setConnection(r)}>
-                  Settings
-                </button>
+                </Button>
+                <Button onClick={() => setConnection(r)}>Settings</Button>
               </div>
             </div>
             <p>
@@ -566,7 +558,7 @@ export function HistoryView({
         <ul className="commit-list">
           {page.items.map((c) => (
             <li key={c.repository_id + c.id}>
-              <button type="button" onClick={() => setSelected(c)}>
+              <Button onClick={() => setSelected(c)}>
                 <span>
                   {c.message.split("\n")[0]}
                   <small>
@@ -580,26 +572,18 @@ export function HistoryView({
                   </small>
                 </span>
                 <code>{c.id.slice(0, 8)}</code>
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
         {!page.items.length && <p className="muted">No retained commits match this view.</p>}
         <div className="pagination">
-          <button
-            type="button"
-            disabled={!cursor}
-            onClick={() => setCursor(Math.max(0, cursor - 50))}
-          >
+          <Button disabled={!cursor} onClick={() => setCursor(Math.max(0, cursor - 50))}>
             Previous
-          </button>
-          <button
-            type="button"
-            disabled={page.next_cursor === null}
-            onClick={() => setCursor(page.next_cursor!)}
-          >
+          </Button>
+          <Button disabled={page.next_cursor === null} onClick={() => setCursor(page.next_cursor!)}>
             Next
-          </button>
+          </Button>
         </div>
       </section>
       <section className="history-section">

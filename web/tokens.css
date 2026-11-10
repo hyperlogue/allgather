@@ -28,7 +28,8 @@
   unicode-range:
     U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
-:root {
+:root,
+[data-theme="dark"] {
   --p50: oklch(97.2% 0.02 206);
   --p100: oklch(94.6% 0.04 206);
   --p200: oklch(90.4% 0.07 206);
@@ -97,6 +98,7 @@
   --accent: var(--p400);
   --accent-fill: oklch(72% 0.1 207);
   --on-accent-fill: #061518;
+  --on-success-fill: #04170f;
   --focus-ring: var(--p400);
   --success: var(--s400);
   --warning: var(--w400);
@@ -114,7 +116,8 @@
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   color-scheme: dark;
 }
-:root[data-theme="light"] {
+:root[data-theme="light"],
+[data-theme="light"] {
   --bg-page: #fcfcfd;
   --bg-panel: #f6f6f8;
   --bg-field: #fff;
@@ -149,6 +152,7 @@
 
 :root {
   --accent-fill-hover: color-mix(in oklch, var(--accent-fill), white 8%);
+  --focus-halo: 0 0 0 3px color-mix(in oklch, var(--focus-ring) 22%, transparent);
   --accent-surface: color-mix(in oklch, var(--accent) 8%, transparent);
   --danger-surface: color-mix(in srgb, var(--danger) 8%, transparent);
   --warning-surface: color-mix(in srgb, var(--warning) 8%, transparent);

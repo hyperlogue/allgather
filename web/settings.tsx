@@ -14,7 +14,7 @@ export function SettingsView() {
         <div className="theme-options">
           {(["light", "dark"] as const).map((mode) => (
             <label key={mode} className="theme-option">
-              <span className={`theme-preview ${mode}`} aria-hidden="true">
+              <span className="theme-preview" data-theme={mode} aria-hidden="true">
                 <span />
                 <span />
                 <span />

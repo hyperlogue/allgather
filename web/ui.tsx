@@ -179,13 +179,13 @@ export function Chip({
   tone = "label",
   children,
 }: {
-  tone?: "label" | "agent" | "attention";
+  tone?: "label" | "agent" | "warning";
   children: ReactNode;
 }) {
   return (
     <span
       className={
-        tone === "label" ? "label-chip" : tone === "agent" ? "agent-chip" : "agent-chip waiting"
+        tone === "label" ? "label-chip" : tone === "agent" ? "agent-chip" : "agent-chip warning"
       }
     >
       {children}

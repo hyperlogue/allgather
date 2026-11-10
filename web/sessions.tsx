@@ -1145,7 +1145,7 @@ export function SessionsView({
               <span>
                 <strong>{s.label ?? s.id}</strong>
                 {!!s.identity_warnings?.length && (
-                  <Chip tone="attention">{s.identity_warnings.length} identity warnings</Chip>
+                  <Chip tone="warning">{s.identity_warnings.length} identity warnings</Chip>
                 )}
                 <small>
                   {s.agent_type}

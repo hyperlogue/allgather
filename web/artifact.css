@@ -43,7 +43,11 @@ body {
 }
 button.bg-primary-600 {
   color: var(--on-accent-fill);
-  background: linear-gradient(180deg, color-mix(in oklch, var(--accent-fill), white 14%), var(--accent-fill));
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--accent-fill), white 14%),
+    var(--accent-fill)
+  );
   box-shadow:
     inset 0 1px rgb(255 255 255 / 0.3),
     0 3px 10px color-mix(in oklch, var(--accent-fill) 20%, transparent);

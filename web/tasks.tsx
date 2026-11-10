@@ -1054,7 +1054,9 @@ export function TasksView({
                       ))}
                     </span>
                     {task.blocked && (
-                      <Chip tone="attention">{task.needs_owner ? "Needs human" : "Blocked"}</Chip>
+                      <Chip tone={task.needs_owner ? "agent" : "warning"}>
+                        {task.needs_owner ? "Needs human" : "Blocked"}
+                      </Chip>
                     )}
                   </button>
                 </div>

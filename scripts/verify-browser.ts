@@ -247,7 +247,7 @@ try {
   await b.until(`document.querySelector('.detail-top span')?.textContent==='closed'`);
   await click("Close task");
   await b.evaluate(
-    `[...document.querySelectorAll('.task-row')].find(r=>r.textContent.includes('Verify optional integration')).click()`,
+    `[...document.querySelectorAll('.task-row-open')].find(r=>r.textContent.includes('Verify optional integration')).click()`,
   );
   await b.until(
     `document.querySelector('.task-detail h2')?.textContent==='Verify optional integration'`,
@@ -261,7 +261,7 @@ try {
   );
   await click("Close task");
   await b.evaluate(
-    `[...document.querySelectorAll('.task-row')].find(r=>r.textContent.includes('Release checks')).click()`,
+    `[...document.querySelectorAll('.task-row-open')].find(r=>r.textContent.includes('Release checks')).click()`,
   );
   await b.until(
     `document.querySelector('.epic-progress')?.textContent.includes('1 done') && document.querySelector('.epic-progress')?.textContent.includes('1 closed without completion')`,
@@ -289,7 +289,7 @@ try {
   );
   await click("Close task");
   await b.evaluate(
-    `[...document.querySelectorAll('.task-row')].find(r=>r.textContent.includes('Release checks')).click()`,
+    `[...document.querySelectorAll('.task-row-open')].find(r=>r.textContent.includes('Release checks')).click()`,
   );
   await b.until(`document.querySelector('.detail-top span')?.textContent==='blocked'`);
   if (

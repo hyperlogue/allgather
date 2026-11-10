@@ -1053,33 +1053,30 @@ export function TasksView({
                 <span className="count">{items.length}</span>
               </h2>
               {items.map((task) => (
-                <button
-                  type="button"
-                  key={task.id}
-                  className={`task-row ${selected === task.id ? "selected" : ""}`}
-                  onClick={() => select(task.id)}
-                >
+                <div key={task.id} className={`task-row ${selected === task.id ? "selected" : ""}`}>
                   <span className={`state-dot ${group(task)}`} aria-hidden="true" />
-                  <code className="task-id" title={task.id}>
-                    {task.id.slice(-8)}
-                  </code>
-                  <span className="task-row-main">
-                    <strong>{task.title}</strong>
-                    {task.child_count > 0 && <small>{task.child_count} child tasks</small>}
+                  <span className="task-id">
+                    <CopyId value={task.id}>{task.id.slice(-8)}</CopyId>
                   </span>
-                  <span className="task-row-labels">
-                    {task.labels.slice(0, 2).map((label) => (
-                      <span className="label-chip" key={label}>
-                        {label}
-                      </span>
-                    ))}
-                  </span>
-                  {task.blocked && (
-                    <span className="agent-chip waiting">
-                      {task.needs_owner ? "Needs human" : "Blocked"}
+                  <button type="button" className="task-row-open" onClick={() => select(task.id)}>
+                    <span className="task-row-main">
+                      <strong>{task.title}</strong>
+                      {task.child_count > 0 && <small>{task.child_count} child tasks</small>}
                     </span>
-                  )}
-                </button>
+                    <span className="task-row-labels">
+                      {task.labels.slice(0, 2).map((label) => (
+                        <span className="label-chip" key={label}>
+                          {label}
+                        </span>
+                      ))}
+                    </span>
+                    {task.blocked && (
+                      <span className="agent-chip waiting">
+                        {task.needs_owner ? "Needs human" : "Blocked"}
+                      </span>
+                    )}
+                  </button>
+                </div>
               ))}
             </Fragment>
           ))}

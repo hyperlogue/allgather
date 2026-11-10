@@ -273,6 +273,36 @@ code.wrap {
   min-height: 44px;
   background: var(--page);
 }
+.task-row-open {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: inherit;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  text-align: left;
+}
+.task-row-open::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.task-row-open:hover {
+  background: transparent;
+}
+.task-row .task-id {
+  position: relative;
+  z-index: 1;
+}
+.task-row .task-id code {
+  font: inherit;
+  color: inherit;
+}
 .task-row:hover {
   background: var(--surface);
 }

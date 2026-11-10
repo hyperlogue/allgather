@@ -11,6 +11,9 @@ export function parse(argv: string[]) {
     if (
       [
         "force",
+        "attention",
+        "mine",
+        "clear-attachments",
         "all",
         "no-ack",
         "no-listen",
@@ -44,6 +47,8 @@ export function parse(argv: string[]) {
     if (
       [
         "path",
+        "attach",
+        "meta",
         "path-prefix",
         "alias",
         "branch",

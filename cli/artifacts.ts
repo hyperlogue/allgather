@@ -18,6 +18,7 @@ import {
   metadata,
   validateArtifactOptions,
 } from "./artifact-options.ts";
+import { watchArtifact } from "./artifact-watch.ts";
 import { captureFiles } from "./capture.ts";
 import { captureGitCommit, captureGitDiff, captureGitFiles } from "./capture-git.ts";
 import type { Client } from "./client.ts";
@@ -315,47 +316,22 @@ export async function artifactCommand(client: Client, p: string[], f: Flags) {
     return;
   }
   if (verb === "watch") {
-    const seconds = f.timeout === undefined ? 0 : Number(f.timeout);
-    if (!Number.isFinite(seconds) || seconds < 0)
-      throw new Error("--timeout must be nonnegative seconds");
-    const deadline = seconds ? Date.now() + seconds * 1000 : Infinity;
-    for (;;) {
-      if ((await detail()).state === "archived") {
-        process.exitCode = 0;
-        return;
-      }
-      if (Date.now() >= deadline) {
-        process.exitCode = 2;
-        return;
-      }
-      let result: Awaited<ReturnType<typeof fetchComments>>;
+    const result = await watchArtifact(client, id, f.timeout === undefined ? 0 : Number(f.timeout));
+    if (result.result === "archived") {
+      if (result.event?.comment?.body) await writeOutput(`${result.event.comment.body}\n`);
+      process.exitCode = 0;
+    } else if (result.result === "timeout") process.exitCode = 2;
+    else if (result.result === "superseded" || result.result === "cancelled") process.exitCode = 4;
+    else if (result.result === "deleted") throw new Error("Artifact was deleted while watching");
+    else {
       try {
-        result = await fetchComments();
+        process.exitCode = (await deliverComments(await fetchComments(), false)) ? 10 : 0;
       } catch (error) {
-        if (
-          (error as { status?: number }).status === 409 &&
-          (await detail()).state === "archived"
-        ) {
-          process.exitCode = 0;
-          return;
-        }
-        throw error;
+        if ((error as { status?: number }).status !== 409) throw error;
+        process.exitCode = (await detail()).state === "archived" ? 0 : 4;
       }
-      if (result.itemCount) {
-        if ((await detail()).state === "archived") {
-          process.exitCode = 0;
-          return;
-        }
-        try {
-          process.exitCode = (await deliverComments(result, false)) ? 10 : 0;
-        } catch (error) {
-          if ((error as { status?: number }).status !== 409) throw error;
-          process.exitCode = (await detail()).state === "archived" ? 0 : 4;
-        }
-        return;
-      }
-      await Bun.sleep(Math.min(250, Math.max(0, deadline - Date.now())));
     }
+    return;
   }
   if (verb === "prompt") {
     const d = await detail();

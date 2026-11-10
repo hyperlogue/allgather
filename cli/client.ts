@@ -212,7 +212,11 @@ export class Client {
       credential.access_token,
     );
   }
-  async request(path: string, body?: unknown) {
+  async request(
+    path: string,
+    body?: unknown,
+    options: { stream?: boolean; signal?: AbortSignal } = {},
+  ) {
     const token = await this.accessToken();
     let response: Response | undefined;
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -222,11 +226,11 @@ export class Client {
           headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
           body: body === undefined ? undefined : JSON.stringify(body),
           redirect: "error",
-          signal: AbortSignal.timeout(45_000),
+          signal: options.signal ?? (options.stream ? undefined : AbortSignal.timeout(45_000)),
         });
         break;
       } catch (error) {
-        if (attempt)
+        if (attempt || options.stream)
           throw new AppError(
             "connection_failed",
             `Cannot reach ${this.url}: ${(error as Error).message}`,

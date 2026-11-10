@@ -123,13 +123,17 @@ test("watch gives archive priority during output and leaves the snapshot unackno
   const writes: string[] = [];
   const client = {
     operator: { operator_kind: "user" },
-    request: async () =>
-      Response.json({
-        text: "Pending",
-        itemCount: 1,
-        attachments: [],
-        acknowledgment: { expectedFingerprint: "snapshot" },
-      }),
+    request: async (path: string) =>
+      path.endsWith("/watch")
+        ? new Response('event: result\ndata: {"result":"comments"}\n\n', {
+            headers: { "content-type": "text/event-stream" },
+          })
+        : Response.json({
+            text: "Pending",
+            itemCount: 1,
+            attachments: [],
+            acknowledgment: { expectedFingerprint: "snapshot" },
+          }),
     call: async (name: string) => {
       if (name === "artifacts_get") return { state: archived ? "archived" : "active" };
       writes.push(name);

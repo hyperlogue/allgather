@@ -1,7 +1,0 @@
-version: "0.5"
-is_strict: true
-processes:
-  server:
-    command: bun run dev
-    availability:
-      restart: on_failure

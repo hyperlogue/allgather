@@ -1626,12 +1626,6 @@ dialog::backdrop {
 .task-properties .labels {
   margin: 0;
 }
-.unavailable-label {
-  color: var(--fg3);
-  border: 1px dashed var(--e3);
-  font: 12px var(--ui);
-  padding: 2px 5px;
-}
 .state-dot.closed {
   position: relative;
 }

@@ -422,10 +422,6 @@ function TaskDetail({
               )}
             </div>
           </dd>
-          <dt>Priority</dt>
-          <dd>
-            <span className="unavailable-label">Not available yet</span>
-          </dd>
         </dl>
         <div className="task-actions">
           <button type="button" onClick={() => setEdit(true)}>

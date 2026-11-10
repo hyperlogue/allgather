@@ -138,7 +138,7 @@ try {
   const requestId = held.error.details.request_id;
   if (running.workspace.one<{ n: number }>("SELECT count(*) n FROM session_commands")!.n !== 0)
     throw new Error("Approval created an early command");
-  await b.until(`!!document.querySelector('.approval-notice')`);
+  await b.until(`!!document.querySelector('.banner-strip')`);
   await click("Review requests");
   await b.until(
     `document.querySelector('h1')?.textContent==='Request approvals' && !!document.querySelector('.approval-detail')`,

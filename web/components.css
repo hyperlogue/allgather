@@ -478,3 +478,20 @@ input[type="radio"] {
   border-width: 0 1.5px 1.5px 0;
   transform: rotate(45deg);
 }
+.banner-strip {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-6);
+  border-bottom: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
+  background: linear-gradient(90deg, var(--warning-surface), transparent);
+  color: var(--warning);
+  font-size: var(--text-sm);
+}
+.banner-strip.danger {
+  border-bottom-color: color-mix(in srgb, var(--danger) 30%, transparent);
+  background: linear-gradient(90deg, var(--danger-surface), transparent);
+  color: var(--danger);
+}

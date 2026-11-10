@@ -1282,24 +1282,6 @@ textarea {
   background: var(--bg-panel);
   border-left: 1px solid var(--border);
 }
-.approval-notice {
-  display: flex;
-  gap: var(--space-4);
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-3) var(--space-6);
-  border-bottom: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
-  background: linear-gradient(90deg, var(--warning-surface), transparent);
-  color: var(--warning);
-  font-size: var(--text-sm);
-}
-.connection-notice {
-  text-align: center;
-  padding: var(--space-2) var(--space-4);
-  font-size: var(--text-sm);
-  background: var(--warning-surface);
-  color: var(--warning);
-}
 .connections {
   max-width: 1000px;
 }
@@ -2069,7 +2051,7 @@ textarea {
   .theme-preview {
     padding: var(--space-3);
   }
-  .approval-notice {
+  .banner-strip {
     padding: var(--space-3);
     flex-wrap: wrap;
   }

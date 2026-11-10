@@ -199,11 +199,22 @@ export function StateDot({ state }: { state: TaskState }) {
 
 export function Banner({
   tone = "warning",
+  strip = false,
+  action,
   children,
 }: {
   tone?: "warning" | "danger";
+  strip?: boolean;
+  action?: { label: string; run: () => void };
   children: ReactNode;
 }) {
+  if (strip)
+    return (
+      <div className={`banner-strip ${tone}`} role="status">
+        <span>{children}</span>
+        {action && <Button onClick={action.run}>{action.label}</Button>}
+      </div>
+    );
   return tone === "danger" ? (
     <p className="error" role="alert">
       {children}

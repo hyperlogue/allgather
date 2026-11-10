@@ -477,25 +477,13 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
           <div id="view-heading" />
         </header>
         {pendingApprovals.length > 0 && view !== "approvals" && (
-          <div className="approval-notice" role="status">
-            <span>
-              {pendingApprovals.length} agent request{pendingApprovals.length === 1 ? "" : "s"} need
-              your approval.
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                navigate("approvals");
-              }}
-            >
-              Review requests
-            </button>
-          </div>
+          <Banner strip action={{ label: "Review requests", run: () => navigate("approvals") }}>
+            {pendingApprovals.length} agent request{pendingApprovals.length === 1 ? "" : "s"} need
+            your approval.
+          </Banner>
         )}
         {!connected && (
-          <div className="connection-notice" role="status">
-            Connection interrupted. The page will refresh after reconnection.
-          </div>
+          <Banner strip>Connection interrupted. The page will refresh after reconnection.</Banner>
         )}
         <main className="app-main" data-view={view}>
           <ErrorText>{error}</ErrorText>

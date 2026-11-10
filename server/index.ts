@@ -24,6 +24,21 @@ import { Tower, type TowerSocketData } from "./tower.ts";
 import { UpstreamSync } from "./upstream-sync.ts";
 import { Workspace } from "./workspace.ts";
 
+const heldLocks = new Set<string>();
+function lockOwnerAlive(pid: number) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+    return false;
+  }
+}
+function releaseLock(lock: string) {
+  heldLocks.delete(lock);
+  unlinkSync(lock);
+}
+
 export async function startServer(overrides: Partial<Config> = {}) {
   const settings = config(overrides);
   const ownerNetwork = new NetworkBoundary(settings.ownerTrustedProxies, settings.privateNetworks);
@@ -32,17 +47,15 @@ export async function startServer(overrides: Partial<Config> = {}) {
   const lock = join(settings.dataDir, "server.lock");
   if (existsSync(lock)) {
     const pid = Number(readFileSync(lock, "utf8"));
-    try {
-      process.kill(pid, 0);
+    const reexecuted = pid === process.pid && !heldLocks.has(lock);
+    if (!reexecuted && lockOwnerAlive(pid))
       throw new Error("An allgather server already owns this data directory");
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-      unlinkSync(lock);
-    }
+    unlinkSync(lock);
   }
   const fd = openSync(lock, "wx", 0o600);
   writeFileSync(fd, String(process.pid));
   closeSync(fd);
+  heldLocks.add(lock);
   let database: ReturnType<typeof openDatabase> | undefined;
   let upstream: UpstreamSync | undefined;
   let tower: Tower | undefined;
@@ -187,7 +200,7 @@ export async function startServer(overrides: Partial<Config> = {}) {
         await stopHttp!();
         workspace.db.close();
         await control?.close();
-        unlinkSync(lock);
+        releaseLock(lock);
       })());
     gateways = new Gateways(settings);
     control = startLocalControl(settings, workspace, stop, () => gateways!.status());
@@ -203,7 +216,7 @@ export async function startServer(overrides: Partial<Config> = {}) {
     await control?.close();
     await stopHttp?.();
     database?.close();
-    unlinkSync(lock);
+    releaseLock(lock);
     throw error;
   }
 }

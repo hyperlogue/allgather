@@ -1002,7 +1002,11 @@ export class Tower {
           );
           continue;
         }
-        if (notification.event === "submitted" && record.state === "retired") {
+        if (
+          record.state === "retired" ||
+          this.w.artifacts.notifications.selected(record.subscription.artifactId)?.subscription
+            .id !== notification.registration_id
+        ) {
           this.w.run(
             "UPDATE artifact_notifications SET state='failed',error='Subscription retired' WHERE id=?",
             notification.id,

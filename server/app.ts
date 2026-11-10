@@ -569,7 +569,7 @@ export function createApp(
     rate(`mcp:${principal.id}`, 300);
     return mcpResponse(c.req.raw, workspace, principal);
   });
-  app.route("/", artifactApi(workspace, auth));
+  app.route("/", artifactApi(workspace, auth, updates));
   app.get("/artifact-workspace/:id", (c) => {
     if (!auth.principal(c.req.raw)) throw new AppError("unauthorized", "Sign in to Allgather", 401);
     c.header("X-Frame-Options", "SAMEORIGIN");

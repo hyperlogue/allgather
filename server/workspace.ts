@@ -296,6 +296,11 @@ export class Workspace {
       throw new AppError("forbidden", "Artifact write access is required", 403);
     return this.recordWrite("artifact_notification_queue", input, principal, work);
   }
+  recordArtifactWatch(input: Input, principal: Principal, work: () => unknown) {
+    if (!can(principal, "artifacts:read") || !can(principal, "artifacts:notify"))
+      throw new AppError("forbidden", "Watch requires artifact read and notification access", 403);
+    return this.recordWrite("artifact_watch", input, principal, work);
+  }
   recordSessionObservation(machineId: string, work: () => unknown) {
     if (!this.one("SELECT 1 FROM machines WHERE id=?", machineId))
       throw new AppError("not_found", "Machine not found", 404);

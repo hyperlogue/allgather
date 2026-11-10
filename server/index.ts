@@ -181,6 +181,7 @@ export async function startServer(overrides: Partial<Config> = {}) {
         await gateways?.stop();
         await workspace.transcripts.stop();
         await upstream?.stop();
+        workspace.artifacts?.watches.close();
         tower?.stop();
         workspace.artifacts?.previews.close();
         await stopHttp!();

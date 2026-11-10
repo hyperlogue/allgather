@@ -62,6 +62,7 @@ export class ArtifactNotifications {
     );
   }
   selected(id: string) {
+    if (this.artifacts.watches?.current(id)) return null;
     const row = this.w.one<{ id: string }>(
       "SELECT id FROM worker_registrations WHERE artifact_id=? AND state!='retired' ORDER BY json_extract(body,'$.mode')='explicit' DESC,rowid DESC LIMIT 1",
       id,
@@ -277,6 +278,8 @@ export class ArtifactNotifications {
   }
   watchers(id: string): ArtifactWatcher[] {
     this.artifacts.store.get(id);
+    const watch = this.artifacts.watches.current(id);
+    if (watch) return [watch.info];
     const selected = this.selected(id);
     if (!selected) return [];
     const s = selected.subscription,
@@ -505,6 +508,7 @@ export class ArtifactNotifications {
     const artifact = this.artifacts.store.get(id);
     if (event === "submitted" && !this.artifacts.conversations.hasPending(id))
       return { state: "none" as const };
+    if (this.artifacts.watches.current(id)) return { state: "sent" as const };
     const selected = this.selected(id);
     if (!selected || selected.subscription.actor.role !== "agent")
       return { state: "none" as const };

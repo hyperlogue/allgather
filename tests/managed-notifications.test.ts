@@ -429,3 +429,48 @@ test("managed generation loss and native aliases never fall back to generic mess
     f.close();
   }
 });
+
+test("explicit SSE watch cancels queued Tower work and receives Submit instead of the fallback", async () => {
+  const f = await fixture();
+  try {
+    const id = await f.artifact();
+    await f.artifactCall(
+      "artifacts_listen",
+      { artifact_id: id, mode: "fallback", operator_kind: "agent", session_id: f.r.session_id },
+      f.agent,
+    );
+    f.call("session_prompt", {
+      target_session_id: f.r.session_id,
+      content: [{ type: "text", text: "Busy" }],
+    });
+    const queued = await f.artifactCall<{ notification: { command_id: string } }>(
+      "artifacts_submit",
+      { artifact_id: id },
+    );
+    expect(f.w.executions.command(queued.notification.command_id).state).toBe("queued");
+    const watches = f.w.artifacts!.watches;
+    const immediate = watches.open(id, f.owner, { operator_kind: "user" }, 1000);
+    expect(await immediate.result).toEqual({ result: "comments" });
+    expect(f.w.executions.command(queued.notification.command_id).state).toBe("failed");
+    await f.artifactCall("artifact_comments_ack", {
+      artifact_id: id,
+      receipt: f.w.artifacts!.conversations.snapshot(id).acknowledgment,
+    });
+    const waiting = watches.open(id, f.owner, { operator_kind: "user" }, 1000);
+    await f.artifactCall("artifact_threads_add", {
+      artifact_id: id,
+      input: { body: "New review", target: { kind: "artifact" } },
+    });
+    const before = f.w.all("SELECT id FROM artifact_notifications").length;
+    expect(await f.artifactCall("artifacts_submit", { artifact_id: id })).toMatchObject({
+      notification: { state: "sent" },
+    });
+    expect(await waiting.result).toEqual({ result: "comments" });
+    expect(f.w.all("SELECT id FROM artifact_notifications").length).toBe(before);
+    expect(f.w.artifacts!.notifications.selected(id)?.subscription.mode).toBe("fallback");
+    expect(f.w.artifacts!.conversations.hasPending(id)).toBe(true);
+  } finally {
+    f.w.artifacts!.watches.close();
+    f.close();
+  }
+});

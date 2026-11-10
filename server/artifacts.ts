@@ -14,6 +14,7 @@ import { ArtifactNotifications } from "./artifact-notifications.ts";
 import { ArtifactSearch } from "./artifact-search.ts";
 import { type ArtifactCommit, ArtifactStore } from "./artifact-store.ts";
 import { ArtifactUsageStore } from "./artifact-usage.ts";
+import { ArtifactWatches } from "./artifact-watches.ts";
 import type { BlobStore } from "./blobs.ts";
 import { PreviewHost } from "./preview-host.ts";
 import { previewSupport } from "./preview-support.ts";
@@ -30,6 +31,7 @@ export class Artifacts {
   readonly workers: WorkerRecords;
   readonly previews: PreviewHost;
   readonly notifications: ArtifactNotifications;
+  readonly watches: ArtifactWatches;
   constructor(
     private w: Workspace,
     readonly blobs: BlobStore,
@@ -42,7 +44,7 @@ export class Artifacts {
       blobs,
       renderArtifactDocument,
       clock,
-      (id) => !!this.notifications?.selected(id),
+      (id) => !!this.watches?.current(id) || !!this.notifications?.selected(id),
       this.workers,
       undefined,
       {
@@ -57,6 +59,7 @@ export class Artifacts {
     this.usage = new ArtifactUsageStore(db, this.store, clock, 30, "UTC");
     this.previews = new PreviewHost(this.store, previewSupport);
     this.notifications = new ArtifactNotifications(w, this);
+    this.watches = new ArtifactWatches(w, this);
   }
   detail(id: string): ArtifactDetail & { delivery: ArtifactDelivery | null } {
     const detail: ArtifactDetail & { delivery: ArtifactDelivery | null } = {
@@ -154,9 +157,11 @@ export class Artifacts {
       )
         throw new AppError("forbidden", "Only the owner may resolve review threads", 403);
       let committed = false;
+      let applied = false;
       const commit: ArtifactCommit = <T>(work: () => T): T => {
         if (committed) throw new Error("Artifact operation attempted multiple independent commits");
         const result = this.w.execute(name, input, p, () => {
+          applied = true;
           const result = work() ?? null;
           this.register(result);
           if (
@@ -219,6 +224,7 @@ export class Artifacts {
       }
       if (name === "artifacts_delete") this.previews.revokeArtifact(String(a.artifact_id));
       if (name === "artifacts_gc" && !(a.input as Input).dryRun) await this.collectBlobs();
+      if (applied) this.watches.changed(name, a, actor);
       return value;
     } catch (e) {
       if (e instanceof ArtifactError)

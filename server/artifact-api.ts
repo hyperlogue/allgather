@@ -1,12 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { type Context, Hono } from "hono";
+import { streamSSE } from "hono/streaming";
+import { z } from "zod";
 import { buildArtifactPrompt, commentAttachments } from "../shared/artifact-prompt.ts";
 import {
   ArtifactError,
   requireArtifactPath,
   requireSequence,
 } from "../shared/artifact-validation.ts";
-import { AppError, can, type Operation, type Principal } from "../shared/contracts.ts";
+import {
+  AppError,
+  can,
+  type Operation,
+  operatorMetadata,
+  type Principal,
+} from "../shared/contracts.ts";
 import { artifactJson, artifactJsonResponse } from "./artifact-http.ts";
 import { artifactResourceResponse } from "./artifact-resources.ts";
 import { parseArtifactSearch } from "./artifact-search.ts";
@@ -27,7 +35,11 @@ const json = (value: unknown, status = 200) =>
     status,
     headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
   });
-export function artifactApi(w: Workspace, auth: Auth) {
+export function artifactApi(
+  w: Workspace,
+  auth: Auth,
+  updates: { subscribe: (listener: () => void) => () => void },
+) {
   const api = new Hono(),
     service = w.artifacts;
   if (!service) return api;
@@ -95,6 +107,80 @@ export function artifactApi(w: Workspace, auth: Auth) {
       e instanceof AppError || e instanceof ArtifactError ? e.status : 500,
     ),
   );
+  api.post("/api/artifacts/:id/watch", async (c) => {
+    const id = param(c, "id"),
+      p = principal(c);
+    const parsed = z
+      .object({
+        ...operatorMetadata,
+        timeout_ms: z.number().int().min(0).max(2147483647).default(0),
+      })
+      .strict()
+      .safeParse(await artifactJson(c.req.raw, 8192));
+    if (!parsed.success) throw new AppError("invalid_input", "Invalid watch request", 400);
+    const input = parsed.data;
+    if (!can(p, "artifacts:notify"))
+      throw new AppError("forbidden", "Watch requires notification access", 403);
+    if (c.req.raw.signal.aborted) return new Response(null, { status: 499 });
+    const { timeout_ms, ...metadata } = input;
+    const watch = service.watches.open(id, p, metadata, timeout_ms);
+    return streamSSE(c, async (stream) => {
+      let denied = false;
+      const abort = () => watch.finish({ result: "cancelled" });
+      const authorize = () => {
+        let allowed = false;
+        try {
+          const current = auth.principal(c.req.raw);
+          allowed = !!(
+            current &&
+            can(current, "artifacts:read") &&
+            can(current, "artifacts:notify") &&
+            w.access.run(
+              current,
+              () =>
+                (w.access.artifact(id) || !w.one("SELECT 1 FROM artifacts WHERE id=?", id)) &&
+                (!metadata.session_id || w.access.session(metadata.session_id)),
+            )
+          );
+        } catch {
+          allowed = false;
+        }
+        if (!allowed) {
+          denied = true;
+          abort();
+        }
+      };
+      const unsubscribe = updates.subscribe(authorize);
+      stream.onAbort(abort);
+      c.req.raw.signal.addEventListener("abort", abort, { once: true });
+      const heartbeat = setInterval(() => {
+        authorize();
+        if (!denied) void stream.writeSSE({ event: "heartbeat", data: "{}" }).catch(abort);
+      }, 15000);
+      try {
+        authorize();
+        await stream.writeSSE({ event: "ready", data: JSON.stringify(watch.info) });
+        const result = await watch.result;
+        authorize();
+        await stream.writeSSE(
+          denied
+            ? {
+                event: "error",
+                data: JSON.stringify({
+                  code: "forbidden",
+                  message: "Watch access expired or was revoked",
+                }),
+              }
+            : { event: "result", data: JSON.stringify(result) },
+        );
+      } finally {
+        clearInterval(heartbeat);
+        unsubscribe();
+        c.req.raw.signal.removeEventListener("abort", abort);
+        abort();
+      }
+    });
+  });
   get("/api/artifacts", (c) =>
     json(
       service.store.list({

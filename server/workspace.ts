@@ -94,31 +94,36 @@ export class Workspace {
   }
   project(id: string) {
     const project = this.one<Project>(
-      "SELECT id,name,slug,body,revision,created_at FROM projects WHERE id=? OR name=?",
+      "SELECT id,name,slug,body,revision,created_at,is_fallback FROM projects WHERE id=? OR name=?",
       id,
       id,
     );
     if (!project) throw new AppError("not_found", "Project not found", 404);
     this.access.require(this.access.project(project.id));
-    return { ...project, icon: projectIcon(this.db, project.id) };
+    return {
+      ...project,
+      is_fallback: !!project.is_fallback,
+      icon: projectIcon(this.db, project.id),
+    };
   }
   fallbackProject() {
-    const id = "prj-inbox";
-    this.access.require(this.access.project(id));
-    if (!this.one("SELECT 1 FROM projects WHERE id=?", id)) {
-      let name = "Inbox";
-      let suffix = 2;
-      while (this.one("SELECT 1 FROM projects WHERE name=?", name)) name = `Inbox ${suffix++}`;
-      this.run(
-        "INSERT INTO projects(id,name,slug,description,body,created_at) VALUES(?,?,?,'','',?)",
-        id,
-        name,
-        availableProjectSlug(this.db, "Inbox"),
-        this.now(),
-      );
-      this.graph.ensure(id, "project", id);
+    const fallback = this.one<{ id: string }>("SELECT id FROM projects WHERE is_fallback=1");
+    if (!fallback) throw new AppError("fallback_missing", "No fallback project is configured", 500);
+    return this.project(fallback.id);
+  }
+  private setFallbackProject(id: string, fallback: boolean | undefined) {
+    if (fallback === undefined) return;
+    const current = this.one<{ id: string }>("SELECT id FROM projects WHERE is_fallback=1");
+    if (!current) throw new AppError("fallback_missing", "No fallback project is configured", 500);
+    if (!fallback) {
+      if (current.id === id)
+        throw new AppError("fallback_required", "Choose another fallback project first", 409);
+      return;
     }
-    return this.project(id);
+    if (current.id === id) return;
+    this.project(current.id);
+    this.run("UPDATE projects SET is_fallback=0,revision=revision+1 WHERE id=?", current.id);
+    this.run("UPDATE projects SET is_fallback=1 WHERE id=?", id);
   }
   projectScope(a: Input): string[] | null {
     if (a.project_id !== undefined && a.project_ids !== undefined)
@@ -465,10 +470,14 @@ export class Workspace {
       return this.history.read(name, a, principal);
     if (name === "projects_list")
       return this.all<Project>(
-        "SELECT id,name,slug,body,revision,created_at FROM projects ORDER BY name,id",
+        "SELECT id,name,slug,body,revision,created_at,is_fallback FROM projects ORDER BY name,id",
       )
         .filter((project) => this.access.project(project.id))
-        .map((project) => ({ ...project, icon: projectIcon(this.db, project.id) }));
+        .map((project) => ({
+          ...project,
+          is_fallback: !!project.is_fallback,
+          icon: projectIcon(this.db, project.id),
+        }));
     if (name === "projects_get") return this.project(a.project_id as string);
     if (name.startsWith("roles_") || name.startsWith("sessions_"))
       return this.sessions.read(name, a, principal);
@@ -504,6 +513,7 @@ export class Workspace {
       );
       if (a.icon !== undefined) setProjectIcon(this.db, id, a.icon as ProjectIconUpload | null);
       this.graph.ensure(id, "project", id);
+      this.setFallbackProject(id, a.is_fallback as boolean | undefined);
       return this.project(id);
     }
     if (name === "projects_update") {
@@ -523,6 +533,7 @@ export class Workspace {
       );
       if (a.icon !== undefined)
         setProjectIcon(this.db, project.id, a.icon as ProjectIconUpload | null);
+      this.setFallbackProject(project.id, a.is_fallback as boolean | undefined);
       return this.project(project.id);
     }
     if (name.startsWith("links_")) return this.graph.write(name, a, principal);

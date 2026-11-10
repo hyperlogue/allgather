@@ -148,7 +148,7 @@ export function ProjectIconInput({
     </fieldset>
   );
 }
-export function ProjectIconDialog({
+export function ProjectEditorDialog({
   project,
   close,
   saved,
@@ -157,19 +157,25 @@ export function ProjectIconDialog({
   close: () => void;
   saved: () => void;
 }) {
+  const [name, setName] = useState(project.name);
+  const [body, setBody] = useState(project.body);
+  const [fallback, setFallback] = useState(project.is_fallback);
   const [icon, setIcon] = useState<ProjectIconUpload | null | undefined>();
   const [loading, setLoading] = useState(false);
   const { busy, error, run } = useAction();
   return (
-    <Dialog title={`Icon for ${project.name}`} close={close}>
+    <Dialog title={`Edit ${project.name}`} close={close}>
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          if (icon === undefined || loading) return;
+          if (loading) return;
           void run(async () => {
             await call("projects_update", {
               project_id: project.id,
               expected_revision: project.revision,
+              name,
+              body,
+              is_fallback: fallback !== project.is_fallback ? fallback : undefined,
               icon,
               ...mutation(),
             });
@@ -178,6 +184,31 @@ export function ProjectIconDialog({
           });
         }}
       >
+        <label>
+          Name
+          <input required maxLength={300} value={name} onChange={(e) => setName(e.target.value)} />
+        </label>
+        <label>
+          Description
+          <textarea rows={5} value={body} onChange={(e) => setBody(e.target.value)} />
+        </label>
+        <p className="muted small">
+          Task ID prefix: {project.slug}. This cannot change after creation.
+        </p>
+        <label>
+          <input
+            type="checkbox"
+            checked={fallback}
+            disabled={project.is_fallback}
+            onChange={(e) => setFallback(e.target.checked)}
+          />
+          Use when no project can be inferred
+        </label>
+        {project.is_fallback && (
+          <p className="muted small">
+            To change the fallback, select another project. Existing tasks stay here.
+          </p>
+        )}
         <ProjectIconInput
           project={project}
           value={icon}
@@ -193,9 +224,16 @@ export function ProjectIconDialog({
           <button
             type="submit"
             className="primary"
-            disabled={busy || loading || icon === undefined}
+            disabled={
+              busy ||
+              loading ||
+              (icon === undefined &&
+                name === project.name &&
+                body === project.body &&
+                fallback === project.is_fallback)
+            }
           >
-            Save icon
+            Save changes
           </button>
         </div>
       </form>

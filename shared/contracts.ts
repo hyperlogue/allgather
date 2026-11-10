@@ -134,6 +134,7 @@ export interface EpicProgress {
   can_resolve: boolean;
 }
 export interface Project {
+  is_fallback: boolean;
   icon: ProjectIconInfo | null;
   id: string;
   slug: string;
@@ -853,6 +854,7 @@ export const operations = {
     z.object({
       ...key,
       name: text,
+      is_fallback: z.boolean().optional(),
       slug: z
         .string()
         .trim()
@@ -871,6 +873,7 @@ export const operations = {
       ...revision,
       project_id: id,
       slug: z.never().optional(),
+      is_fallback: z.boolean().optional(),
       name: text.optional(),
       body: note.optional(),
       icon: projectIconUpload.nullable().optional(),
@@ -904,7 +907,7 @@ export const operations = {
       discovered_from: id.optional(),
     }),
     "tasks:write",
-    "Create open work. Omitted project uses the parent or source task project, otherwise Inbox. A task with children is an epic.",
+    "Create open work. Omitted project uses the parent or source task project, otherwise the fallback project. A task with children is an epic.",
     true,
   ),
   tasks_update: spec(

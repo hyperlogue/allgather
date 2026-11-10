@@ -34,7 +34,7 @@ test("later task schemas backfill missing access and identity migrations without
     db.close();
     db = openDatabase(path);
     expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: SCHEMA_VERSION });
-    expect(db.query("SELECT COUNT(*) n FROM projects").get()).toEqual({ n: 1 });
+    expect(db.query("SELECT COUNT(*) n FROM projects").get()).toEqual({ n: 2 });
     expect(readdirSync(root).filter((name) => name.includes(".before-v38-"))).toEqual(backups);
   } finally {
     db.close();

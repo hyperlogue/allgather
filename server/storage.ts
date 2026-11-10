@@ -27,6 +27,7 @@ import {
 import { migrateCatalog } from "./catalog-migration.ts";
 import { migrateCredentials, migratePasskeys } from "./credential-migration.ts";
 import { migrateDesign } from "./design-migration.ts";
+import { migrateFallbackProject } from "./fallback-project-migration.ts";
 import { migrateGraphTombstones } from "./graph-migration.ts";
 import { migrateNotifications } from "./notification-migration.ts";
 import { migrateSessionIdentity } from "./session-identity-migration.ts";
@@ -37,7 +38,7 @@ import { migrateTerminalSessions } from "./terminal-migration.ts";
 import { migrateTower } from "./tower-migration.ts";
 import { migrateTranscriptContent } from "./transcript-migration.ts";
 
-export const SCHEMA_VERSION = 38;
+export const SCHEMA_VERSION = 39;
 export function writeDatabaseSnapshot(db: Database, path: string) {
   const directory = mkdtempSync(join(dirname(path), ".allgather-snapshot-"));
   const staged = join(directory, "snapshot.sqlite");
@@ -294,6 +295,7 @@ function initializeDatabase(db: Database, path: string) {
       PRAGMA user_version=38;
     `),
     ).immediate();
+  if (version < 39) migrateFallbackProject(db);
   return db;
 }
 export function setting(db: Database, key: string) {

@@ -23,16 +23,18 @@ function setup() {
   return { db, w, call };
 }
 
-test("fallback is persistent, collision-safe, inferred from context, and retry-safe", () => {
+test("fallback is available immediately, inferred from context, and retry-safe", () => {
   const { db, call } = setup();
   try {
-    const existing = call<Project>("projects_create", { name: "Inbox", slug: "INBOX" });
+    const existing = call<Project>("projects_create", { name: "Other", slug: "OTHER" });
+    expect(call<Project[]>("projects_list").some((p) => p.is_fallback)).toBe(true);
     const input = { title: "Unsorted", operation_key: randomUUID() };
     const task = call<Task>("tasks_create", input);
     expect(call<Task>("tasks_create", input)).toEqual(task);
     expect(task.project_id).not.toBe(existing.id);
     const inbox = call<Project>("projects_get", { project_id: task.project_id });
-    expect(inbox.name).toBe("Inbox 2");
+    expect(inbox.name).toBe("Inbox");
+    expect(inbox.is_fallback).toBe(true);
     expect(call<Task>("tasks_create", { title: "Another" }).project_id).toBe(inbox.id);
     expect(call<Task>("tasks_create", { title: "Child", parent_id: task.id }).project_id).toBe(
       inbox.id,
@@ -137,6 +139,65 @@ test("fallback and moves respect source and destination project grants", () => {
         client,
       ),
     ).toThrow("not granted");
+  } finally {
+    db.close();
+  }
+});
+
+test("users can create and edit a normal fallback project and replace it without moving old work", () => {
+  const { db, call } = setup();
+  try {
+    const initial = call<Project[]>("projects_list").find((p) => p.is_fallback)!;
+    const oldTask = call<Task>("tasks_create", { title: "Old work" });
+    const input = {
+      name: "Personal",
+      slug: "PERS",
+      body: "Unsorted work",
+      is_fallback: true,
+      operation_key: randomUUID(),
+    };
+    const custom = call<Project>("projects_create", input);
+    expect(call<Project>("projects_create", input)).toEqual(custom);
+    expect(custom.is_fallback).toBe(true);
+    expect(call<Project>("projects_get", { project_id: initial.id }).is_fallback).toBe(false);
+    expect(call<Task>("tasks_create", { title: "New work" }).project_id).toBe(custom.id);
+    expect(call<Task>("tasks_get", { task_id: oldTask.id }).project_id).toBe(initial.id);
+    const edited = call<Project>("projects_update", {
+      project_id: custom.id,
+      expected_revision: custom.revision,
+      name: "General",
+      body: "General tasks",
+    });
+    expect(edited.name).toBe("General");
+    expect(edited.body).toBe("General tasks");
+    expect(edited.is_fallback).toBe(true);
+    expect(() =>
+      call("projects_update", {
+        project_id: custom.id,
+        expected_revision: edited.revision,
+        is_fallback: false,
+      }),
+    ).toThrow("Choose another fallback");
+    expect(() => db.query("DELETE FROM projects WHERE id=?").run(custom.id)).toThrow();
+    const restored = call<Project>("projects_get", { project_id: initial.id });
+    call("projects_update", {
+      project_id: restored.id,
+      expected_revision: restored.revision,
+      is_fallback: true,
+    });
+    expect(
+      call<Project[]>("projects_list")
+        .filter((p) => p.is_fallback)
+        .map((p) => p.id),
+    ).toEqual([initial.id]);
+    expect(call<Task>("tasks_create", { title: "Back in Inbox" }).project_id).toBe(initial.id);
+    expect(() =>
+      call("projects_update", {
+        project_id: custom.id,
+        expected_revision: edited.revision,
+        is_fallback: true,
+      }),
+    ).toThrow("revision");
   } finally {
     db.close();
   }

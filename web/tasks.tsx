@@ -149,7 +149,7 @@ function TaskEditor({
             value={draft.project_id ?? project}
             onChange={(e) => set({ ...draft, project_id: e.target.value, parent_id: "" })}
           >
-            {!task && <option value="">Infer from parent, otherwise Inbox</option>}
+            {!task && <option value="">Infer from parent, otherwise fallback project</option>}
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}

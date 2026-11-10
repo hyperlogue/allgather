@@ -88,7 +88,7 @@ try {
     )) !== first
   )
     throw new Error("Project icon did not persist");
-  await browser.evaluate("document.querySelector('[aria-label=\"Change project icon\"]').click()");
+  await browser.evaluate("document.querySelector('[aria-label=\"Edit project\"]').click()");
   await browser.until("!!document.querySelector('dialog input[type=file]')");
   await upload(invalid);
   await browser.until(
@@ -96,7 +96,7 @@ try {
   );
   await upload(blue);
   await browser.until(
-    "document.querySelector('.project-icon-preview img')?.src.startsWith('data:') && ![...document.querySelectorAll('dialog button')].find(b=>b.textContent.trim()==='Save icon').disabled",
+    "document.querySelector('.project-icon-preview img')?.src.startsWith('data:') && ![...document.querySelectorAll('dialog button')].find(b=>b.textContent.trim()==='Save changes').disabled",
   );
   for (const width of [390, 1440]) {
     await browser.command("Emulation.setDeviceMetricsOverride", {
@@ -113,14 +113,14 @@ try {
     if (await browser.evaluate("document.documentElement.scrollWidth>innerWidth"))
       throw new Error("Icon dialog overflows viewport");
   }
-  await click("Save icon");
+  await click("Save changes");
   await browser.until(
     `!document.querySelector('dialog') && document.querySelector('.scope-switch img.project-icon')?.src!==${JSON.stringify(first)} && document.querySelector('.scope-switch img.project-icon')?.naturalWidth===128`,
   );
   const replacement = await browser.evaluate<string>(
     "document.querySelector('.scope-switch img.project-icon').src",
   );
-  await browser.evaluate("document.querySelector('[aria-label=\"Change project icon\"]').click()");
+  await browser.evaluate("document.querySelector('[aria-label=\"Edit project\"]').click()");
   await browser.until("!!document.querySelector('dialog input[type=file]')");
   await click("Remove icon");
   await click("Cancel");
@@ -136,10 +136,10 @@ try {
     join(tmpdir(), "allgather-project-icons.png"),
     Buffer.from(shot.data as string, "base64"),
   );
-  await browser.evaluate("document.querySelector('[aria-label=\"Change project icon\"]').click()");
+  await browser.evaluate("document.querySelector('[aria-label=\"Edit project\"]').click()");
   await browser.until("!!document.querySelector('dialog input[type=file]')");
   await click("Remove icon");
-  await click("Save icon");
+  await click("Save changes");
   await browser.until(
     "!document.querySelector('dialog') && !document.querySelector('.scope-switch img.project-icon')",
   );

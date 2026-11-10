@@ -93,7 +93,7 @@ test("project icon uploads reject invalid encodings, formats and oversized input
     { media_type: "image/jpeg", base64: redIcon },
   ])
     expect(() => call("projects_create", { name: "Invalid", icon })).toThrow();
-  expect(call<Project[]>("projects_list", {})).toEqual([]);
+  expect(call<Project[]>("projects_list", {}).filter((p) => !p.is_fallback)).toEqual([]);
 });
 
 test("icon reads authorize before conditional caching and preserve resource grants", async () => {

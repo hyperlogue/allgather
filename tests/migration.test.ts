@@ -40,7 +40,7 @@ test("version 15 repository memberships migrate without inventing project prefix
   try {
     db.exec(`
       PRAGMA foreign_keys=ON;
-      CREATE TABLE projects(id TEXT PRIMARY KEY,name TEXT,created_at TEXT,slug TEXT,task_sequence INTEGER DEFAULT 0);
+      CREATE TABLE projects(id TEXT PRIMARY KEY,name TEXT,description TEXT NOT NULL DEFAULT '',body TEXT NOT NULL DEFAULT '',created_at TEXT,slug TEXT,task_sequence INTEGER DEFAULT 0);
       CREATE TABLE repositories(id TEXT PRIMARY KEY,name TEXT,upstream_url TEXT,url_aliases TEXT);
       CREATE TABLE machines(id TEXT PRIMARY KEY);
       CREATE TABLE tower_credentials(id TEXT PRIMARY KEY,revoked_at TEXT);
@@ -245,7 +245,7 @@ test("version 18 retires only undispatched takeover replacements and preserves e
   let db = new Database(path);
   try {
     db.exec(`
-      CREATE TABLE projects(id TEXT PRIMARY KEY);
+      CREATE TABLE projects(id TEXT PRIMARY KEY,name TEXT,description TEXT NOT NULL DEFAULT '',body TEXT NOT NULL DEFAULT '',created_at TEXT);
       CREATE TABLE machines(id TEXT PRIMARY KEY);
       CREATE TABLE tower_credentials(id TEXT PRIMARY KEY,revoked_at TEXT);
       CREATE TABLE agent_sessions(id TEXT PRIMARY KEY);

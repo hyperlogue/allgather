@@ -24,7 +24,7 @@ import {
   type View,
   views,
 } from "./navigation.tsx";
-import { ProjectIcon, ProjectIconDialog, ProjectIconInput } from "./project-icon.tsx";
+import { ProjectEditorDialog, ProjectIcon, ProjectIconInput } from "./project-icon.tsx";
 import { projectColor, scopeFilter, scopeName } from "./project-scope.ts";
 import { SessionsView } from "./sessions.tsx";
 import { SettingsView } from "./settings.tsx";
@@ -34,6 +34,7 @@ import { Brand, Dialog, ErrorText, LoginFrame, useAction } from "./ui.tsx";
 
 function NewProject({ close, created }: { close: () => void; created: (p: Project) => void }) {
   const [name, setName] = useState("");
+  const [fallback, setFallback] = useState(false);
   const [slug, setSlug] = useState<string | null>(null);
   const [icon, setIcon] = useState<ProjectIconUpload | null>(null);
   const [iconLoading, setIconLoading] = useState(false);
@@ -47,6 +48,7 @@ function NewProject({ close, created }: { close: () => void; created: (p: Projec
           void run(async () => {
             const p = await call<Project>("projects_create", {
               name,
+              is_fallback: fallback || undefined,
               icon,
               slug: slug ?? suggestedProjectSlug(name),
               ...mutation(),
@@ -74,6 +76,14 @@ function NewProject({ close, created }: { close: () => void; created: (p: Projec
           Task IDs start at {slug ?? suggestedProjectSlug(name)}-1. The slug cannot change after
           creation.
         </p>
+        <label>
+          <input
+            type="checkbox"
+            checked={fallback}
+            onChange={(e) => setFallback(e.target.checked)}
+          />
+          Use when no project can be inferred
+        </label>
         <ProjectIconInput
           value={icon}
           change={setIcon}
@@ -282,7 +292,7 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
     [palette, setPalette] = useState(false),
     [routeRevision, setRouteRevision] = useState(0),
     [newProject, setNewProject] = useState(false),
-    [iconProject, setIconProject] = useState<Project | null>(null),
+    [editingProject, setEditingProject] = useState<Project | null>(null),
     [refresh, setRefresh] = useState(0),
     [error, setError] = useState(""),
     [connected, setConnected] = useState(true);
@@ -435,9 +445,9 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
                       <button
                         type="button"
                         className="quiet project-icon-button"
-                        aria-label="Change project icon"
-                        title={`Change icon for ${p.name}`}
-                        onClick={() => setIconProject(p)}
+                        aria-label="Edit project"
+                        title={`Edit ${p.name}`}
+                        onClick={() => setEditingProject(p)}
                       >
                         <ProjectIcon project={p} />
                       </button>
@@ -530,10 +540,10 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
           close={closePalette}
         />
       )}
-      {iconProject && (
-        <ProjectIconDialog
-          project={iconProject}
-          close={() => setIconProject(null)}
+      {editingProject && (
+        <ProjectEditorDialog
+          project={editingProject}
+          close={() => setEditingProject(null)}
           saved={changed}
         />
       )}

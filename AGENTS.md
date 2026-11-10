@@ -18,6 +18,9 @@ automated checks. Run the source-backed development instance with `bun run dev`
 (foreground, reloads server and web edits) or `bun run dev:server
 start|restart|status|stop`, and reach it with `bun run dev:cli`; these ignore
 inherited `ALLGATHER_*` settings and never touch the installed server or its data.
+`bun run server ARGS` and `bun run cli ARGS` run the same source against the
+installed instance and its normal configuration; a source server applies
+unreleased migrations to that database, so use them only when the user asks.
 Toolchain versions and dependencies come from the manifests and
 locks; dependency changes must keep `bun.lock` and generated `bun.nix` aligned.
 

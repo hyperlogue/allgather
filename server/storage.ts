@@ -1,5 +1,13 @@
 import { Database } from "bun:sqlite";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  linkSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { AppError } from "../shared/contracts.ts";
@@ -31,8 +39,15 @@ import { migrateTranscriptContent } from "./transcript-migration.ts";
 
 export const SCHEMA_VERSION = 38;
 export function writeDatabaseSnapshot(db: Database, path: string) {
-  writeFileSync(path, "", { mode: 0o600, flag: "wx" });
-  db.query("VACUUM INTO ?").run(path);
+  const directory = mkdtempSync(join(dirname(path), ".allgather-snapshot-"));
+  const staged = join(directory, "snapshot.sqlite");
+  try {
+    db.query("VACUUM INTO ?").run(staged);
+    chmodSync(staged, 0o600);
+    linkSync(staged, path);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 }
 export function snapshotDatabase(db: Database) {
   const directory = mkdtempSync(join(tmpdir(), "allgather-snapshot-"));
@@ -47,11 +62,18 @@ export function snapshotDatabase(db: Database) {
 export function openDatabase(path: string) {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const db = new Database(path, { create: true, strict: true });
+  try {
+    return initializeDatabase(db, path);
+  } catch (error) {
+    db.close();
+    throw error;
+  }
+}
+function initializeDatabase(db: Database, path: string) {
   if (path !== ":memory:") chmodSync(path, 0o600);
   db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
   const version = (db.query("PRAGMA user_version").get() as { user_version: number }).user_version;
   if (version > SCHEMA_VERSION) {
-    db.close();
     throw new AppError("newer_database", "This database needs a newer allgather release.");
   }
   const hasProjectSlug = db
@@ -64,7 +86,6 @@ export function openDatabase(path: string) {
     !hasProjectSlug &&
     db.query("SELECT 1 FROM projects LIMIT 1").get()
   ) {
-    db.close();
     throw new AppError(
       "project_slug_upgrade_required",
       "Upgrade this database with the previous build before opening it here; the project slug backfill has been retired.",

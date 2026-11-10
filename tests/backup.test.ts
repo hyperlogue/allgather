@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { randomBytes } from "node:crypto";
 import {
   existsSync,
@@ -215,6 +215,35 @@ test("backup cancellation and corrupt source bytes release the publication hold"
     await expect(new Response(backupWorkspace(f.w)).arrayBuffer()).rejects.toThrow();
     await f.w.blobs!.collect(() => new Set());
   } finally {
+    f.close();
+  }
+});
+
+test("snapshot failure rejects the backup stream, cleans up, and releases the publication hold", async () => {
+  const f = await fixture();
+  const query = f.db.query.bind(f.db);
+  let snapshotPath: string | undefined;
+  const probe = spyOn(f.db, "query").mockImplementation(((sql: string) => {
+    if (sql !== "VACUUM INTO ?") return query(sql);
+    return {
+      run(path: string) {
+        snapshotPath = path;
+        writeFileSync(path, "partial");
+        throw new Error("snapshot failed");
+      },
+    };
+  }) as typeof f.db.query);
+  try {
+    await expect(new Response(backupWorkspace(f.w)).arrayBuffer()).rejects.toThrow(
+      "snapshot failed",
+    );
+    expect(snapshotPath).toBeDefined();
+    if (snapshotPath) expect(existsSync(dirname(snapshotPath))).toBe(false);
+    await f.w.blobs?.collect(() => new Set([f.hash]));
+    expect(query("SELECT hash FROM blobs").all()).toEqual([{ hash: f.hash }]);
+    expect(query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
+  } finally {
+    probe.mockRestore();
     f.close();
   }
 });

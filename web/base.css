@@ -1,0 +1,195 @@
+* {
+  box-sizing: border-box;
+}
+html {
+  scrollbar-gutter: stable;
+}
+body {
+  margin: 0;
+  font: 14px / 1.5 var(--ui);
+  font-optical-sizing: auto;
+  color: var(--text);
+  background: var(--bg-page);
+  -webkit-font-smoothing: antialiased;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button:hover {
+  background: var(--bg-selected);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+a {
+  color: var(--accent);
+}
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+input,
+select,
+textarea {
+  width: 100%;
+  border: 1px solid var(--border-control);
+  border-radius: 0;
+  padding: 6px 10px;
+  min-height: 32px;
+  background: var(--bg-page);
+  color: var(--text);
+}
+textarea {
+  resize: vertical;
+  line-height: 1.55;
+}
+label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 14px;
+}
+label input,
+label textarea,
+label select {
+  margin-top: 7px;
+}
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+h1 {
+  font-size: 21px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+h2 {
+  font-size: 17px;
+  line-height: 1.4;
+  font-weight: 600;
+}
+h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 14px;
+}
+p + p {
+  margin-top: 12px;
+}
+small {
+  display: block;
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+code {
+  overflow-wrap: anywhere;
+}
+code,
+pre {
+  font-family: var(--mono);
+  font-size: 13px;
+}
+pre {
+  background: var(--bg-field);
+  padding: 18px;
+  border-radius: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  line-height: 1.8;
+  margin: 16px 0;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 14px;
+  text-align: left;
+}
+th {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 550;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+td {
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--border);
+}
+summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 8px 0;
+}
+kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: 12px / 1 var(--mono);
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border: 1px solid var(--border-control);
+  color: var(--text-muted);
+  background: var(--bg-hover);
+}
+button,
+input,
+textarea,
+select {
+  transition:
+    background var(--t-fast),
+    border-color var(--t-fast),
+    box-shadow var(--t-fast);
+}
+button {
+  cursor: pointer;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-control);
+  background: var(--bg-page);
+  color: var(--text);
+  border-radius: 0;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.12s;
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.03);
+}
+input,
+textarea,
+select {
+  background: var(--bg-field);
+  box-shadow: inset 0 1px rgb(0 0 0 / 0.12);
+}
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--focus-ring) 22%, transparent);
+}
+dialog {
+  border: 1px solid var(--border);
+  border-radius: 0;
+  padding: 22px;
+  width: min(580px, calc(100% - 32px));
+  max-height: 85vh;
+  box-shadow:
+    inset 0 1px var(--rim),
+    var(--shadow-overlay);
+  color: var(--text);
+  background: var(--bg-overlay);
+  border-color: var(--border-control);
+}
+dialog::backdrop {
+  backdrop-filter: blur(2px);
+  background: var(--scrim);
+}

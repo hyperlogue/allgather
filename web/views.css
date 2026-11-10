@@ -1456,11 +1456,9 @@ textarea {
   flex-direction: column;
   gap: var(--space-3);
 }
-.hot-path {
-  display: grid !important;
+.plain-list .hot-path {
+  display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
 }
 .hot-path meter {
   grid-column: 1 / -1;

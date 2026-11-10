@@ -102,6 +102,24 @@ export class Workspace {
     this.access.require(this.access.project(project.id));
     return { ...project, icon: projectIcon(this.db, project.id) };
   }
+  fallbackProject() {
+    const id = "prj-inbox";
+    this.access.require(this.access.project(id));
+    if (!this.one("SELECT 1 FROM projects WHERE id=?", id)) {
+      let name = "Inbox";
+      let suffix = 2;
+      while (this.one("SELECT 1 FROM projects WHERE name=?", name)) name = `Inbox ${suffix++}`;
+      this.run(
+        "INSERT INTO projects(id,name,slug,description,body,created_at) VALUES(?,?,?,'','',?)",
+        id,
+        name,
+        availableProjectSlug(this.db, "Inbox"),
+        this.now(),
+      );
+      this.graph.ensure(id, "project", id);
+    }
+    return this.project(id);
+  }
   projectScope(a: Input): string[] | null {
     if (a.project_id !== undefined && a.project_ids !== undefined)
       throw new AppError("invalid_filter", "Use either project_id or project_ids, not both");

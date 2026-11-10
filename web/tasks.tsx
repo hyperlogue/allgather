@@ -5,6 +5,7 @@ import type {
   Assignment,
   Operation,
   Page,
+  Project,
   Repository,
   Role,
   Task,
@@ -99,6 +100,7 @@ function TaskEditor({
   sessions: AgentSession[];
 }) {
   const [draft, set, clear] = useDraft(`task-draft:${task?.id ?? project}`, {
+    project_id: task?.project_id ?? project,
     title: task?.title ?? "",
     body: task?.body ?? "",
     labels: task?.labels.join(", ") ?? "",
@@ -107,6 +109,13 @@ function TaskEditor({
     assignee: assignmentValue(task?.assignee ?? null),
     revision: task?.revision,
   });
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectsError, setProjectsError] = useState("");
+  useEffect(() => {
+    void call<Project[]>("projects_list", {})
+      .then(setProjects)
+      .catch((e) => setProjectsError(e.message));
+  }, []);
   const { busy, error, run } = useAction();
   return (
     <Dialog title={task ? "Edit task" : "New task"} close={close}>
@@ -115,6 +124,7 @@ function TaskEditor({
           e.preventDefault();
           void run(async () => {
             const values = {
+              project_id: (draft.project_id ?? project) || undefined,
               title: draft.title,
               body: draft.body,
               labels: parseLabels(draft.labels),
@@ -125,9 +135,7 @@ function TaskEditor({
             };
             const t = await call<Task>(
               task ? "tasks_update" : "tasks_create",
-              task
-                ? { ...values, task_id: task.id, expected_revision: draft.revision }
-                : { ...values, project_id: project },
+              task ? { ...values, task_id: task.id, expected_revision: draft.revision } : values,
             );
             clear();
             changed(t.id);
@@ -135,6 +143,26 @@ function TaskEditor({
           });
         }}
       >
+        <label>
+          Project
+          <select
+            value={draft.project_id ?? project}
+            onChange={(e) => set({ ...draft, project_id: e.target.value, parent_id: "" })}
+          >
+            {!task && <option value="">Infer from parent, otherwise Inbox</option>}
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {task && draft.project_id && draft.project_id !== task.project_id && (
+          <p className="muted small">
+            Children move with this task. Task IDs and history are preserved.
+          </p>
+        )}
+        <ErrorText>{projectsError}</ErrorText>
         <label>
           Title
           <input
@@ -235,7 +263,7 @@ function AddPlan({
               .filter(Boolean);
             if (!children.length) throw new Error("Add at least one task");
             const result = await call<{ mapping: Record<string, string> }>("tasks_plan_create", {
-              project_id: project,
+              project_id: project || undefined,
               tasks: [
                 { key: "epic", title: draft.title },
                 ...children.map((title, i) => ({ key: `task-${i}`, title, parent_key: "epic" })),
@@ -791,7 +819,6 @@ export function TasksView({
   repos,
   refresh,
   changed,
-  newProject,
 }: {
   scope: string[];
   title: string;
@@ -871,9 +898,8 @@ export function TasksView({
     if (url.searchParams.get("action") !== "new-task") return;
     url.searchParams.delete("action");
     history.replaceState(null, "", url);
-    if (project) setCreate(true);
-    else if (!scope.length) newProject();
-  }, [project, scope, newProject]);
+    setCreate(true);
+  }, []);
   const group = (task: Task) => task.status;
   const groups = [
     ["blocked", "Blocked"],
@@ -909,7 +935,7 @@ export function TasksView({
             type="button"
             disabled={scope.length > 1}
             title={scope.length > 1 ? "Choose one project to add a plan" : undefined}
-            onClick={() => (project ? setPlan(true) : newProject())}
+            onClick={() => setPlan(true)}
           >
             Add a plan
           </button>
@@ -918,7 +944,7 @@ export function TasksView({
             className="primary"
             disabled={scope.length > 1}
             title={scope.length > 1 ? "Choose one project to add a task" : undefined}
-            onClick={() => (project ? setCreate(true) : newProject())}
+            onClick={() => setCreate(true)}
           >
             New task
           </button>

@@ -164,8 +164,15 @@ export class Tasks {
     );
   }
   private create(a: Input): Task {
-    const project = this.w.project(String(a.project_id)),
-      sequence = this.w.one<{ task_sequence: number }>(
+    let projectId = a.project_id as string | undefined;
+    if (!projectId && a.parent_id) projectId = this.raw(String(a.parent_id)).project_id;
+    if (!projectId && a.discovered_from) {
+      const source = this.w.graph.entity(String(a.discovered_from));
+      this.w.access.require(this.w.graph.canRead(source, this.w.principal));
+      projectId = source.project_id ?? undefined;
+    }
+    const project = projectId ? this.w.project(projectId) : this.w.fallbackProject();
+    const sequence = this.w.one<{ task_sequence: number }>(
         "UPDATE projects SET task_sequence=task_sequence+1 WHERE id=? RETURNING task_sequence",
         project.id,
       )!.task_sequence,
@@ -187,6 +194,23 @@ export class Tasks {
     if (a.parent_id) this.parent(id, String(a.parent_id));
     if (a.discovered_from) this.w.graph.add("discovered_from", id, String(a.discovered_from));
     return this.get(id);
+  }
+  private move(t: Task, projectId: string) {
+    const project = this.w.project(projectId);
+    if (project.id === t.project_id) return;
+    const ids = [t.id, ...this.descendants(t.id)];
+    for (const id of ids) this.raw(id);
+    this.w.run("UPDATE tasks SET parent_id=NULL WHERE id=?", t.id);
+    for (const id of ids) {
+      this.w.run("UPDATE tasks SET project_id=? WHERE id=?", project.id, id);
+      this.w.run(
+        "UPDATE entities SET project_id=? WHERE id=? OR id IN (SELECT id FROM task_comments WHERE task_id=?)",
+        project.id,
+        id,
+        id,
+      );
+      if (id !== t.id) this.bump(id);
+    }
   }
   comment(id: string, body: string, reply?: string) {
     this.raw(id);
@@ -433,8 +457,16 @@ export class Tasks {
       for (const k of [e.parent_key, ...(e.depends_on_keys as string[])].filter(Boolean))
         if (!Object.hasOwn(mapping, String(k)))
           throw new AppError("unknown_plan_key", `Unknown plan key ${k}`);
+    const parentProjects = [
+      ...new Set(
+        entries.filter((e) => e.parent_id).map((e) => this.raw(String(e.parent_id)).project_id),
+      ),
+    ];
+    const project =
+      a.project_id ??
+      (parentProjects.length === 1 ? parentProjects[0] : this.w.fallbackProject().id);
     for (const e of entries)
-      mapping[e.key] = this.create({ ...e, project_id: a.project_id, parent_id: undefined }).id;
+      mapping[e.key] = this.create({ ...e, project_id: project, parent_id: undefined }).id;
     for (const e of entries) {
       const id = mapping[e.key];
       if (e.parent_key || e.parent_id)
@@ -457,6 +489,7 @@ export class Tasks {
     this.checkRevision(t, a);
     switch (name) {
       case "tasks_update": {
+        if (a.project_id !== undefined) this.move(t, String(a.project_id));
         if (a.assignee !== undefined) this.assignment(a.assignee as Assignment | null);
         for (const field of ["title", "body", "labels", "defer_until", "assignee"] as const)
           if (a[field] !== undefined)

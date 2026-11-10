@@ -898,18 +898,19 @@ export const operations = {
   tasks_create: spec(
     z.object({
       ...key,
-      project_id: id,
+      project_id: id.optional(),
       ...taskFields,
       parent_id: id.nullable().optional(),
       discovered_from: id.optional(),
     }),
     "tasks:write",
-    "Create open work. A task with children is an epic.",
+    "Create open work. Omitted project uses the parent or source task project, otherwise Inbox. A task with children is an epic.",
     true,
   ),
   tasks_update: spec(
     z.object({
       ...change,
+      project_id: id.optional(),
       title: text.optional(),
       body: note.optional(),
       labels: labels.optional(),
@@ -918,7 +919,7 @@ export const operations = {
       parent_id: id.nullable().optional(),
     }),
     "tasks:write",
-    "Update task fields. Deferral is queryable data and does not prohibit work.",
+    "Update task fields. Changing project moves the subtree, preserves IDs, and detaches the old parent unless parent_id is supplied. Deferral does not prohibit work.",
     true,
   ),
   tasks_resolve: spec(
@@ -1012,7 +1013,7 @@ export const operations = {
   tasks_plan_create: spec(
     z.object({
       ...key,
-      project_id: id,
+      project_id: id.optional(),
       tasks: z
         .array(
           z

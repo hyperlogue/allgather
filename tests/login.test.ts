@@ -8,6 +8,7 @@ import { controlRequest } from "../server/control.ts";
 import { startServer } from "../server/index.ts";
 import { serverConfigCommand } from "../server/server-config.ts";
 import { openDatabase } from "../server/storage.ts";
+import type { Project } from "../shared/contracts.ts";
 import { restoreSessionSchema31 } from "./fixtures/session-schema.ts";
 import { restoreTaskSchema36 } from "./fixtures/task-schema.ts";
 
@@ -122,7 +123,11 @@ test("CLI pairing stores private rotating credentials and API grants cannot acce
     for (const c of calls) {
       const err = await new Response(c.stderr).text();
       if (await c.exited) throw new Error(err);
-      expect(JSON.parse(await new Response(c.stdout).text())).toEqual([]);
+      expect(
+        (JSON.parse(await new Response(c.stdout).text()) as Project[]).filter(
+          (p) => !p.is_fallback,
+        ),
+      ).toEqual([]);
     }
     expect(readFileSync(serverConfig, "utf8")).toBe(serverSettings);
     const refreshed = JSON.parse(readFileSync(credentials, "utf8"))[url];

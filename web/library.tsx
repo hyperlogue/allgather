@@ -171,7 +171,7 @@ function Publication({
     </Dialog>
   );
 }
-export function ArtifactsView({
+export function LibraryView({
   scope,
   refresh,
   changed,
@@ -260,7 +260,7 @@ export function ArtifactsView({
       <div className="artifact-workspace">
         <div className="artifact-bar">
           <button type="button" className="quiet" onClick={back}>
-            ← Artifacts
+            ← Library
           </button>
           <span>{detail?.title ?? "Artifact"}</span>
           <ContextLink id={selected} />
@@ -302,7 +302,7 @@ export function ArtifactsView({
     <>
       <PageHeading>
         <div>
-          <h1>Artifacts</h1>
+          <h1>Library</h1>
           <p>Published results and the discussion that moves work forward.</p>
         </div>
         <button type="button" className="primary" onClick={() => setCreate(true)}>
@@ -327,7 +327,7 @@ export function ArtifactsView({
           ))}
         </fieldset>
         <label className="search">
-          <span className="sr-only">Search artifacts</span>
+          <span className="sr-only">Search library</span>
           <input
             placeholder="Search content and comments"
             value={query}

@@ -96,7 +96,7 @@ export function CommandPalette({
             ...artifacts.artifacts.map((a) => ({
               id: a.id,
               title: a.title ?? a.id,
-              group: "Artifacts",
+              group: "Library",
               icon: "artifacts" as const,
               hint: a.kind,
               run: () => go("artifacts", { artifact: a.id }),

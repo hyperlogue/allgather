@@ -196,7 +196,7 @@
     "confirmThatTheCodeAboveMatchesYour": "确认上方代码与终端中的一致。你可以从 Allgather 撤销此访问权限。",
     "connectYourCli": "连接你的 CLI",
     "decline": "拒绝",
-    "returnToArtifacts": "返回 Artifact 列表",
+    "returnToArtifacts": "返回作品库",
     "reviewRequest": "审阅请求",
     "reviewing": "正在审阅…",
     "theRequestCouldNotBeCompletedCheck": "无法完成请求。请检查代码并重试。",
@@ -502,7 +502,7 @@
   },
   "workspaceHeader": {
     "animateLogo": "Logo 动画",
-    "artifactLibrary": "Artifact 库",
+    "artifactLibrary": "作品库",
     "mainNavigation": "主导航"
   },
   "settings": {

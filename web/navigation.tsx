@@ -9,7 +9,7 @@ import { projectColor, scopeFilter, scopeName, scopeRail } from "./project-scope
 export const scopedViews = [
   ["tasks", "Tasks"],
   ["sessions", "Sessions"],
-  ["artifacts", "Artifacts"],
+  ["artifacts", "Library"],
   ["history", "Git history"],
   ["activity", "Activity"],
 ] as const;

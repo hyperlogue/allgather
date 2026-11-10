@@ -196,7 +196,7 @@
     "confirmThatTheCodeAboveMatchesYour": "Confirm that the code above matches your terminal. You can revoke this access from Allgather.",
     "connectYourCli": "Connect your CLI",
     "decline": "Decline",
-    "returnToArtifacts": "Return to artifacts",
+    "returnToArtifacts": "Return to library",
     "reviewRequest": "Review request",
     "reviewing": "Reviewing…",
     "theRequestCouldNotBeCompletedCheck": "The request could not be completed. Check the code and try again.",
@@ -502,7 +502,7 @@
   },
   "workspaceHeader": {
     "animateLogo": "Animate logo",
-    "artifactLibrary": "Artifact library",
+    "artifactLibrary": "Library",
     "mainNavigation": "Main navigation"
   },
   "settings": {

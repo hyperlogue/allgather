@@ -7,11 +7,11 @@ import { suggestedProjectSlug } from "../shared/project-slug.ts";
 import { Activity } from "./activity.tsx";
 import { call, mutation, request } from "./api.ts";
 import { ApprovalsView, useApprovals } from "./approvals.tsx";
-import { ArtifactsView } from "./artifacts.tsx";
 import { CliPairing } from "./cli-pairing.tsx";
 import { ClientGrants } from "./client-grants.tsx";
 import { CommandPalette } from "./command-palette.tsx";
 import { HistoryView, type Repo } from "./history.tsx";
+import { LibraryView } from "./library.tsx";
 import { Login } from "./login.tsx";
 import { MachineConnections } from "./machine-connections.tsx";
 import { McpPairing } from "./mcp-pairing.tsx";
@@ -494,7 +494,7 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
               newProject={() => setNewProject(true)}
             />
           ) : view === "artifacts" ? (
-            <ArtifactsView key={routeRevision} scope={scope} refresh={refresh} changed={changed} />
+            <LibraryView key={routeRevision} scope={scope} refresh={refresh} changed={changed} />
           ) : view === "sessions" ? (
             <SessionsView key={routeRevision} scope={scope} refresh={refresh} changed={changed} />
           ) : view === "history" ? (

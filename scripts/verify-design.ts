@@ -205,7 +205,7 @@ try {
     `!document.querySelector('.scope-popover') && document.querySelector('.scope-switch')?.getAttribute('aria-label')==='Project filter: Example workspace' && !document.querySelector('.app-main')?.textContent.includes('Second project task')`,
   );
   for (const label of [
-    "Artifacts",
+    "Library",
     "Git history",
     "Activity",
     "Approvals",
@@ -228,7 +228,7 @@ try {
   for (const label of [
     "Tasks",
     "Sessions",
-    "Artifacts",
+    "Library",
     "Git history",
     "Activity",
     "Approvals",

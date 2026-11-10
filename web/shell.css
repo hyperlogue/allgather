@@ -182,6 +182,28 @@
 .scope-list .scope-option:focus-visible {
   background: transparent;
 }
+.scope-edit {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg3);
+  opacity: 0.6;
+}
+.scope-edit:hover,
+.scope-edit:focus-visible {
+  color: var(--fg);
+  opacity: 1;
+  outline: 0;
+}
+.scope-list li:hover .scope-edit {
+  opacity: 1;
+}
 .scope-check {
   appearance: none;
   flex: none;

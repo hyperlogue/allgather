@@ -85,12 +85,14 @@ function ProjectSwitcher({
   collapsed,
   choose,
   newProject,
+  editProject,
 }: {
   scope: string[];
   projects: Project[];
   collapsed: boolean;
   choose: (ids: string[]) => void;
   newProject: () => void;
+  editProject: (project: Project) => void;
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -188,6 +190,18 @@ function ProjectSwitcher({
                     <span>{p.name}</span>
                     <small>{p.slug}</small>
                   </button>
+                  <button
+                    type="button"
+                    className="scope-edit"
+                    aria-label={`Edit ${p.name}`}
+                    title={`Edit ${p.name}`}
+                    onClick={() => {
+                      setOpen(false);
+                      editProject(p);
+                    }}
+                  >
+                    <Icon name="settings" />
+                  </button>
                   <input
                     type="checkbox"
                     className="scope-check"
@@ -270,6 +284,7 @@ export function Sidebar({
   navigate,
   choose,
   newProject,
+  editProject,
   search,
   toggle,
 }: {
@@ -283,6 +298,7 @@ export function Sidebar({
   navigate: (view: View, params?: Record<string, string>) => void;
   choose: (ids: string[]) => void;
   newProject: () => void;
+  editProject: (project: Project) => void;
   search: () => void;
   toggle: () => void;
 }) {
@@ -314,6 +330,7 @@ export function Sidebar({
           collapsed={collapsed}
           choose={choose}
           newProject={newProject}
+          editProject={editProject}
         />
         <button
           type="button"

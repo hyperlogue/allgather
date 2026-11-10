@@ -22,6 +22,7 @@ export function CommandPalette({
   navigate,
   chooseProject,
   newProject,
+  editProject,
   close,
 }: {
   scope: string[];
@@ -29,6 +30,7 @@ export function CommandPalette({
   navigate: (view: View, params?: Record<string, string>) => void;
   chooseProject: (id: string) => void;
   newProject: () => void;
+  editProject: (project: Project) => void;
   close: () => void;
 }) {
   const project = singleProject(scope);
@@ -148,6 +150,18 @@ export function CommandPalette({
             run: () => (project ? go("tasks", { action: "new-task" }) : (close(), newProject())),
           },
         ]),
+    ...projects
+      .filter((p) => p.id === project)
+      .map((p) => ({
+        id: "edit-project",
+        title: `Edit ${p.name}…`,
+        group: "Actions",
+        icon: "settings" as const,
+        run: () => {
+          close();
+          editProject(p);
+        },
+      })),
     {
       id: "new-project",
       title: "New project",

@@ -421,6 +421,7 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
         navigate={navigate}
         choose={choose}
         newProject={() => setNewProject(true)}
+        editProject={setEditingProject}
         search={() => setPalette(true)}
         toggle={() => setCollapsed((v) => !v)}
       />
@@ -538,6 +539,7 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
           navigate={navigate}
           chooseProject={chooseProject}
           newProject={() => setNewProject(true)}
+          editProject={setEditingProject}
           close={closePalette}
         />
       )}

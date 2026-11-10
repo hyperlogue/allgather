@@ -11,7 +11,7 @@ import { join } from "node:path";
 import artifactPage from "../web/artifact.html";
 import page from "../web/index.html";
 import { createApp, Updates } from "./app.ts";
-import { loadAssets } from "./assets.ts";
+import { loadAssets, watchAssets } from "./assets.ts";
 import { Auth } from "./auth.ts";
 import { backupWorkspace } from "./backup.ts";
 import { type Config, config } from "./config.ts";
@@ -62,6 +62,7 @@ export async function startServer(overrides: Partial<Config> = {}) {
   let gateways: Gateways | undefined;
   let control: ReturnType<typeof startLocalControl> | undefined;
   let stopHttp: (() => Promise<void>) | undefined;
+  let unwatchAssets: (() => void) | undefined;
   try {
     database = openDatabase(join(settings.dataDir, "allgather.sqlite"));
     for (const name of ["owner-key", "login-token"]) {
@@ -88,10 +89,12 @@ export async function startServer(overrides: Partial<Config> = {}) {
       loadAssets(page),
       loadAssets(artifactPage, (path) => /^\/artifact-workspace\/[^/]+$/.test(path)),
     ]);
-    const assets = (request: Request) => {
-      const response = mainAssets(request);
+    const assets = async (request: Request) => {
+      const response = await mainAssets(request);
       return response.status === 404 ? artifactAssets(request) : response;
     };
+    if (process.env.ALLGATHER_DEV === "1" && !page.files)
+      unwatchAssets = watchAssets(join(import.meta.dir, "..", "web"), [page, artifactPage]);
     const peers = new WeakMap<Request, string>();
     let app: ReturnType<typeof createApp> | undefined;
     let publicApp: ReturnType<typeof createApp> | undefined;
@@ -190,6 +193,7 @@ export async function startServer(overrides: Partial<Config> = {}) {
     const stop = () =>
       (closing ??= (async () => {
         control?.beginShutdown();
+        unwatchAssets?.();
         workspace.approvals.close();
         await gateways?.stop();
         await workspace.transcripts.stop();
@@ -210,6 +214,7 @@ export async function startServer(overrides: Partial<Config> = {}) {
     );
     return { server, mcpServer, workspace, stop, settings };
   } catch (error) {
+    unwatchAssets?.();
     await gateways?.stop();
     await upstream?.stop();
     tower?.stop();

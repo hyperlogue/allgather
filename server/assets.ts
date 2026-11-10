@@ -1,3 +1,4 @@
+import { watch } from "node:fs";
 import type { HTMLBundle } from "bun";
 
 interface Asset {
@@ -43,22 +44,47 @@ async function buildAssets(bundle: HTMLBundle) {
   index = { ...index, body: new Blob([html]) };
   return { assets, index };
 }
+function buildFailure(error: unknown) {
+  const logs = error instanceof AggregateError ? error.errors.map(String) : [];
+  return new Response([String(error), ...logs].join("\n"), {
+    status: 500,
+    headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+  });
+}
+function currentBuild(bundle: HTMLBundle) {
+  let pending = builds.get(bundle);
+  if (!pending) {
+    const started = buildAssets(bundle);
+    builds.set(bundle, started);
+    started.catch(() => {
+      if (builds.get(bundle) === started) builds.delete(bundle);
+    });
+    pending = started;
+  }
+  return pending;
+}
+export function watchAssets(directory: string, bundles: HTMLBundle[]) {
+  const watcher = watch(directory, { recursive: true }, () => {
+    for (const bundle of bundles) builds.delete(bundle);
+  });
+  return () => watcher.close();
+}
 export async function loadAssets(
   bundle: HTMLBundle,
   documentRoute: (path: string) => boolean = (path) =>
     ["/", "/sign-in", "/welcome"].includes(path) ||
     /^\/tower\/enroll\/enrollment-[a-zA-Z0-9]+$/.test(path),
 ) {
-  let pending = builds.get(bundle);
-  if (!pending) {
-    pending = buildAssets(bundle);
-    builds.set(bundle, pending);
-    pending.catch(() => builds.delete(bundle));
-  }
-  const { assets, index } = await pending;
-  return (request: Request) => {
+  await currentBuild(bundle);
+  return async (request: Request) => {
+    let built: Awaited<ReturnType<typeof buildAssets>>;
+    try {
+      built = await currentBuild(bundle);
+    } catch (error) {
+      return buildFailure(error);
+    }
     const path = new URL(request.url).pathname;
-    const asset = documentRoute(path) ? index : assets.get(path);
+    const asset = documentRoute(path) ? built.index : built.assets.get(path);
     if (!asset || !["GET", "HEAD"].includes(request.method))
       return new Response("Not found", { status: 404 });
     return new Response(request.method === "HEAD" ? null : asset.body, {

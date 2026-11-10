@@ -14,7 +14,11 @@ authoritative specification.
 
 Development uses a direnv-managed Nix shell; the agent may already be in it, so
 `nix develop` is unnecessary when the shell is active. Use `bun --no-env-file` for
-automated checks. Toolchain versions and dependencies come from the manifests and
+automated checks. Run the source-backed development instance with `bun run dev`
+(foreground, reloads server and web edits) or `bun run dev:server
+start|restart|status|stop`, and reach it with `bun run dev:cli`; these ignore
+inherited `ALLGATHER_*` settings and never touch the installed server or its data.
+Toolchain versions and dependencies come from the manifests and
 locks; dependency changes must keep `bun.lock` and generated `bun.nix` aligned.
 
 Select Tower explicitly with `ALLGATHER_TEST_TOWER` for interoperability checks.

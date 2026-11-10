@@ -1,11 +1,11 @@
 ---
-name: integrate-r3
+name: sync-r3-implementation
 description: Selectively integrate R3 features into Allgather, or resume an unfinished integration using its recorded upstream baseline.
 ---
 
-Work from the Allgather repository root. `skills/integrate-r3/r3.json` is the
+Work from the Allgather repository root. `skills/sync-r3-implementation/r3.json` is the
 processed upstream baseline and decision history. R3 is a behavior and code
-reference; the implementation belongs to Allgather. `skills/integrate-r3/r3-source.json`
+reference; the implementation belongs to Allgather. `skills/sync-r3-implementation/r3-source.json`
 records historical upstream hashes, not a requirement for local files to remain
 identical. The root `LICENSE` preserves the upstream attribution and license.
 
@@ -14,7 +14,7 @@ identical. The root `LICENSE` preserves the upstream attribution and license.
 1. Read current adapters, schema migrations, and tests before choosing changes.
    Start with `server/artifacts.ts`, `server/artifact-api.ts`,
    `server/artifact-migration.ts`, `cli/artifacts.ts`, and their callers.
-   Run `bun --no-env-file scripts/r3-integration.ts audit "$R3_CHECKOUT"` to
+   Run `bun --no-env-file skills/sync-r3-implementation/scripts/sync.ts audit "$R3_CHECKOUT"` to
    verify the historical source provenance against the reference checkout.
    Its hashes do not describe current Allgather files.
 2. Resolve the intended upstream revision. Honor a requested branch, tag, or
@@ -28,7 +28,7 @@ identical. The root `LICENSE` preserves the upstream attribution and license.
    An explicit offline or pinned-revision request may use available objects;
    record that limitation instead of describing them as current upstream.
 3. Prepare a run with
-   `bun --no-env-file scripts/r3-integration.ts prepare "$R3_CHECKOUT" "$R3_REF" workspace/r3-integration/run.json`.
+   `bun --no-env-file skills/sync-r3-implementation/scripts/sync.ts prepare "$R3_CHECKOUT" "$R3_REF" workspace/r3-integration/run.json`.
    Use a new filename for a new target. An existing file is never overwritten:
    resume its pinned target and decisions. Fill `selection.reason` with the
    source/ref, observed full hash, observation date, and why this revision is
@@ -94,7 +94,7 @@ entry before finalization; unit tests alone cannot establish visual behavior.
 Follow repository commit checks for implementation and acceptance changes, then
 commit them. Keep the editable run in ignored `workspace/`; keep the checkout
 otherwise clean. Run
-`bun --no-env-file scripts/r3-integration.ts finalize "$R3_CHECKOUT" workspace/r3-integration/run.json`.
+`bun --no-env-file skills/sync-r3-implementation/scripts/sync.ts finalize "$R3_CHECKOUT" workspace/r3-integration/run.json`.
 It rechecks the pinned range and completeness, rejects stale baselines and
 unfinished decisions, runs typecheck and the listed tests within a 30-second
 budget, and records the verified Allgather commit before atomically advancing

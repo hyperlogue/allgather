@@ -5,7 +5,7 @@ affected implementation, schemas, migrations, and executable tests before changi
 behavior. Express intent through clear names, structure, types, and checks.
 
 For R3 feature integration or resuming an integration, use
-[`skills/integrate-r3/SKILL.md`](skills/integrate-r3/SKILL.md).
+[`skills/sync-r3-implementation/SKILL.md`](skills/sync-r3-implementation/SKILL.md).
 
 Avoid adding explanatory comments, docstrings, or documentation to the repository.
 Keep plans, ADRs, design notes, reviews, and other prose in the gitignored

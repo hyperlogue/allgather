@@ -14,18 +14,18 @@ body,
   font:
     14px / 1.6 system-ui,
     sans-serif;
-  color: var(--fg3);
+  color: var(--text-muted);
 }
 .artifact-boot a {
-  color: var(--acc);
+  color: var(--accent);
 }
 
 .artifact-delivery {
   flex: none;
-  border-bottom: 1px solid var(--e2);
+  border-bottom: 1px solid var(--border);
   padding: 6px 14px;
   font: 12px / 1.6 system-ui;
-  color: var(--fg3);
+  color: var(--text-muted);
 }
 .artifact-delivery summary {
   cursor: pointer;
@@ -37,19 +37,19 @@ body,
 
 html,
 body {
-  background: var(--l0);
-  color: var(--fg);
+  background: var(--bg-page);
+  color: var(--text);
   font-family: var(--ui);
 }
 button.bg-primary-600 {
-  color: var(--on-fill);
-  background: linear-gradient(180deg, color-mix(in oklch, var(--fill), white 14%), var(--fill));
+  color: var(--on-accent-fill);
+  background: linear-gradient(180deg, color-mix(in oklch, var(--accent-fill), white 14%), var(--accent-fill));
   box-shadow:
     inset 0 1px rgb(255 255 255 / 0.3),
-    0 3px 10px color-mix(in oklch, var(--fill) 20%, transparent);
+    0 3px 10px color-mix(in oklch, var(--accent-fill) 20%, transparent);
 }
 button.bg-primary-600:hover {
-  background: var(--fill);
+  background: var(--accent-fill);
 }
 button,
 input,

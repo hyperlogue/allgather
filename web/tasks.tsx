@@ -39,6 +39,12 @@ const parseLabels = (s: string) =>
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+const localDateTime = (value: string) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, -1);
+};
 const assignmentValue = (a: Assignment | null) => (a ? `${a.kind}:${a.id}` : "");
 const parseAssignment = (s: string): Assignment | null =>
   !s
@@ -161,8 +167,30 @@ function TaskEditor({
           roles={roles}
           sessions={sessions}
         />
+        <label>
+          Defer until
+          <input
+            type="datetime-local"
+            step="any"
+            value={localDateTime(draft.defer_until)}
+            onChange={(e) => set({ ...draft, defer_until: e.target.value })}
+          />
+        </label>
+        <p className="muted small">
+          In your local time zone. Use this date to filter what to focus on. You can still work on
+          or complete the task before then.
+        </p>
+        {draft.defer_until && (
+          <button
+            type="button"
+            className="quiet"
+            onClick={() => set({ ...draft, defer_until: "" })}
+          >
+            Clear deferral
+          </button>
+        )}
         <details>
-          <summary>Parent and review time</summary>
+          <summary>Parent task</summary>
           <label>
             Parent task ID
             <input
@@ -170,17 +198,6 @@ function TaskEditor({
               onChange={(e) => set({ ...draft, parent_id: e.target.value })}
             />
           </label>
-          <label>
-            Defer until
-            <input
-              value={draft.defer_until}
-              onChange={(e) => set({ ...draft, defer_until: e.target.value })}
-              placeholder="2027-01-15T09:00:00Z"
-            />
-          </label>
-          <p className="muted small">
-            This timestamp is available to filters. It does not stop work or change a claim.
-          </p>
         </details>
         <ErrorText>{error}</ErrorText>
         <div className="actions">

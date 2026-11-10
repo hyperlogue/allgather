@@ -8,5 +8,5 @@
     "isolatedModules": true, "jsx": "react-jsx",
     "lib": ["ESNext", "DOM", "DOM.Iterable"], "types": ["bun"]
   },
-  "include": ["shared", "server", "cli", "web", "scripts", "skills/*/scripts/**/*.ts", "tests"]
+  "include": ["shared", "server", "cli", "web", "scripts", ".agents/skills/*/scripts/**/*.ts", "tests"]
 }

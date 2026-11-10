@@ -10,7 +10,7 @@ import {
   inventory,
   prepare,
   validateRun,
-} from "../skills/sync-r3-implementation/scripts/sync.ts";
+} from "../.agents/skills/sync-r3-implementation/scripts/sync.ts";
 
 const directories: string[] = [];
 afterEach(() => {
@@ -80,7 +80,7 @@ test("prepare pins an immutable target and refuses to overwrite partial work", (
 
 test("source provenance verification does not require an imported runtime tree", () => {
   const f = fixture();
-  const provenance = join(f.root, "skills/sync-r3-implementation");
+  const provenance = join(f.root, ".agents/skills/sync-r3-implementation");
   mkdirSync(provenance, { recursive: true });
   const manifest = {
     commit: f.target,

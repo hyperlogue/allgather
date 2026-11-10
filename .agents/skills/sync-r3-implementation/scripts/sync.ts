@@ -188,7 +188,7 @@ export function finalize(
 
 export function auditImport(root: string, upstream: string) {
   const source = JSON.parse(
-    readFileSync(resolve(root, "skills/sync-r3-implementation/r3-source.json"), "utf8"),
+    readFileSync(resolve(root, ".agents/skills/sync-r3-implementation/r3-source.json"), "utf8"),
   );
   const commit = revision(upstream, source.commit);
   const digest = (data: Uint8Array) => createHash("sha256").update(data).digest("hex");
@@ -202,7 +202,7 @@ export function auditImport(root: string, upstream: string) {
 
 if (import.meta.main) {
   const [action, upstream, refOrRun, destination] = process.argv.slice(2);
-  const root = resolve(import.meta.dir, "../../..");
+  const root = resolve(import.meta.dir, "../../../..");
   const state = resolve(import.meta.dir, "../r3.json");
   if (!upstream) throw new Error("Supply the upstream checkout path");
   let result: unknown;

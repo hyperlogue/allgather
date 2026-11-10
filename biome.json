@@ -22,7 +22,7 @@
       "cli/**",
       "web/**",
       "scripts/**",
-      "skills/*/scripts/**",
+      ".agents/skills/*/scripts/**",
       "tests/**"
     ]
   },

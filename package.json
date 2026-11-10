@@ -10,7 +10,7 @@
     "build": "bun scripts/compile.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "check": "biome check shared server cli web scripts skills tests",
+    "check": "biome check shared server cli web scripts .agents/skills tests",
     "postinstall": "$npm_execpath node_modules/bun2nix/index.ts -o bun.nix"
   },
   "dependencies": {

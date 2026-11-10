@@ -40,12 +40,12 @@ export class ArtifactWatches {
       throw new AppError("forbidden", "Watch requires artifact read and notification access", 403);
     this.w.access.require(this.w.access.artifact(id));
     this.artifacts.store.get(id);
+    if (!metadata.session_id) metadata = { ...metadata, operator_kind: "user" };
     const operator = this.w.identify(principal, metadata);
     if (operator.session_id) this.w.access.require(this.w.access.session(operator.session_id));
-    const actor: ArtifactActor =
-      operator.kind === "user"
-        ? { role: "human", sessionId: null }
-        : { role: "agent", sessionId: operator.session_id ?? `watch:${randomUUID()}` };
+    const actor: ArtifactActor = operator.session_id
+      ? { role: "agent", sessionId: operator.session_id }
+      : { role: "human", sessionId: null };
     let resolve!: (value: ArtifactWatchResult) => void;
     let settled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;

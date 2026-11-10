@@ -177,3 +177,72 @@ test("watch requires notification access and terminates on credential revocation
     f.close();
   }
 });
+
+test("sessionless watches use owner attribution while session watches retain their agent identity", async () => {
+  const f = await fixture();
+  try {
+    await f.call("artifacts_create", {
+      kind: "files",
+      operator_kind: "agent",
+      session_id: "watch-session",
+    });
+    for (const session of [undefined, "watch-session"]) {
+      const response = await f.app.fetch(
+        new Request(`${base}/api/artifacts/${f.artifact.id}/watch`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${f.token}`, "content-type": "application/json" },
+          body: JSON.stringify({
+            timeout_ms: 1,
+            operator_kind: "agent",
+            agent_type: "fixture",
+            ...(session ? { session_id: session } : {}),
+          }),
+        }),
+      );
+      const events = await response.text();
+      expect(events).toContain(
+        JSON.stringify(
+          session ? { role: "agent", sessionId: session } : { role: "human", sessionId: null },
+        ),
+      );
+      const audit = f.w.one<{
+        operator_id: string;
+        operator_kind: string;
+        session_id: string | null;
+      }>(
+        "SELECT operator_id,operator_kind,session_id FROM audit_operations WHERE operation='artifact_watch' ORDER BY rowid DESC LIMIT 1",
+      );
+      expect(audit).toMatchObject({
+        operator_kind: session ? "agent" : "user",
+        session_id: session ?? null,
+      });
+      if (!session) expect(audit?.operator_id).toBe("operator-owner");
+    }
+    const limited = await fixtureApiToken(
+      base,
+      fixtureBrowserCookie(f.db),
+      ["artifacts:read", "artifacts:notify"],
+      (r) => f.app.fetch(r),
+    );
+    const limitedWatch = await f.watch(1, limited);
+    expect(limitedWatch.status).toBe(200);
+    await limitedWatch.text();
+    await f.pending();
+    const ack = await f.app.fetch(
+      new Request(`${base}/api/operations/artifact_comments_ack`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${limited}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          operation_key: "limited-ack",
+          artifact_id: f.artifact.id,
+          operator_kind: "user",
+          receipt: f.w.artifacts!.conversations.snapshot(f.artifact.id).acknowledgment,
+        }),
+      }),
+    );
+    expect(ack.status).toBe(403);
+    expect(f.w.artifacts!.conversations.hasPending(f.artifact.id)).toBe(true);
+  } finally {
+    f.close();
+  }
+});

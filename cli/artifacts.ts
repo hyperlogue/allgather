@@ -18,7 +18,7 @@ import {
   metadata,
   validateArtifactOptions,
 } from "./artifact-options.ts";
-import { watchArtifact } from "./artifact-watch.ts";
+import { watchArtifact, watchOperator } from "./artifact-watch.ts";
 import { captureFiles } from "./capture.ts";
 import { captureGitCommit, captureGitDiff, captureGitFiles } from "./capture-git.ts";
 import type { Client } from "./client.ts";
@@ -294,7 +294,11 @@ export async function artifactCommand(client: Client, p: string[], f: Flags) {
     await writeOutput(`${output}\n`);
     if (verb === "watch" && (await detail()).state === "archived") return false;
     if (result.acknowledgment && !f.all && !f["no-ack"]) {
-      await call("artifact_comments_ack", { artifact_id: id, receipt: result.acknowledgment });
+      await call("artifact_comments_ack", {
+        artifact_id: id,
+        receipt: result.acknowledgment,
+        ...(verb === "watch" ? watchOperator(client) : {}),
+      });
       if (subscribe && client.operator.operator_kind === "agent") {
         try {
           await call("artifacts_listen", {

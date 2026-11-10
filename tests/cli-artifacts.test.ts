@@ -238,7 +238,26 @@ test("artifact CLI publishes, filters, targets, reanchors, delivers and streams 
     expect(batch.json().results[0].revision).toBe(3);
     await ok("thread-edit", thread.id, "--body", "Updated", "--clear-attachments");
     expect((await ok("show", id)).threads[0].comments[0].attachments).toEqual([]);
-    expect((await invoke(["watch", id, "--timeout", "1"])).code).toBe(10);
+    expect(
+      (
+        await invoke([
+          "watch",
+          id,
+          "--timeout",
+          "1",
+          "--operator-kind",
+          "agent",
+          "--agent-type",
+          "fixture",
+        ])
+      ).code,
+    ).toBe(10);
+    expect(
+      running.workspace.one(
+        "SELECT operator_id,operator_kind,session_id FROM audit_operations WHERE operation='artifact_comments_ack' ORDER BY rowid DESC LIMIT 1",
+      ),
+    ).toMatchObject({ operator_id: "operator-owner", operator_kind: "user", session_id: null });
+    expect((await ok("comments", id, "--json")).itemCount).toBe(0);
     await ok("archive", id);
     expect((await invoke(["watch", id, "--timeout", "0.001"])).code).toBe(0);
     await ok("restore", id);

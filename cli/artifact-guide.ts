@@ -18,6 +18,7 @@ Targeted replies to the latest version move the anchor atomically; historical re
 Pending fetch acknowledges only after output and image saves succeed, then attempts a Tower subscription.
 --all reads history without acknowledgment or subscribing; --no-ack leaves delivery pending.
 Watch: artifact watch ID [--timeout SECONDS]. Uses SSE and becomes the explicit recipient, replacing an earlier watch or explicit Tower listener. A retained fallback resumes when watch ends.
+Without a session ID, watch and its delivery acknowledgment are attributed to the owner; permissions still come from the authenticated connection.
 Watch wakes on Submit or immediately for already pending comments. Opening or closing the stream does not acknowledge delivery.
 API: POST /api/artifacts/ID/watch with JSON timeout_ms (0 means unlimited) and optional operator metadata. Requires artifacts:read and artifacts:notify; SSE events are ready, heartbeat, result, or error.
 Watch exits: 10 delivered, 0 archived, 2 timeout, 4 superseded, cancelled, or acknowledgment conflict. Handle nonzero exits explicitly.

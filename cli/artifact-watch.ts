@@ -1,6 +1,12 @@
 import type { ArtifactWatchResult } from "../shared/artifacts.ts";
 import type { Client } from "./client.ts";
 
+export function watchOperator(client: Client) {
+  return client.operator.session_id
+    ? client.operator
+    : { ...client.operator, operator_kind: "user" as const };
+}
+
 export async function watchArtifact(
   client: Client,
   id: string,
@@ -11,7 +17,7 @@ export async function watchArtifact(
   const timeout = seconds ? Math.max(1, Math.ceil(seconds * 1000)) : 0;
   const response = await client.request(
     `/api/artifacts/${encodeURIComponent(id)}/watch`,
-    { ...client.operator, timeout_ms: timeout },
+    { ...watchOperator(client), timeout_ms: timeout },
     {
       stream: true,
       ...(timeout ? { signal: AbortSignal.timeout(timeout + 5000) } : {}),

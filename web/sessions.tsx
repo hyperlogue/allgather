@@ -14,6 +14,7 @@ import { hasManagedProtocol, hasTerminalProtocol, intersectControls } from "../s
 import type { CheckoutObservation } from "../shared/tower-catalog.ts";
 import { call, mutation, request } from "./api.ts";
 import { ContextLink } from "./context.tsx";
+import { CopyId } from "./copy-id.tsx";
 import { scopeFilter, singleProject } from "./project-scope.ts";
 import { TowerPairing } from "./tower-enrollment.tsx";
 import { TranscriptStorage } from "./transcript-storage.tsx";
@@ -500,9 +501,9 @@ function SessionDetail({
         {session.native_session_id && (
           <p className="muted small session-native-identity">
             Native identity:{" "}
-            <code>
-              {session.native_provider ?? session.agent_type}:{session.native_session_id}
-            </code>
+            <CopyId
+              value={`${session.native_provider ?? session.agent_type}:${session.native_session_id}`}
+            />
           </p>
         )}
         {!!session.aliases?.length && (
@@ -511,7 +512,7 @@ function SessionDetail({
             <ul>
               {session.aliases.map((id) => (
                 <li key={id}>
-                  <code>{id}</code>
+                  <CopyId value={id} />
                 </li>
               ))}
             </ul>
@@ -530,7 +531,7 @@ function SessionDetail({
             )}
             {runtime?.checkout_id && (
               <p className="muted small session-checkout">
-                Checkout <code>{runtime.checkout_id}</code> ·{" "}
+                Checkout <CopyId value={runtime.checkout_id} /> ·{" "}
                 {checkout ? (
                   <>
                     {checkout.path}

@@ -14,6 +14,7 @@ import type {
 } from "../shared/contracts.ts";
 import { call, mutation } from "./api.ts";
 import { ContextLink } from "./context.tsx";
+import { CopyId } from "./copy-id.tsx";
 import { scopeFilter, singleProject } from "./project-scope.ts";
 import { TaskBlocker, TaskMarkdown } from "./task-blocker.tsx";
 import { Dialog, ErrorText, PageHeading, useAction } from "./ui.tsx";
@@ -389,7 +390,7 @@ function TaskDetail({
       </button>
       <div className="task-detail">
         <div className="detail-top">
-          <code>{t.id}</code>
+          <CopyId value={t.id} />
           <span>{t.status}</span>
         </div>
         <h2>{t.title}</h2>

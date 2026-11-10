@@ -1339,3 +1339,37 @@ textarea {
   font-size: 1.1rem;
   margin: 1rem 0;
 }
+.copy-id {
+  display: inline;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  overflow-wrap: anywhere;
+}
+.copy-id:hover {
+  background: transparent;
+}
+.copy-id:hover code,
+.copy-id:focus-visible code {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.copy-id-tip {
+  position: fixed;
+  z-index: 1000;
+  transform: translate(-50%, -100%);
+  padding: 2px 6px;
+  background: var(--ink);
+  color: var(--page);
+  font-family: var(--ui);
+  font-size: 11px;
+  font-weight: 500;
+  pointer-events: none;
+}
+.copy-id-tip.failed {
+  background: var(--bad);
+}

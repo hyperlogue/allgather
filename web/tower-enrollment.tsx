@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Machine } from "../shared/contracts.ts";
 import type { MachineScope } from "../shared/tower-acp.ts";
 import { request } from "./api.ts";
+import { CopyId } from "./copy-id.tsx";
 import { Brand, ErrorText, LoginFrame, useAction } from "./ui.tsx";
 
 const labels: Record<MachineScope, string> = {
@@ -258,7 +259,7 @@ export function TowerEnrollmentView() {
           <p>
             <strong>{info.node_label}</strong> · {info.state}
           </p>
-          <code>{info.host_id}</code>
+          <CopyId value={info.host_id} />
           <p className="muted small">Tower {info.tower_version}</p>
           <ul>
             {info.scopes.map((scope) => (

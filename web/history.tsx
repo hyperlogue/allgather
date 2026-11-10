@@ -3,6 +3,7 @@ import type { IndexedCommit, Page, Project, Repository } from "../shared/contrac
 import { call, mutation } from "./api.ts";
 import { Checkouts } from "./checkouts.tsx";
 import { ContextLink } from "./context.tsx";
+import { CopyId } from "./copy-id.tsx";
 import { scopeFilter, singleProject } from "./project-scope.ts";
 import { Dialog, ErrorText, PageHeading, useAction } from "./ui.tsx";
 export interface Repo extends Repository {
@@ -711,7 +712,7 @@ export function HistoryView({
       )}
       {selected && (
         <Dialog title="Commit" close={() => setSelected(null)}>
-          <code>{selected.id}</code>
+          <CopyId value={selected.id} />
           <p className="commit-message">{selected.message}</p>
           <ContextLink id={`commit:${selected.repository_id}:${selected.id}`} />
           <p className="muted small">

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { type ConnectionIdentity, connectionActorLabel } from "../shared/client-access.ts";
 import type { Page } from "../shared/contracts.ts";
 import { call } from "./api.ts";
+import { CopyId } from "./copy-id.tsx";
 import { scopeFilter } from "./project-scope.ts";
 import { ErrorText, PageHeading } from "./ui.tsx";
 
@@ -144,7 +145,7 @@ export function Activity({ scope, refresh }: { scope: string[]; refresh: number 
                     <strong>
                       {c.change_kind} · {c.entity_type}
                     </strong>{" "}
-                    <code>{c.entity_id}</code>
+                    <CopyId value={c.entity_id} />
                   </p>
                   <dl>
                     {Object.keys(c.after ?? c.before ?? {})

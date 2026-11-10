@@ -10,6 +10,7 @@ import { ApprovalsView, useApprovals } from "./approvals.tsx";
 import { CliPairing } from "./cli-pairing.tsx";
 import { ClientGrants } from "./client-grants.tsx";
 import { CommandPalette } from "./command-palette.tsx";
+import { CopyId } from "./copy-id.tsx";
 import { HistoryView, type Repo } from "./history.tsx";
 import { LibraryView } from "./library.tsx";
 import { Login } from "./login.tsx";
@@ -176,7 +177,7 @@ function Connections({
                 <strong>{client.name}</strong>
                 <small>
                   {client.audience === "mcp" ? "MCP connector" : "CLI / API client"} ·{" "}
-                  <code>{client.id}</code>
+                  <CopyId value={client.id} />
                 </small>
                 <small>
                   {client.last_used_at ? (

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Blocker } from "../shared/contracts.ts";
 import { renderMessageHtml } from "./artifact/markdown.ts";
+import { CopyId } from "./copy-id.tsx";
 import { taskAnswer, taskQuestions } from "./task-questions.ts";
 export function TaskMarkdown({ body }: { body: string }) {
   return (
@@ -33,7 +34,7 @@ export function TaskBlocker({
         <TaskMarkdown body={form?.description || blocker.body} />
         {blocker.resolution_comment_id && (
           <p>
-            Saved as comment <code>{blocker.resolution_comment_id}</code>.
+            Saved as comment <CopyId value={blocker.resolution_comment_id} />.
           </p>
         )}
       </details>

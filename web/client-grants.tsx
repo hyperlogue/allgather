@@ -11,6 +11,7 @@ import {
   type Scope,
 } from "../shared/permissions.ts";
 import { request } from "./api.ts";
+import { CopyId } from "./copy-id.tsx";
 import { Category, ResourceCategory } from "./permission-picker.tsx";
 import { Dialog, ErrorText, useAction } from "./ui.tsx";
 
@@ -29,7 +30,7 @@ export function ClientGrants({
     <Dialog title={`Access for ${client.name}`} close={close}>
       <p>
         {client.audience === "mcp" ? "MCP connector" : "CLI / API client"} ·{" "}
-        <code>{client.id}</code>
+        <CopyId value={client.id} />
       </p>
       {message && <p role="status">{message}</p>}
       {active.length ? (

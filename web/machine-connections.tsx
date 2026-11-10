@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Machine } from "../shared/contracts.ts";
 import { call } from "./api.ts";
+import { CopyId } from "./copy-id.tsx";
 import { Icon } from "./icons.tsx";
 import { ErrorText } from "./ui.tsx";
 
@@ -39,7 +40,9 @@ export function MachineConnections({ refresh, manage }: { refresh: number; manag
             <Icon name="sessions" />
             <span>
               <strong>{machine.name}</strong>
-              <small>{machine.id}</small>
+              <small>
+                <CopyId value={machine.id} />
+              </small>
             </span>
             <span className={`machine-status ${machine.connected ? "online" : ""}`}>
               <i className={`presence ${machine.connected ? "running" : "offline"}`} />

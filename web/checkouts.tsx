@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Machine, Repository } from "../shared/contracts.ts";
 import type { CheckoutObservation } from "../shared/tower-catalog.ts";
 import { call } from "./api.ts";
+import { CopyId } from "./copy-id.tsx";
 import { ErrorText } from "./ui.tsx";
 
 export function Checkouts({
@@ -104,7 +105,7 @@ export function Checkouts({
             <p className="muted small">
               {row.checkout_id ? (
                 <>
-                  <code>{row.machine_id}</code> / <code>{row.checkout_id}</code>
+                  <CopyId value={row.machine_id} /> / <CopyId value={row.checkout_id} />
                 </>
               ) : (
                 "Legacy path observation; no Tower checkout ID"

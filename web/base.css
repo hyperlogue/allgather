@@ -53,11 +53,6 @@ label {
   font-weight: 500;
   margin-bottom: var(--space-4);
 }
-label input,
-label textarea,
-label select {
-  margin-top: var(--space-2);
-}
 h1,
 h2,
 h3,
@@ -208,4 +203,9 @@ input[type="file"]::file-selector-button {
 }
 input[type="file"]::file-selector-button:hover {
   background: var(--bg-selected);
+}
+label input,
+label textarea,
+label select {
+  margin-top: var(--space-2);
 }

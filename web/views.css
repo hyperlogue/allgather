@@ -35,14 +35,6 @@
 .task-row-open:hover {
   background: transparent;
 }
-.task-row .task-id {
-  position: relative;
-  z-index: 1;
-}
-.task-row .task-id code {
-  font: inherit;
-  color: inherit;
-}
 .task-row:hover {
   background: var(--bg-field);
 }
@@ -55,9 +47,6 @@
 }
 .detail-section p {
   font-size: var(--text-md);
-}
-.detail-section textarea {
-  margin-bottom: var(--space-3);
 }
 .task-list-loading {
   display: flex;
@@ -221,9 +210,6 @@
   background: var(--bg-field);
   border-radius: 0;
 }
-.audit-change dl > div {
-  margin: var(--space-3) 0;
-}
 .audit-change dt {
   color: var(--text-muted);
 }
@@ -339,10 +325,6 @@ textarea {
 .permission-category[open] summary::before {
   content: "▾";
 }
-.permission-category summary small {
-  margin-left: auto;
-  color: var(--text-muted);
-}
 .permission-choice {
   display: flex;
   align-items: flex-start;
@@ -357,11 +339,6 @@ textarea {
   width: auto;
   margin: var(--space-1) 0 0;
   flex-shrink: 0;
-}
-.permission-category summary select {
-  width: auto;
-  max-width: 14rem;
-  font-size: var(--text-md);
 }
 .permission-choice select {
   margin-left: auto;
@@ -768,35 +745,6 @@ textarea {
   flex-direction: column;
   padding: var(--space-0-5) 0;
 }
-.app-header nav button {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  height: var(--control-md);
-  min-height: var(--control-md);
-  width: 100%;
-  padding: 0 var(--space-4);
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  color: var(--text-muted);
-  text-align: left;
-  font-size: var(--text-md);
-  font-weight: 400;
-}
-.app-header nav button:hover {
-  background: var(--bg-hover);
-  color: var(--text-secondary);
-}
-.app-header nav button[aria-current="page"],
-.app-header nav button[aria-pressed="true"] {
-  background: var(--bg-selected);
-  color: var(--text);
-  box-shadow:
-    inset 0 1px var(--border-subtle),
-    inset 0 -1px var(--border-subtle);
-}
 .sidebar-label {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -900,10 +848,6 @@ textarea {
 .sidebar-collapsed .scope-title {
   display: none;
 }
-.sidebar-collapsed .app-header nav button {
-  justify-content: center;
-  padding-inline: 0;
-}
 .sidebar-collapsed .sidebar-top {
   flex-direction: column;
   height: auto;
@@ -935,11 +879,6 @@ textarea {
   min-height: 14px;
   border-top: 1px solid var(--border);
   justify-content: center;
-}
-.sidebar-collapsed .app-header nav .presence {
-  position: absolute;
-  right: 7px;
-  top: 5px;
 }
 .sidebar-collapsed .nav-count {
   position: absolute;
@@ -1155,12 +1094,6 @@ textarea {
   margin-left: var(--space-3);
   color: var(--text-muted);
   font: var(--text-xs) var(--ui);
-}
-.transcript-message[data-role="user"] > strong {
-  color: var(--accent);
-}
-.transcript-message[data-role="tool"] > strong {
-  color: var(--success);
 }
 .transcript {
   display: flex;
@@ -1820,6 +1753,73 @@ textarea {
 .project-icon-upload input {
   max-width: 100%;
 }
+.task-row .task-id {
+  position: relative;
+  z-index: 1;
+}
+.task-row .task-id code {
+  font: inherit;
+  color: inherit;
+}
+.detail-section textarea {
+  margin-bottom: var(--space-3);
+}
+.permission-category summary small {
+  margin-left: auto;
+  color: var(--text-muted);
+}
+.permission-category summary select {
+  width: auto;
+  max-width: 14rem;
+  font-size: var(--text-md);
+}
+.audit-change dl > div {
+  margin: var(--space-3) 0;
+}
+.app-header nav button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--control-md);
+  min-height: var(--control-md);
+  width: 100%;
+  padding: 0 var(--space-4);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  text-align: left;
+  font-size: var(--text-md);
+  font-weight: 400;
+}
+.app-header nav button:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+.app-header nav button[aria-current="page"],
+.app-header nav button[aria-pressed="true"] {
+  background: var(--bg-selected);
+  color: var(--text);
+  box-shadow:
+    inset 0 1px var(--border-subtle),
+    inset 0 -1px var(--border-subtle);
+}
+.transcript-message[data-role="tool"] > strong {
+  color: var(--success);
+}
+.transcript-message[data-role="user"] > strong {
+  color: var(--accent);
+}
+.sidebar-collapsed .app-header nav .presence {
+  position: absolute;
+  right: 7px;
+  top: 5px;
+}
+.sidebar-collapsed .app-header nav button {
+  justify-content: center;
+  padding-inline: 0;
+}
 @media (min-width: 1101px) {
   .artifact-frame {
     height: calc(100dvh - 132px);
@@ -1942,10 +1942,6 @@ textarea {
     inset: 0 0 0 216px;
     border: 0;
     background: var(--scrim);
-  }
-  .app-header nav button {
-    height: 40px;
-    min-height: 40px;
   }
   .topbar-scope {
     max-width: 160px;
@@ -2073,6 +2069,10 @@ textarea {
   }
   .permission-choice {
     flex-wrap: wrap;
+  }
+  .app-header nav button {
+    height: 40px;
+    min-height: 40px;
   }
 }
 @media (max-width: 1100px) {

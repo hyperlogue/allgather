@@ -1,23 +1,49 @@
-import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { hashBytes } from "../server/blobs.ts";
+import { createHash, randomUUID } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { validatePublication } from "../server/publication.ts";
 import { buildArtifactPrompt } from "../shared/artifact-prompt.ts";
-import type { ArtifactCommentAcknowledgment, ArtifactDetail } from "../shared/artifacts.ts";
+import type {
+  ArtifactCommentAcknowledgment,
+  ArtifactDetail,
+  ArtifactThread,
+} from "../shared/artifacts.ts";
 import type { ArtifactAttachment } from "../shared/attachments.ts";
 import { type Operation, operations } from "../shared/contracts.ts";
+import { artifactGuide } from "./artifact-guide.ts";
+import { downloadCommentImages, readAttachmentFiles } from "./artifact-images.ts";
+import {
+  artifactTarget,
+  type ArtifactFlags as Flags,
+  metadata,
+  validateArtifactOptions,
+} from "./artifact-options.ts";
 import { captureFiles } from "./capture.ts";
 import { captureGitCommit, captureGitDiff, captureGitFiles } from "./capture-git.ts";
 import type { Client } from "./client.ts";
 import { detectPublisherRemote } from "./publisher-remote.ts";
 
-type Flags = Record<string, string | boolean | string[]>;
+const readText = (path: string) =>
+  new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(path === "-" ? 0 : path));
+const writeOutput = (bytes: string | Uint8Array) =>
+  new Promise<void>((resolve, reject) =>
+    process.stdout.write(bytes, (error) => (error ? reject(error) : resolve())),
+  );
 export async function artifactCommand(client: Client, p: string[], f: Flags) {
   const verb = p[1],
     id = p[2],
     text = (key: string) => (typeof f[key] === "string" ? (f[key] as string) : undefined);
+  validateArtifactOptions(verb, p, f);
+  if (verb === "guide") {
+    console.log(f.json ? JSON.stringify({ guide: artifactGuide(id) }) : artifactGuide(id));
+    return;
+  }
   const print = (v: unknown) => console.log(JSON.stringify(v, null, f.json ? undefined : 2));
   const key = text("key") ?? randomUUID(),
+    phaseKey = (phase: string) =>
+      createHash("sha256")
+        .update(JSON.stringify([key, phase]))
+        .digest("hex"),
     call = (op: Operation, input: Record<string, unknown> = {}) =>
       client.call(
         op,
@@ -33,78 +59,175 @@ export async function artifactCommand(client: Client, p: string[], f: Flags) {
     return encodeURIComponent(id);
   };
   const base = () => `/api/artifacts/${requireId()}`;
-  const inputFile = () => (f.input ? JSON.parse(readFileSync(String(f.input), "utf8")) : {});
-  const body = () => (f["body-file"] ? readFileSync(String(f["body-file"]), "utf8") : text("body"));
+  const inputFile = () => (f.input ? JSON.parse(readText(String(f.input))) : {});
+  const body = () => (f["body-file"] ? readText(String(f["body-file"])) : text("body"));
   const detail = () => client.call<ArtifactDetail>("artifacts_get", { artifact_id: id });
   const version = async () =>
     f.version ? Number(f.version) : ((await detail()).versions.at(-1)?.seq ?? 0);
-  if (verb === "create") {
-    const remote = f.remote
-      ? text("remote")
-      : (await detectPublisherRemote(process.cwd())).remote?.url;
-    print(
-      await call("artifacts_create", {
-        kind: text("kind") ?? "files",
-        title: text("title"),
-        project_id: text("project"),
-        task_id: text("task"),
-        remote_url: remote,
-      }),
-    );
-    return;
-  }
-  if (verb === "publish") {
-    const d = await detail(),
-      root = resolve(text("root") ?? ".");
-    let content: Record<string, unknown>;
-    if (f.input) content = inputFile();
-    else if (d.kind === "diff") {
+  const capture = async (kind: string) => {
+    const root = resolve(text("root") ?? ".");
+    if (f.input) {
+      if (
+        ["root", "path", "ref", "patch", "commit", "base", "head"].some((k) => f[k] !== undefined)
+      )
+        throw new Error("Use --input or capture flags, not both");
+      const content = inputFile();
+      if (content.kind !== kind) throw new Error("Input kind must match artifact kind");
+      return content;
+    }
+    const selectors = ["patch", "commit", "base"].filter((k) => f[k] !== undefined);
+    if (selectors.length > 1) throw new Error("Choose one diff capture mode");
+    if (f.head && !f.base) throw new Error("--head requires --base");
+    if (kind === "diff") {
+      if (f.ref || f.path) throw new Error("Diff captures do not accept --ref or --path");
       const patch = f.patch
-        ? readFileSync(String(f.patch), "utf8")
+        ? readText(String(f.patch))
         : f.commit
           ? await captureGitCommit(root, String(f.commit))
           : f.base
             ? await captureGitDiff(root, String(f.base), text("head") ?? "WORKING")
             : null;
       if (patch === null)
-        throw new Error(
-          "Diff publication needs --patch FILE, --commit SHA, or --base REF [--head REF|WORKING|STAGED]",
-        );
-      content = { kind: "diff", patch };
-    } else {
-      const paths = (f.path as string[] | undefined) ?? ["."];
-      content = {
-        kind: d.kind,
-        files: f.ref
-          ? await captureGitFiles(root, String(f.ref), paths)
-          : await captureFiles(root, paths),
-      };
+        throw new Error("Diff publication needs --patch FILE, --commit SHA, or --base REF");
+      return { kind, patch };
     }
-    print(
-      await call("artifacts_publish", {
-        artifact_id: id,
-        expected_seq: f["expected-seq"] ? Number(f["expected-seq"]) : (d.versions.at(-1)?.seq ?? 0),
+    if (selectors.length || f.head) throw new Error("Diff capture flags require kind diff");
+    const paths = (f.path as string[] | undefined) ?? ["."];
+    return {
+      kind,
+      files: f.ref
+        ? await captureGitFiles(root, String(f.ref), paths)
+        : await captureFiles(root, paths),
+    };
+  };
+  const publish = async (
+    artifactId: string,
+    content: unknown,
+    expected: number,
+    publicationKey: string,
+  ) => {
+    try {
+      const result = await call("artifacts_publish", {
+        operation_key: publicationKey,
+        artifact_id: artifactId,
+        expected_seq: expected,
         content,
-        label: text("label"),
+        label: text("version-label") ?? text("label"),
         summary: text("summary"),
         task_id: text("task"),
         listen: !f["no-listen"],
-      }),
+      });
+      return {
+        ...(result as Record<string, unknown>),
+        url: `${client.url}/?view=artifacts&artifact=${encodeURIComponent(artifactId)}`,
+      };
+    } catch (error) {
+      console.error(
+        `Publication not confirmed: ${JSON.stringify({ artifact_id: artifactId, key: publicationKey, expected_seq: expected })}. Retry publish with unchanged capture and metadata, --key and --expected-seq shown above.`,
+      );
+      throw error;
+    }
+  };
+  if (verb === "create") {
+    const kind = text("kind") ?? "files";
+    const hasCapture = ["root", "path", "ref", "patch", "commit", "base", "input"].some(
+      (k) => f[k] !== undefined,
+    );
+    if (
+      !hasCapture &&
+      ["summary", "label", "version-label", "head", "expected-seq", "no-listen"].some(
+        (k) => f[k] !== undefined,
+      )
+    )
+      throw new Error("Publication flags require capture flags");
+    if (f["expected-seq"] !== undefined && Number(f["expected-seq"]) !== 0)
+      throw new Error("Initial publication requires --expected-seq 0");
+    const content = hasCapture ? await capture(kind) : undefined;
+    if (hasCapture)
+      validatePublication({
+        content,
+        expectedSeq: 0,
+        publicationKey: phaseKey("publish"),
+        actor: { role: "human", sessionId: null },
+        label: text("version-label") ?? text("label"),
+        summary: text("summary"),
+      });
+    const remote = f.remote
+      ? text("remote")
+      : (await detectPublisherRemote(process.cwd())).remote?.url;
+    let artifact: { id: string };
+    try {
+      artifact = (await call("artifacts_create", {
+        kind,
+        title: text("title"),
+        project_id: text("project"),
+        task_id: text("task"),
+        remote_url: remote,
+        meta: {
+          ...(client.operator.operator_kind === "agent" && client.operator.session_id
+            ? { session: client.operator.session_id }
+            : {}),
+          ...metadata(f),
+        },
+      })) as { id: string };
+    } catch (error) {
+      console.error(
+        `Creation not confirmed. Retry unchanged create with --key ${JSON.stringify(key)}.`,
+      );
+      throw error;
+    }
+    if (!hasCapture) print(artifact);
+    else
+      print({
+        ...artifact,
+        publication: await publish(artifact.id, content, 0, phaseKey("publish")),
+        url: `${client.url}/?view=artifacts&artifact=${encodeURIComponent(artifact.id)}`,
+      });
+    return;
+  }
+  if (verb === "publish") {
+    const d = await detail();
+    print(
+      await publish(
+        id,
+        await capture(d.kind),
+        f["expected-seq"] === undefined ? (d.versions.at(-1)?.seq ?? 0) : Number(f["expected-seq"]),
+        key,
+      ),
     );
     return;
   }
   if (verb === "list" || verb === "search") {
+    const meta = metadata(f);
+    if (f.mine) {
+      if (!client.operator.session_id) throw new Error("--mine requires an agent session");
+      meta.session = client.operator.session_id;
+    }
     print(
       await client.call(verb === "list" ? "artifacts_list" : "artifacts_search", {
-        query: id,
         project_id: text("project"),
         state: text("state"),
         kind: text("kind"),
-        history: f.all ? "all" : "latest",
         cursor: f.cursor ? Number(f.cursor) : 0,
         limit: f.limit ? Number(f.limit) : 50,
+        ...(verb === "list"
+          ? { meta }
+          : {
+              query: id,
+              history: text("history") ?? (f.all ? "all" : "latest"),
+              attention: !!f.attention,
+              type: text("type") ?? "all",
+            }),
       }),
     );
+    return;
+  }
+  if (verb === "versions") {
+    print((await detail()).versions);
+    return;
+  }
+  if (verb === "thread-delete") {
+    print(await call("artifact_threads_delete", { thread_id: id }));
     return;
   }
   if (verb === "show") {
@@ -128,54 +251,111 @@ export async function artifactCommand(client: Client, p: string[], f: Flags) {
     return;
   }
   if (["download", "patch", "image"].includes(verb)) {
-    if (!f.output) throw new Error("Supply --output FILE");
     const path =
       verb === "image"
         ? `${base()}/attachments/${encodeURIComponent(String(f.image))}`
         : `${base()}/versions/${await version()}/${verb === "patch" ? "patch" : `resource?path=${encodeURIComponent((f.path as string[])?.[0] ?? "")}`}`;
     const bytes = new Uint8Array(await (await client.request(path)).arrayBuffer());
-    writeFileSync(String(f.output), bytes, { flag: "wx", mode: 0o600 });
-    print({ saved: true, bytes: bytes.length });
+    if (f.output) {
+      writeFileSync(String(f.output), bytes, { flag: "wx", mode: 0o600 });
+      print({ saved: true, bytes: bytes.length });
+    } else await writeOutput(bytes);
     return;
   }
-  if (verb === "comments") {
-    const result = (await get(
+  const fetchComments = async () =>
+    (await get(
       `${base()}/comments/${f.all ? "history" : "pending"}${f.threads ? `?threads=${encodeURIComponent(String(f.threads))}` : ""}`,
     )) as {
       text: string;
       acknowledgment?: ArtifactCommentAcknowledgment;
       attachments: ArtifactAttachment[];
+      itemCount: number;
     };
+  const deliverComments = async (
+    result: Awaited<ReturnType<typeof fetchComments>>,
+    subscribe: boolean,
+  ) => {
     const files: Record<string, string> = {};
     if (f["attachments-dir"]) {
-      const dir = resolve(String(f["attachments-dir"]));
-      mkdirSync(dir, { recursive: true, mode: 0o700 });
-      for (const attachment of result.attachments) {
-        const bytes = new Uint8Array(
-          await (
-            await client.request(`${base()}/attachments/${encodeURIComponent(attachment.id)}`)
-          ).arrayBuffer(),
-        );
-        if (hashBytes(bytes) !== attachment.hash) throw new Error("Attachment hash mismatch");
-        const output = join(
-          dir,
-          attachment.id + "." + (attachment.mediaType === "image/png" ? "png" : "jpg"),
-        );
-        writeFileSync(output, bytes, { mode: 0o600 });
-        files[attachment.id] = output;
-      }
+      const saved = await downloadCommentImages(
+        client,
+        result.attachments,
+        resolve(String(f["attachments-dir"])),
+      );
+      result.attachments.forEach((attachment, index) => {
+        files[attachment.id] = saved[index];
+      });
     }
-    // An EPIPE or failed attachment write must leave the exact discussion snapshot undelivered.
     const output = f.json
       ? JSON.stringify({ ...result, files })
       : result.text +
         (Object.keys(files).length ? `\nSaved attachments: ${JSON.stringify(files)}\n` : "");
-    await new Promise<void>((resolve, reject) =>
-      process.stdout.write(output + "\n", (error) => (error ? reject(error) : resolve())),
-    );
-    if (result.acknowledgment && !f.all && !f["no-ack"])
+    await writeOutput(`${output}\n`);
+    if (verb === "watch" && (await detail()).state === "archived") return false;
+    if (result.acknowledgment && !f.all && !f["no-ack"]) {
       await call("artifact_comments_ack", { artifact_id: id, receipt: result.acknowledgment });
+      if (subscribe && client.operator.operator_kind === "agent") {
+        try {
+          await call("artifacts_listen", {
+            artifact_id: id,
+            mode: "explicit",
+            operation_key: phaseKey("listen"),
+          });
+        } catch (error) {
+          console.error(
+            `Comments delivered, but subscription failed: ${(error as Error).message}. Use artifact listen or watch.`,
+          );
+        }
+      }
+    }
+    return true;
+  };
+  if (verb === "comments") {
+    await deliverComments(await fetchComments(), true);
     return;
+  }
+  if (verb === "watch") {
+    const seconds = f.timeout === undefined ? 0 : Number(f.timeout);
+    if (!Number.isFinite(seconds) || seconds < 0)
+      throw new Error("--timeout must be nonnegative seconds");
+    const deadline = seconds ? Date.now() + seconds * 1000 : Infinity;
+    for (;;) {
+      if ((await detail()).state === "archived") {
+        process.exitCode = 0;
+        return;
+      }
+      if (Date.now() >= deadline) {
+        process.exitCode = 2;
+        return;
+      }
+      let result: Awaited<ReturnType<typeof fetchComments>>;
+      try {
+        result = await fetchComments();
+      } catch (error) {
+        if (
+          (error as { status?: number }).status === 409 &&
+          (await detail()).state === "archived"
+        ) {
+          process.exitCode = 0;
+          return;
+        }
+        throw error;
+      }
+      if (result.itemCount) {
+        if ((await detail()).state === "archived") {
+          process.exitCode = 0;
+          return;
+        }
+        try {
+          process.exitCode = (await deliverComments(result, false)) ? 10 : 0;
+        } catch (error) {
+          if ((error as { status?: number }).status !== 409) throw error;
+          process.exitCode = (await detail()).state === "archived" ? 0 : 4;
+        }
+        return;
+      }
+      await Bun.sleep(Math.min(250, Math.max(0, deadline - Date.now())));
+    }
   }
   if (verb === "prompt") {
     const d = await detail();
@@ -203,26 +383,73 @@ export async function artifactCommand(client: Client, p: string[], f: Flags) {
     verb === "thread-edit" ||
     verb === "comment-edit"
   ) {
-    const input = {
+    const target = artifactTarget(f);
+    const message = body();
+    const input: Record<string, unknown> = {
       ...inputFile(),
-      ...(body() === undefined ? {} : { body: body() }),
-      ...(f.target ? { target: JSON.parse(String(f.target)) } : {}),
+      ...(message === undefined ? {} : { body: message }),
+      ...(target ? { target } : {}),
+      ...(f.attach
+        ? { attachments: await readAttachmentFiles(f.attach as string[], process.cwd()) }
+        : f["clear-attachments"]
+          ? { attachments: [] }
+          : {}),
+      ...(f.frame
+        ? { mediaSnapshot: (await readAttachmentFiles([String(f.frame)], process.cwd()))[0] }
+        : {}),
       ...(f.status ? { status: f.status } : {}),
     };
     if (verb === "thread-add" && !("target" in input))
       Object.assign(input, { target: { kind: "artifact" } });
-    print(
-      await call(
-        verb === "thread-add"
-          ? "artifact_threads_add"
-          : verb === "comment"
-            ? "artifact_comments_add"
-            : verb === "thread-edit"
-              ? "artifact_threads_edit"
-              : "artifact_comments_edit",
-        { artifact_id: id, thread_id: id, comment_id: id, input },
-      ),
-    );
+    if (verb === "comment") {
+      const target = input.target as Record<string, unknown> | undefined;
+      if (target && "path" in target && !input.reanchor) {
+        const thread = (await get(`/api/threads/${requireId()}`)) as ArtifactThread;
+        const latest =
+          f["expected-seq"] === undefined
+            ? (
+                await client.call<ArtifactDetail>("artifacts_get", {
+                  artifact_id: thread.artifactId,
+                })
+              ).versions.at(-1)?.seq
+            : Number(f["expected-seq"]);
+        if (f["expected-seq"] !== undefined || target.versionSeq === latest) {
+          if (!("anchor" in thread))
+            throw new Error("Backend does not support guarded reanchoring");
+          input.reanchor = {
+            expectedSeq: latest,
+            expectedAnchorRevision:
+              f["expected-anchor"] === undefined
+                ? (thread.anchor?.revision ?? 0)
+                : Number(f["expected-anchor"]),
+          };
+        } else if (f["expected-anchor"] !== undefined)
+          throw new Error("Historical targets do not reanchor");
+      } else if (
+        (!target || !("path" in target)) &&
+        (f["expected-seq"] !== undefined || f["expected-anchor"] !== undefined)
+      )
+        throw new Error("Revision guards require a document target");
+    }
+    try {
+      print(
+        await call(
+          verb === "thread-add"
+            ? "artifact_threads_add"
+            : verb === "comment"
+              ? "artifact_comments_add"
+              : verb === "thread-edit"
+                ? "artifact_threads_edit"
+                : "artifact_comments_edit",
+          { artifact_id: id, thread_id: id, comment_id: id, input },
+        ),
+      );
+    } catch (error) {
+      console.error(
+        `Message not confirmed. Retry unchanged input: ${JSON.stringify({ key, ...((input.reanchor as object) ?? {}) })}. Preserve --expected-seq and --expected-anchor when present.`,
+      );
+      throw error;
+    }
     return;
   }
   if (verb === "claim" || verb === "release") {
@@ -234,14 +461,77 @@ export async function artifactCommand(client: Client, p: string[], f: Flags) {
     return;
   }
   if (verb === "reanchor") {
-    print(await call("artifact_threads_reanchor", { artifact_id: id, input: inputFile() }));
+    let artifactId: string;
+    let input: Record<string, unknown>;
+    if (f.input) {
+      if (
+        [
+          "target",
+          "file",
+          "view",
+          "line",
+          "quote",
+          "selector",
+          "route",
+          "side",
+          "frame",
+          "expected-anchor",
+        ].some((k) => f[k] !== undefined)
+      )
+        throw new Error("Bulk targets and revisions belong in --input");
+      artifactId = text("artifact") ?? id;
+      const raw = inputFile();
+      if (Array.isArray(raw)) {
+        if (!f.version) throw new Error("Bulk arrays require --version");
+        input = { expectedSeq: Number(f.version), items: raw };
+      } else {
+        if (f.version) throw new Error("Object input already contains expectedSeq; omit --version");
+        input = raw;
+      }
+    } else {
+      if (f.artifact) throw new Error("--artifact requires bulk --input");
+      const target = artifactTarget(f, true);
+      if (!target || !("versionSeq" in target)) throw new Error("Supply a reanchor destination");
+      const thread = (await get(`/api/threads/${requireId()}`)) as ArtifactThread;
+      if (!("anchor" in thread)) throw new Error("Backend does not support guarded reanchoring");
+      artifactId = thread.artifactId;
+      input = {
+        expectedSeq: target.versionSeq,
+        items: [
+          {
+            threadId: id,
+            target,
+            expectedAnchorRevision:
+              f["expected-anchor"] === undefined
+                ? (thread.anchor?.revision ?? 0)
+                : Number(f["expected-anchor"]),
+            ...(f.frame
+              ? { mediaSnapshot: (await readAttachmentFiles([String(f.frame)], process.cwd()))[0] }
+              : {}),
+          },
+        ],
+      };
+    }
+    if (!artifactId) throw new Error("Supply an artifact ID for bulk reanchoring");
+    try {
+      print(await call("artifact_threads_reanchor", { artifact_id: artifactId, input }));
+    } catch (error) {
+      console.error(
+        `Reanchor not confirmed. Retry unchanged input: ${JSON.stringify({ key, expectedSeq: input.expectedSeq, revisions: (input.items as { threadId: string; expectedAnchorRevision: number }[])?.map(({ threadId, expectedAnchorRevision }) => ({ threadId, expectedAnchorRevision })) })}`,
+      );
+      throw error;
+    }
     return;
   }
   if (verb === "edit") {
     print(
       await call("artifacts_edit", {
         artifact_id: id,
-        input: { ...inputFile(), ...(f.title ? { title: f.title } : {}) },
+        input: {
+          ...inputFile(),
+          ...(f.title ? { title: f.title } : {}),
+          ...(f.meta ? { meta: metadata(f) } : {}),
+        },
       }),
     );
     return;

@@ -50,20 +50,21 @@ export const HELP = `allgather — one work record for tasks, sessions, and evid
   repo match ID [--path FILE ...]
   history search [QUERY] | show --repository ID --commit SHA
   history summary [--project ID] [--days 30] [--timezone UTC] | storage get
-  artifact create --kind files|html|diff --title TEXT [--project ID] [--task ID]
+  artifact create --kind files|html|diff --title TEXT [--root DIR | --patch FILE] [--project ID] [--task ID]
   artifact publish ID --root DIR [--path PATH ...] [--ref REF] [--expected-seq N]
   artifact publish ID --patch FILE | --commit SHA | --base REF [--head WORKING|STAGED|REF]
-  artifact list | search QUERY | show ID | edit ID [--title TEXT] [--input FILE]
+  artifact list | search QUERY | show ID | versions ID | edit ID [--title TEXT] [--input FILE]
   artifact files ID | source ID --path PATH | prompt ID
-  artifact download ID --path PATH --output FILE | patch ID --output FILE
-  artifact image ID --image IMAGE_ID --output FILE
+  artifact download ID --path PATH [--output FILE] | patch ID [--output FILE]
+  artifact image ID --image IMAGE_ID [--output FILE]
   artifact comments ID [--all] [--no-ack] [--attachments-dir DIR]
   artifact thread-add ID --body TEXT [--target JSON] | comment THREAD --body TEXT
-  artifact thread-edit THREAD --input FILE | thread-source THREAD
+  artifact thread-edit THREAD --input FILE | thread-source THREAD | thread-delete THREAD
   artifact comment-show COMMENT | comment-edit COMMENT --body TEXT
   artifact claim THREAD ... | release THREAD ... | reanchor ID --input FILE
   artifact archive ID [--body TEXT] | restore ID | delete ID | listen ID | unlisten ID
   artifact submit ID | watchers ID | stat | gc [--apply]
+  artifact watch ID [--timeout SECONDS] | guide [files|html|diff]
   machine list | create --name NAME | show ID | update ID --name NAME --expected-revision N
   checkout list [--machine ID] [--repository ID] [--include-removed]
   session launch --machine ID --harness NAME --cwd PATH [--mode managed|terminal] [--project ID] [--label NAME] [--role ID] [--task ID]

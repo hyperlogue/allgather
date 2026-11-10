@@ -242,6 +242,7 @@ export class Artifacts {
           state: a.state as "active" | "archived" | undefined,
           kind: a.kind as "files" | "html" | "diff" | undefined,
           projectIds: this.w.projectScope(a) ?? undefined,
+          meta: a.meta as Record<string, string> | undefined,
         }),
         a,
       );

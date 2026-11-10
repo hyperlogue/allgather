@@ -450,6 +450,7 @@ export const operations = {
       state: z.enum(["active", "archived"]).optional(),
       kind: z.enum(["files", "html", "diff"]).optional(),
       ...projectScope,
+      meta: z.record(z.string(), z.string()).optional(),
       ...paging,
     }),
     "artifacts:read",

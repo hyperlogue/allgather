@@ -10,7 +10,7 @@
   manifest = builtins.fromJSON (builtins.readFile ../package.json);
   src = lib.fileset.toSource {
     root = ../.;
-    fileset = lib.fileset.unions [../LICENSE ../third-party ../package.json ../tsconfig.json ../bun.lock ../bun.nix ../toolchain/package.json ../scripts ../server ../cli ../shared ../web];
+    fileset = lib.fileset.unions [../LICENSE ../package.json ../tsconfig.json ../bun.lock ../bun.nix ../toolchain/package.json ../scripts ../server ../cli ../shared ../web];
   };
   bunDeps = assert lib.assertMsg (bun2nix.version == manifest.devDependencies.bun2nix)
   "The bun2nix generator must match the flake input.";
@@ -35,7 +35,6 @@ in
       install -Dm755 dist/allgather "$out/bin/allgather"
       install -Dm755 dist/allgather-server "$out/bin/allgather-server"
       install -Dm644 LICENSE "$out/share/licenses/allgather/LICENSE"
-      install -Dm644 third-party/r3.LICENSE "$out/share/licenses/allgather/r3-LICENSE"
       wrapProgram "$out/bin/allgather" --prefix PATH : ${lib.makeBinPath [git openssh]}
       wrapProgram "$out/bin/allgather-server" --prefix PATH : ${lib.makeBinPath [git openssh]}
       runHook postInstall

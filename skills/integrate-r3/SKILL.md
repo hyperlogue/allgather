@@ -3,11 +3,11 @@ name: integrate-r3
 description: Selectively integrate R3 features into Allgather, or resume an unfinished integration using its recorded upstream baseline.
 ---
 
-Work from the Allgather repository root. `integrations/r3.json` is the
+Work from the Allgather repository root. `skills/integrate-r3/r3.json` is the
 processed upstream baseline and decision history. R3 is a behavior and code
-reference; the implementation belongs to Allgather. `third-party/r3-source.json`
-and `third-party/r3.LICENSE` preserve the original import provenance; their hashes
-describe upstream bytes, not a requirement for local files to remain identical.
+reference; the implementation belongs to Allgather. `skills/integrate-r3/r3-source.json`
+records historical upstream hashes, not a requirement for local files to remain
+identical. The root `LICENSE` preserves the upstream attribution and license.
 
 ## Select and inventory
 

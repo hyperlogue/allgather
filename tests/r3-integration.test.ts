@@ -80,8 +80,8 @@ test("prepare pins an immutable target and refuses to overwrite partial work", (
 
 test("source provenance verification does not require an imported runtime tree", () => {
   const f = fixture();
-  const provenance = join(f.root, "third-party");
-  mkdirSync(provenance);
+  const provenance = join(f.root, "skills/integrate-r3");
+  mkdirSync(provenance, { recursive: true });
   const manifest = {
     commit: f.target,
     sha256: { "feature.txt": createHash("sha256").update("new behavior").digest("hex") },

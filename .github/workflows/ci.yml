@@ -94,6 +94,10 @@ jobs:
         run: nix shell --no-write-lock-file .#bun .#biome .#node .#npm --command bun --no-env-file scripts/check-toolchain.ts
       - name: Build Nix package
         run: nix build --no-write-lock-file .#allgather
+      - name: Install locked verification dependencies
+        run: |
+          nix shell --no-write-lock-file .#bun --command bun --no-env-file install --frozen-lockfile
+          git diff --exit-code -- bun.lock bun.nix
       - name: Verify Nix package
         run: nix shell --no-write-lock-file .#bun --command bun --no-env-file scripts/verify-package.ts result/bin/allgather
 

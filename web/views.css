@@ -1305,7 +1305,6 @@ textarea {
   margin-bottom: var(--space-6);
   font-size: var(--text-xl);
 }
-.theme-option,
 .theme-option:has(input:checked) {
   background: var(--bg-selected);
   border-color: var(--focus-ring);

@@ -5,9 +5,6 @@
   "type": "module",
   "description": "Tasks, Git history, and agent access for one owner",
   "scripts": {
-    "dev": "bun --no-env-file scripts/dev.ts watch",
-    "dev:server": "bun --no-env-file scripts/dev.ts server",
-    "dev:cli": "bun --no-env-file scripts/dev.ts cli",
     "server": "bun --no-env-file server/cli.ts",
     "cli": "bun --no-env-file cli/index.ts",
     "build": "bun scripts/compile.ts",

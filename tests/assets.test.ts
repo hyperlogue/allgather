@@ -3,40 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HTMLBundle } from "bun";
-import { devCommand, devEnvironment, devTarget } from "../scripts/dev.ts";
 import { loadAssets, watchAssets } from "../server/assets.ts";
-
-test("development commands replace inherited instance settings", () => {
-  const env = devEnvironment(
-    {
-      PATH: "/bin",
-      ALLGATHER_URL: "https://installed.example",
-      ALLGATHER_TOKEN: "installed-token",
-      ALLGATHER_DATA_DIR: "/srv/allgather",
-      ALLGATHER_MCP_URL: "https://mcp.example",
-    },
-    "/repo",
-  );
-  expect(env).toEqual({
-    PATH: "/bin",
-    ALLGATHER_DEV: "1",
-    ALLGATHER_DATA_DIR: "/repo/workspace/allgather",
-    ALLGATHER_CONFIG_DIR: "/repo/workspace/dev-config",
-    ALLGATHER_PORT: "4490",
-    ALLGATHER_OWNER_URL: "http://localhost:4490",
-    ALLGATHER_URL: "http://localhost:4490",
-  });
-  expect(env.ALLGATHER_URL).toBe(devTarget("/repo").url);
-});
-
-test("development server commands refuse instance overrides", () => {
-  const command = devCommand(["server", "restart"]);
-  expect(command?.at(-2)).toEndWith("/server/cli.ts");
-  expect(command?.at(-1)).toBe("restart");
-  for (const flag of ["--data-dir", "--port=1", "--owner-url"])
-    expect(() => devCommand(["server", "start", flag])).toThrow("development instance");
-  expect(devCommand(["deploy"])).toBeNull();
-});
 
 async function script(handler: (request: Request) => Promise<Response>) {
   const html = await (await handler(new Request("http://localhost/"))).text();

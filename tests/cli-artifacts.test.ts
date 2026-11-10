@@ -13,12 +13,17 @@ test("artifact CLI publishes, filters, targets, reanchors, delivers and streams 
     dataDir: join(root, "state"),
     port: 0,
     ownerUrl: "http://localhost:0",
+    archiveTtlDays: 7,
   });
   const home = join(root, "home"),
     capture = join(root, "capture");
   mkdirSync(home);
   mkdirSync(capture);
   writeFileSync(join(capture, "note.txt"), "first\nsecond\nthird\n");
+  writeFileSync(
+    join(capture, "long.txt"),
+    Array.from({ length: 300 }, (_, index) => `Line ${index + 1}`).join("\n"),
+  );
   writeFileSync(join(capture, "binary.bin"), Buffer.from([0, 255, 128, 10]));
   const png = join(root, "image.png");
   writeFileSync(png, Buffer.from(redIcon, "base64"));
@@ -104,6 +109,12 @@ test("artifact CLI publishes, filters, targets, reanchors, delivers and streams 
       (await invoke(["search", "first", "--attention", "--type", "content", "--history", "all"]))
         .code,
     ).toBe(0);
+    const fullSource = await ok("source", id, "--path", "long.txt");
+    expect(fullSource.lines).toHaveLength(300);
+    expect(fullSource.lines[299].text).toBe("Line 300");
+    expect((await ok("source", id, "--path", "binary.bin")).kind).toBe("binary");
+    expect((await ok("stat")).gc.ttlDays).toBe(7);
+    expect((await ok("gc", "--ttl", "14d")).ttlDays).toBe(14);
     const download = await invoke(["download", id, "--path", "binary.bin"]);
     expect(download.code).toBe(0);
     expect(download.out).toEqual(Buffer.from([0, 255, 128, 10]));
@@ -376,6 +387,18 @@ test("artifact CLI publishes, filters, targets, reanchors, delivers and streams 
         (v: { id: string }) => v.id,
       ),
     ).toEqual([mine.id]);
+    const stdinCreate = await invoke(
+      ["create", "--kind", "files", "--title", "-"],
+      "Title from stdin",
+    );
+    expect(stdinCreate.code).toBe(0);
+    expect(stdinCreate.json().title).toBe("Title from stdin");
+    const stdinPublish = await invoke(
+      ["publish", stdinCreate.json().id, "--root", capture, "--summary", "-"],
+      "Summary from stdin",
+    );
+    expect(stdinPublish.code).toBe(0);
+    expect(stdinPublish.json().summary).toBe("Summary from stdin");
     for (const topic of ["files", "html", "diff"])
       expect((await invoke(["guide", topic])).code).toBe(0);
   } finally {

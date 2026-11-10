@@ -56,7 +56,7 @@ export class Artifacts {
     this.conversations = new ArtifactConversations(db, this.store, clock);
     this.lifecycle = new ArtifactLifecycle(db, this.store, clock, this.workers);
     this.search = new ArtifactSearch(db, this.store, this.conversations);
-    this.usage = new ArtifactUsageStore(db, this.store, clock, 30, "UTC");
+    this.usage = new ArtifactUsageStore(db, this.store, clock, w.options.archiveTtlDays, "UTC");
     this.previews = new PreviewHost(this.store, previewSupport);
     this.notifications = new ArtifactNotifications(w, this);
     this.watches = new ArtifactWatches(w, this);

@@ -63,6 +63,7 @@ export class Workspace {
       dataDir?: string;
       allowLocalGit?: boolean;
       managedSessions?: boolean;
+      archiveTtlDays?: number;
     } = {},
   ) {
     this.access = new Access(db);

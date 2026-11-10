@@ -119,3 +119,22 @@ test("legacy client selection migrates without replacing newer client or server 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("archive retention is configurable, bounded, and persists across config reads", () => {
+  const root = mkdtempSync(join(tmpdir(), "allgather-retention-")),
+    path = join(root, "server.json");
+  try {
+    serverConfigCommand(["set", "archiveTtlDays", "7"], path);
+    const saved = readServerConfig(path)!;
+    expect(config({}, saved, {}).archiveTtlDays).toBe(7);
+    expect(config({}, saved, { ALLGATHER_ARCHIVE_TTL_DAYS: "14" }).archiveTtlDays).toBe(14);
+    expect(
+      config({ archiveTtlDays: 21 }, saved, { ALLGATHER_ARCHIVE_TTL_DAYS: "14" }).archiveTtlDays,
+    ).toBe(21);
+    for (const invalid of ["0", "36501", "1.5"])
+      expect(() => serverConfigCommand(["set", "archiveTtlDays", invalid], path)).toThrow();
+    expect(readServerConfig(path)?.archiveTtlDays).toBe(7);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

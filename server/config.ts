@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { archiveTtlDays } from "./artifact-usage.ts";
 import { type GatewayConfig, gatewayListSchema } from "./gateway-config.ts";
 import { defaultPrivateNetworks, networks } from "./network.ts";
 
@@ -16,6 +17,7 @@ export interface Config {
   privateNetworks: string[];
   gitSyncSeconds: number;
   managedSessions: boolean;
+  archiveTtlDays: number;
   gateways: GatewayConfig[];
 }
 function portNumber(value: number, name: string) {
@@ -134,6 +136,10 @@ export function config(
   )
     throw new Error("ALLGATHER_GIT_SYNC_SECONDS must be zero or between 30 and 86400");
   return {
+    archiveTtlDays: archiveTtlDays(
+      overrides.archiveTtlDays ??
+        Number(env.ALLGATHER_ARCHIVE_TTL_DAYS ?? saved.archiveTtlDays ?? 30),
+    ),
     gateways: gatewayListSchema.parse(
       overrides.gateways ??
         (env.ALLGATHER_GATEWAYS === undefined

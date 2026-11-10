@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { validatePublication } from "../server/publication.ts";
 import { buildArtifactPrompt } from "../shared/artifact-prompt.ts";
@@ -10,6 +10,7 @@ import type {
 } from "../shared/artifacts.ts";
 import type { ArtifactAttachment } from "../shared/attachments.ts";
 import { type Operation, operations } from "../shared/contracts.ts";
+import { downloadArtifact } from "./artifact-download.ts";
 import { artifactGuide } from "./artifact-guide.ts";
 import { downloadCommentImages, readAttachmentFiles } from "./artifact-images.ts";
 import {
@@ -35,6 +36,13 @@ export async function artifactCommand(client: Client, p: string[], f: Flags) {
     id = p[2],
     text = (key: string) => (typeof f[key] === "string" ? (f[key] as string) : undefined);
   validateArtifactOptions(verb, p, f);
+  const stdinText = ["title", "summary", "body", "label", "version-label", "remote"];
+  const stdinInputs = [...stdinText, "input", "patch", "body-file"].filter(
+    (name) => f[name] === "-",
+  );
+  if (stdinInputs.length > 1) throw new Error("Only one input can read stdin");
+  if (stdinInputs.length && stdinText.includes(stdinInputs[0]))
+    f = { ...f, [stdinInputs[0]]: readText("-") };
   if (verb === "guide") {
     console.log(f.json ? JSON.stringify({ guide: artifactGuide(id) }) : artifactGuide(id));
     return;
@@ -240,6 +248,14 @@ export async function artifactCommand(client: Client, p: string[], f: Flags) {
     return;
   }
   if (verb === "source") {
+    if (f.start === undefined && f.limit === undefined) {
+      print(
+        await get(
+          `${base()}/versions/${await version()}/source?path=${encodeURIComponent((f.path as string[])[0])}`,
+        ),
+      );
+      return;
+    }
     print(
       await client.call("artifacts_read_file", {
         artifact_id: id,
@@ -256,11 +272,8 @@ export async function artifactCommand(client: Client, p: string[], f: Flags) {
       verb === "image"
         ? `${base()}/attachments/${encodeURIComponent(String(f.image))}`
         : `${base()}/versions/${await version()}/${verb === "patch" ? "patch" : `resource?path=${encodeURIComponent((f.path as string[])?.[0] ?? "")}`}`;
-    const bytes = new Uint8Array(await (await client.request(path)).arrayBuffer());
-    if (f.output) {
-      writeFileSync(String(f.output), bytes, { flag: "wx", mode: 0o600 });
-      print({ saved: true, bytes: bytes.length });
-    } else await writeOutput(bytes);
+    const bytes = await downloadArtifact(await client.request(path), text("output"));
+    if (f.output) print({ saved: true, bytes });
     return;
   }
   const fetchComments = async () =>
@@ -531,7 +544,20 @@ export async function artifactCommand(client: Client, p: string[], f: Flags) {
     return;
   }
   if (verb === "gc") {
-    print(await call("artifacts_gc", { input: { ...inputFile(), dryRun: !f.apply } }));
+    const input = inputFile();
+    if (f.ttl !== undefined) {
+      if (input.ttlDays !== undefined) throw new Error("Use --ttl or input.ttlDays, not both");
+      if (!/^[1-9]\d*d$/.test(String(f.ttl)))
+        throw new Error("--ttl requires whole days, such as 30d");
+      input.ttlDays = Number(String(f.ttl).slice(0, -1));
+      if (input.ttlDays > 36500) throw new Error("--ttl must be between 1d and 36500d");
+    }
+    const result = (await call("artifacts_gc", { input: { ...input, dryRun: !f.apply } })) as {
+      failures: unknown[];
+      cleanupError?: string;
+    };
+    print(result);
+    if (result.failures.length || result.cleanupError) process.exitCode = 1;
     return;
   }
   throw new Error("Unknown artifact command. Run allgather help.");

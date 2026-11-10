@@ -20,6 +20,7 @@ const fields = {
   privateNetworks: z.array(z.string()),
   gitSyncSeconds: z.number().int(),
   managedSessions: z.boolean(),
+  archiveTtlDays: z.number().int().min(1).max(36500),
   gateways: gatewayListSchema,
 };
 const schema = z.object(fields).partial().strict();
@@ -74,7 +75,12 @@ export function serverConfigCommand(args: string[], path = serverConfigPath()) {
               .split(",")
               .map((x) => x.trim())
               .filter(Boolean);
-      else if (name === "port" || name === "mcpPort" || name === "gitSyncSeconds")
+      else if (
+        name === "port" ||
+        name === "mcpPort" ||
+        name === "gitSyncSeconds" ||
+        name === "archiveTtlDays"
+      )
         value = /^\d+$/.test(raw) ? Number(raw) : NaN;
       else if (name === "managedSessions") {
         if (!["true", "false"].includes(raw))

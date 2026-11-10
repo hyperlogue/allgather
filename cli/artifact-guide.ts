@@ -27,7 +27,9 @@ Search: artifact search QUERY [--attention] [--type all|content|conversation] [-
 Downloads stream original bytes unless --output FILE is supplied. Existing output files are protected.
 Uncertain writes: retain the original --key, captured bytes, metadata and printed concurrency guards.
 Create uses separate retry keys for creation and publication; recovery reports the artifact ID when known.
-Use artifact guide files|html|diff for preparation. --input and --body-file accept - for stdin.
+Use artifact guide files|html|diff for preparation. --input, --body-file, --patch, and text fields such as --title, --summary and --body accept - for stdin; only one input may read stdin.
+Source reads return the complete supported text or binary/oversize metadata by default; --start/--limit select bounded text reads.
+GC accepts --ttl 30d and exits nonzero for partial failures. Set the server default with allgather-server config set archiveTtlDays 30, then restart.
 Allgather keeps its owner authorization, project grants and Tower notifications. GC is a dry run unless --apply.`;
 const formats: Record<string, string> = {
   files: `Prepare a directory containing the complete files to review. Use --root DIR and repeat --path PATH to select membership; the default is the whole directory. --ref REF captures selected Git paths. Publish complete snapshots, not incremental edits. Binary files download as original bytes; source reads require UTF-8.`,

@@ -37,7 +37,7 @@ const commands: Record<string, string> = {
   submit: "",
   watchers: "",
   stat: "window",
-  gc: "input apply",
+  gc: "input apply ttl",
   guide: "",
 };
 export function validateArtifactOptions(verb: string, p: string[], f: ArtifactFlags) {

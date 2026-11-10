@@ -78,7 +78,11 @@ export async function startServer(overrides: Partial<Config> = {}) {
           upstream?.wake();
           tower?.wake();
         },
-        { dataDir: settings.dataDir, managedSessions: settings.managedSessions },
+        {
+          dataDir: settings.dataDir,
+          managedSessions: settings.managedSessions,
+          archiveTtlDays: settings.archiveTtlDays,
+        },
       );
     upstream = new UpstreamSync(
       workspace,

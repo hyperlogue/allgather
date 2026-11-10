@@ -201,6 +201,10 @@ button.primary {
   background: transparent;
 }
 .copy-id:hover code,
+.copy-id:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-halo);
+}
 .copy-id:focus-visible code {
   text-decoration: underline;
   text-underline-offset: 3px;

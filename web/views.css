@@ -654,7 +654,10 @@ textarea {
 .scope-edit:focus-visible {
   color: var(--text);
   opacity: 1;
-  outline: 0;
+  outline: none;
+}
+.scope-edit:focus-visible {
+  box-shadow: var(--focus-halo);
 }
 .scope-list li:hover .scope-edit {
   opacity: 1;
@@ -687,8 +690,9 @@ textarea {
   transform: rotate(-45deg);
 }
 .scope-check:focus-visible {
-  outline: 1px solid var(--focus-ring);
-  outline-offset: 2px;
+  outline: none;
+  border-color: var(--focus-ring);
+  box-shadow: var(--focus-halo);
 }
 .scope-option small {
   margin-left: auto;

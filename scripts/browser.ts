@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-export async function browserSession(executable: string) {
+export async function browserSession(executable: string, flags: string[] = []) {
   const profile = await mkdtemp(join(tmpdir(), "allgather-browser-"));
   const child = Bun.spawn(
     [
@@ -13,6 +13,7 @@ export async function browserSession(executable: string) {
       "--disable-background-networking",
       "--remote-debugging-port=0",
       `--user-data-dir=${profile}`,
+      ...flags,
       "about:blank",
     ],
     {
@@ -29,6 +30,10 @@ export async function browserSession(executable: string) {
   );
   const errors = new Response(child.stderr).text();
   let socket: WebSocket | undefined;
+  const contexts = new Map<
+    number,
+    { id: number; origin: string; auxData?: { isDefault?: boolean } }
+  >();
   let sequence = 0;
   const pending = new Map<
     number,
@@ -73,8 +78,13 @@ export async function browserSession(executable: string) {
       connection.onerror = () => reject(new Error("Browser connection failed"));
     });
     socket.onmessage = (event) => {
-      const data = JSON.parse(String(event.data)),
-        item = pending.get(data.id);
+      const data = JSON.parse(String(event.data));
+      if (data.method === "Runtime.executionContextCreated")
+        contexts.set(data.params.context.id, data.params.context);
+      if (data.method === "Runtime.executionContextDestroyed")
+        contexts.delete(data.params.executionContextId);
+      if (data.method === "Runtime.executionContextsCleared") contexts.clear();
+      const item = pending.get(data.id);
       if (!item) return;
       clearTimeout(item.timer);
       pending.delete(data.id);
@@ -107,9 +117,10 @@ export async function browserSession(executable: string) {
       send(method, params, attached.sessionId as string);
     await command("Page.enable");
     await command("Runtime.enable");
-    const evaluate = async <T>(expression: string): Promise<T> => {
+    const evaluate = async <T>(expression: string, contextId?: number): Promise<T> => {
       const r = await command("Runtime.evaluate", {
         expression,
+        ...(contextId ? { contextId } : {}),
         returnByValue: true,
         awaitPromise: true,
       });
@@ -123,7 +134,7 @@ export async function browserSession(executable: string) {
       }
       throw new Error(`Browser condition failed: ${expression}`);
     };
-    return { command, evaluate, until, close };
+    return { command, evaluate, until, close, contexts, browserCommand: send };
   } catch (error) {
     await close();
     throw error;

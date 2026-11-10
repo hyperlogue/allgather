@@ -25,6 +25,7 @@ import type {
 } from "../../shared/artifacts.ts";
 import { type AttachmentInput, attachmentPath } from "../../shared/attachments.ts";
 import { applicationFetch } from "./application-fetch.ts";
+import { artifactLocalStorage } from "./artifact-local-storage.ts";
 
 export const HUMAN_ACTOR: ArtifactActor = { role: "human", sessionId: null };
 const client = () =>
@@ -65,7 +66,11 @@ export const artifactApi = {
     ),
   edit: (id: string, body: EditArtifactBody) =>
     client().json<Artifact>("PATCH", artifactApiPath(id), body),
-  delete: (id: string) => client().json<{ ok: boolean }>("DELETE", artifactApiPath(id)),
+  delete: async (id: string) => {
+    const result = await client().json<{ ok: boolean }>("DELETE", artifactApiPath(id));
+    artifactLocalStorage.forget(id);
+    return result;
+  },
   addThread: (
     id: string,
     body: string,

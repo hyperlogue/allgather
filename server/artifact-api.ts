@@ -48,8 +48,12 @@ export function artifactApi(
     if (!p) throw new AppError("unauthorized", "Sign in to Allgather", 401);
     return w.access.run(p, async () => {
       const artifact = /^\/api\/artifacts\/([^/]+)/.exec(c.req.path)?.[1];
-      if (artifact && artifact !== "archive")
-        w.access.require(w.access.artifact(decodeURIComponent(artifact)));
+      if (artifact && artifact !== "archive") {
+        const id = decodeURIComponent(artifact);
+        if (p.kind === "owner" && !w.one("SELECT 1 FROM artifacts WHERE id=?", id))
+          throw new AppError("not_found", "Artifact not found", 404);
+        w.access.require(w.access.artifact(id));
+      }
       if (c.req.path === "/api/library-summary") w.access.require(w.access.global());
       if (
         (c.req.path.startsWith("/api/previews/") || c.req.path.endsWith("/previews")) &&

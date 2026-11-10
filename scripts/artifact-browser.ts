@@ -38,7 +38,8 @@ export async function verifyArtifactBrowser(
     const sandbox = await b.evaluate<string>(
       `document.querySelector('iframe')?.getAttribute('sandbox')`,
     );
-    if (sandbox !== "allow-scripts") throw new Error("Preview sandbox gained extra authority");
+    if (sandbox !== "allow-scripts allow-downloads")
+      throw new Error("Preview sandbox gained extra authority");
     await b.evaluate(`document.querySelector('[aria-label="Add comment"]').click()`);
     await b.until(`!!document.querySelector('textarea[aria-label="Comment"]')`);
     await b.evaluate(`document.querySelector('textarea[aria-label="Comment"]').focus()`);

@@ -51,7 +51,7 @@ try {
     },
   });
   await b.command("Page.navigate", { url: link.url });
-  await b.until(`document.querySelector('h1')?.textContent==='Welcome to Allgather'`);
+  await b.until(`document.querySelector('h1')?.textContent==='Welcome to AllGather'`);
   if (await b.evaluate(`location.hash!=='' || !!document.querySelector('.app-header')`))
     throw new Error("Welcome page leaked the link secret or exposed the workspace");
   const authenticated = await b.evaluate<boolean>(

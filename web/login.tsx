@@ -41,7 +41,7 @@ export function Login({ done, welcome = false }: { done: () => void; welcome?: b
   return (
     <LoginFrame>
       <Brand />
-      <h1>{welcome ? "Welcome to Allgather" : "Sign in to Allgather"}</h1>
+      <h1>{welcome ? "Welcome to AllGather" : "Sign in to AllGather"}</h1>
       <p>
         {welcome
           ? "Create a passkey to enter. Next time, use your passkey to sign in."
@@ -53,7 +53,7 @@ export function Login({ done, welcome = false }: { done: () => void; welcome?: b
       </p>
       {!supported && (
         <p role="alert">
-          Passkeys require a supported browser and a secure connection. Open Allgather using its
+          Passkeys require a supported browser and a secure connection. Open AllGather using its
           HTTPS address, or localhost for local setup.
         </p>
       )}
@@ -85,7 +85,7 @@ export function Login({ done, welcome = false }: { done: () => void; welcome?: b
       )}
       <p className="muted small">
         {welcome ? "Need a new link?" : "First time here, or lost your passkey?"} Run this command
-        on your Allgather server:
+        on your AllGather server:
       </p>
       <div className="login-command">
         <code>allgather-server login</code>

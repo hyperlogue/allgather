@@ -20,7 +20,7 @@ export function Passkeys() {
     <section className="history-section">
       <h2>Passkeys</h2>
       <p>
-        Browsers stay signed in while you use Allgather. After 30 days of inactivity, sign in again
+        Browsers stay signed in while you use AllGather. After 30 days of inactivity, sign in again
         with your passkey.
       </p>
       <p className="muted small">

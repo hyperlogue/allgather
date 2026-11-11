@@ -1,3 +1,5 @@
+/* The solid cyan fill is reserved for the single action a view is asking the person to take.
+   Everything else is an outlined or quiet button. */
 button.primary {
   color: var(--on-accent-fill);
   background: linear-gradient(
@@ -29,6 +31,9 @@ button.primary {
 .small {
   font-size: var(--text-md);
 }
+/* Banners share one recipe: a tinted panel, a tone border, and a leading icon, with body text
+   kept in the normal text colour for legibility. Inline banners are rounded controls, and
+   full-width strips stay square because they belong to the page layer. */
 .error,
 .notice,
 .banner-strip {
@@ -349,6 +354,8 @@ button.danger {
   border-color: color-mix(in srgb, var(--danger) 35%, transparent);
   background: var(--danger-surface);
 }
+/* Segmented controls share the control height and radius with fields so they line up in
+   toolbars. The frame clips the square inner segments. */
 .filters {
   overflow: hidden;
   border-radius: var(--radius-control);
@@ -383,6 +390,8 @@ button.danger {
   font: var(--text-md) var(--ui);
   color: var(--text-muted);
 }
+/* The state dot is the only state marker on a task row, which is why the list has no group
+   headers. Its shape changes with the state, so it works without relying on colour. */
 .state-dot {
   border-radius: 50%;
   flex-shrink: 0;
@@ -394,6 +403,8 @@ button.danger {
   border-color: var(--warning);
   background: radial-gradient(circle, var(--warning) 0 2px, transparent 2.5px);
 }
+/* Chip tone carries meaning: neutral labels, magenta for agent activity, cyan (.action) for
+   something a human must act on, and amber for blocked or warning states. */
 .status-chip {
   --chip-tone: var(--agent);
   padding: 1px var(--space-1-5);
@@ -496,6 +507,8 @@ button.danger {
   border-width: 0 1.5px 1.5px 0;
   transform: rotate(45deg);
 }
+/* Loading uses the cyan and magenta stacked frames rather than a spinner, the brand pair
+   in motion. The animation stops when the system asks for reduced motion. */
 .loading-indicator {
   display: flex;
   flex-direction: column;
@@ -506,6 +519,9 @@ button.danger {
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
+/* The custom select keeps a hidden native select as the source of truth, so forms, labels, and
+   change events behave as they do natively. Its menu is anchored, so it uses the menu radius
+   and concentric item corners. */
 .select {
   position: relative;
   width: 100%;
@@ -610,6 +626,8 @@ button.danger {
 .select-trigger[aria-expanded="true"] .icon {
   transform: rotate(180deg);
 }
+/* The file picker lays the real input invisibly over a drop zone, so clicking, keyboard focus,
+   and drag-and-drop all stay native in every browser. */
 .file-field {
   display: grid;
   gap: var(--space-2);

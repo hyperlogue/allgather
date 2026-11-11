@@ -95,7 +95,7 @@
   display: block;
   width: 100%;
   background: var(--accent);
-  border-radius: 3px 3px 0 0;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
 }
 .chart-labels {
   display: flex;
@@ -435,6 +435,8 @@ pre,
 .workspace-shell.sidebar-collapsed {
   --sidebar-width: 48px;
 }
+/* The sidebar is part of the square page layer. Navigation rows run full-bleed, and the current
+   page is a flat tint rather than a pill, so the highlight reads as a place, not a button. */
 .app-header {
   position: fixed;
   inset: 0 auto 0 0;
@@ -515,7 +517,7 @@ pre,
   display: grid;
   place-items: center;
   font: 600 var(--text-xs) var(--ui);
-  color: #061518;
+  color: var(--on-accent-fill);
 }
 .scope-marks.stacked .scope-mark {
   position: absolute;
@@ -523,6 +525,8 @@ pre,
   height: 15px;
   box-shadow: 0 0 0 1.5px var(--bg-panel);
 }
+/* Popovers anchored to a control use the 8px menu radius with a 4px inset, so the rows inside
+   get concentric 4px corners. */
 .scope-popover {
   border-radius: var(--radius-menu);
   position: absolute;
@@ -898,6 +902,8 @@ pre,
   gap: var(--space-5);
   margin-bottom: var(--space-3);
 }
+/* The task list is one flat list ordered blocked, open, closed. Each row's state dot carries the
+   grouping, so there are no section headers, and selection is a quiet tint with no side rail. */
 .task-list {
   align-self: start;
   border-top: 0;
@@ -1252,6 +1258,8 @@ pre,
   color: var(--text-muted);
   padding: var(--space-1) var(--space-1-5);
 }
+/* The palette is a free-floating dialog, so it takes the 12px overlay radius and its result rows
+   take the matching concentric 8px. */
 .command-palette {
   width: min(600px, calc(100vw - 32px));
   max-height: min(640px, 80dvh);

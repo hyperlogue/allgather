@@ -163,6 +163,8 @@ button {
   transition: background var(--t-fast);
   box-shadow: inset 0 1px rgb(255 255 255 / 0.03);
 }
+/* Fields sit slightly recessed (darker fill, inner top shadow) while buttons sit on the page,
+   so you can tell typing targets from press targets without reading labels. */
 input,
 textarea,
 select {
@@ -176,6 +178,8 @@ select:focus-visible {
   border-color: var(--focus-ring);
   box-shadow: var(--focus-inset);
 }
+/* Dialogs are the only free-floating layer: 12px corners, the overlay surface, a 1px top rim,
+   and the one deep shadow in the system. */
 dialog {
   border: 1px solid var(--border);
   border-radius: var(--radius-overlay);
@@ -198,6 +202,8 @@ label textarea,
 label .select {
   margin-top: var(--space-2);
 }
+/* Custom checkboxes and radios replace the native glyphs so they match the field style in both
+   themes. Checked state fills cyan because ticking a box is a human decision. */
 input[type="checkbox"],
 input[type="radio"] {
   appearance: none;

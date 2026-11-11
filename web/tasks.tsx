@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { connectionActorLabel } from "../shared/client-access.ts";
 import type {
   AgentSession,
@@ -15,6 +15,7 @@ import type {
 import { call, mutation } from "./api.ts";
 import { ContextLink } from "./context.tsx";
 import { CopyId } from "./copy-id.tsx";
+import { LoadingIndicator } from "./loading-indicator.tsx";
 import { scopeFilter, singleProject } from "./project-scope.ts";
 import { TaskBlocker, TaskMarkdown } from "./task-blocker.tsx";
 import {
@@ -26,6 +27,7 @@ import {
   ErrorText,
   PageHeading,
   Segmented,
+  Select,
   StateDot,
   useAction,
 } from "./ui.tsx";
@@ -79,7 +81,7 @@ function AssignmentField({
   return (
     <label>
       Assigned to
-      <select value={value} onChange={(e) => set(e.target.value)}>
+      <Select value={value} onChange={(e) => set(e.target.value)}>
         <option value="">Unassigned</option>
         <option value="owner:owner">Owner</option>
         {roles.map((r) => (
@@ -92,7 +94,7 @@ function AssignmentField({
             {s.label ?? s.id} · session
           </option>
         ))}
-      </select>
+      </Select>
     </label>
   );
 }
@@ -157,7 +159,7 @@ function TaskEditor({
       >
         <label>
           Project
-          <select
+          <Select
             value={draft.project_id ?? project}
             onChange={(e) => set({ ...draft, project_id: e.target.value, parent_id: "" })}
           >
@@ -167,7 +169,7 @@ function TaskEditor({
                 {p.name}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         {task && draft.project_id && draft.project_id !== task.project_id && (
           <p className="muted small">
@@ -720,11 +722,11 @@ function TaskDetail({
             {action === "tasks_block" && (
               <label>
                 Waiting on
-                <select value={waiting} onChange={(e) => setWaiting(e.target.value)}>
+                <Select value={waiting} onChange={(e) => setWaiting(e.target.value)}>
                   <option value="human">Human</option>
                   <option value="task">Task</option>
                   <option value="external">External</option>
-                </select>
+                </Select>
               </label>
             )}
             {(action === "links_add" || (action === "tasks_block" && waiting === "task")) && (
@@ -743,7 +745,7 @@ function TaskDetail({
               <>
                 <label>
                   Repository
-                  <select
+                  <Select
                     required
                     value={repository}
                     onChange={(e) => setRepository(e.target.value)}
@@ -754,7 +756,7 @@ function TaskDetail({
                         {r.name}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
                 <label>
                   Full commit hash
@@ -888,19 +890,11 @@ export function TasksView({
     setCreate(true);
   }, []);
   const group = (task: Task) => task.status;
-  const groups = (
-    [
-      ["blocked", "Blocked"],
-      ["open", "Open"],
-      ["closed", "Closed"],
-    ] as const
-  )
-    .map(([id, label]) => ({
-      id,
-      label,
-      items: loading ? [] : page.items.filter((task) => group(task) === id),
-    }))
-    .filter((group) => group.items.length);
+  const ordered = loading
+    ? []
+    : (["blocked", "open", "closed"] as const).flatMap((state) =>
+        page.items.filter((task) => group(task) === state),
+      );
   const select = (id: string) => {
       setSelected(id);
       const url = new URL(location.href);
@@ -974,7 +968,7 @@ export function TasksView({
             </label>
             <label>
               Assigned role
-              <select
+              <Select
                 value={assignedRole}
                 onChange={(e) => {
                   setAssignedRole(e.target.value);
@@ -987,15 +981,15 @@ export function TasksView({
                     {r.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label>
               Order
-              <select value={sort} onChange={(e) => setSort(e.target.value)}>
+              <Select value={sort} onChange={(e) => setSort(e.target.value)}>
                 <option value="created">Created</option>
                 <option value="updated">Updated</option>
                 <option value="title">Title</option>
-              </select>
+              </Select>
             </label>
             <label>
               Defer until before
@@ -1019,45 +1013,31 @@ export function TasksView({
       <ErrorText>{error}</ErrorText>
       <div className={`work-area ${selected ? "has-detail" : ""}`}>
         <section className="task-list" aria-label="Tasks" aria-busy={loading}>
-          {groups.map(({ id, label, items }) => (
-            <Fragment key={id}>
-              <h2 className="task-group-heading">
-                <StateDot state={id} />
-                {label}
-                <span className="count">{items.length}</span>
-              </h2>
-              {items.map((task) => (
-                <div key={task.id} className={`task-row ${selected === task.id ? "selected" : ""}`}>
-                  <StateDot state={group(task)} />
-                  <span className="task-id">
-                    <CopyId value={task.id}>{task.id.slice(-8)}</CopyId>
-                  </span>
-                  <button type="button" className="task-row-open" onClick={() => select(task.id)}>
-                    <span className="task-row-main">
-                      <strong>{task.title}</strong>
-                      {task.child_count > 0 && <small>{task.child_count} child tasks</small>}
-                    </span>
-                    <span className="task-row-labels">
-                      {task.labels.slice(0, 2).map((label) => (
-                        <Chip key={label}>{label}</Chip>
-                      ))}
-                    </span>
-                    {task.blocked && (
-                      <Chip tone={task.needs_owner ? "agent" : "warning"}>
-                        {task.needs_owner ? "Needs human" : "Blocked"}
-                      </Chip>
-                    )}
-                  </button>
-                </div>
-              ))}
-            </Fragment>
-          ))}
-          {loading && (
-            <div className="task-list-loading" role="status">
-              <span className="spinner" aria-hidden="true" />
-              Loading tasks…
+          {ordered.map((task) => (
+            <div key={task.id} className={`task-row ${selected === task.id ? "selected" : ""}`}>
+              <StateDot state={group(task)} />
+              <span className="task-id">
+                <CopyId value={task.id}>{task.id.slice(-8)}</CopyId>
+              </span>
+              <button type="button" className="task-row-open" onClick={() => select(task.id)}>
+                <span className="task-row-main">
+                  <strong>{task.title}</strong>
+                  {task.child_count > 0 && <small>{task.child_count} child tasks</small>}
+                </span>
+                <span className="task-row-labels">
+                  {task.labels.slice(0, 2).map((label) => (
+                    <Chip key={label}>{label}</Chip>
+                  ))}
+                </span>
+                {task.blocked && (
+                  <Chip tone={task.needs_owner ? "action" : "warning"}>
+                    {task.needs_owner ? "Needs human" : "Blocked"}
+                  </Chip>
+                )}
+              </button>
             </div>
-          )}
+          ))}
+          {loading && <LoadingIndicator label="Loading tasks…" />}
           {!loading && !page.items.length && (
             <EmptyState title="No tasks in this view">
               Create work or adjust the filters.

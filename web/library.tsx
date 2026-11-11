@@ -5,7 +5,16 @@ import { call } from "./api.ts";
 import { ContextLink } from "./context.tsx";
 import { Icon } from "./icons.tsx";
 import { scopeFilter, singleProject } from "./project-scope.ts";
-import { Button, Dialog, EmptyState, ErrorText, PageHeading, Segmented, useAction } from "./ui.tsx";
+import {
+  Button,
+  Dialog,
+  EmptyState,
+  ErrorText,
+  PageHeading,
+  Segmented,
+  Select,
+  useAction,
+} from "./ui.tsx";
 
 async function encode(file: File) {
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -103,11 +112,11 @@ function Publication({
             </label>
             <label>
               Kind
-              <select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
+              <Select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
                 <option value="html">HTML page</option>
                 <option value="files">Files and documents</option>
                 <option value="diff">Git diff</option>
-              </select>
+              </Select>
             </label>
           </>
         )}

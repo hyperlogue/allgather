@@ -27,6 +27,7 @@ import {
   ErrorText,
   FeaturePlaceholder,
   PageHeading,
+  Select,
   useAction,
 } from "./ui.tsx";
 
@@ -253,7 +254,7 @@ function RequestCard({
               <label key={key} htmlFor={`${item.id}-${key}`}>
                 {field.title ?? key}
                 {field.enum ? (
-                  <select
+                  <Select
                     id={`${item.id}-${key}`}
                     required={schema?.required?.includes(key)}
                     value={String(values[key] ?? "")}
@@ -270,7 +271,7 @@ function RequestCard({
                         {String(v)}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 ) : field.type === "boolean" ? (
                   <input
                     id={`${item.id}-${key}`}
@@ -1060,7 +1061,7 @@ export function SessionsView({
           </label>
           <label>
             Has run on
-            <select
+            <Select
               value={machineFilter}
               onChange={(e) => {
                 setMachineFilter(e.target.value);
@@ -1073,7 +1074,7 @@ export function SessionsView({
                   {m.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <label>
             Created since
@@ -1189,7 +1190,7 @@ export function SessionsView({
           >
             <label>
               Machine
-              <select
+              <Select
                 required
                 value={machine}
                 onChange={(e) => {
@@ -1204,11 +1205,11 @@ export function SessionsView({
                     {m.connected ? "" : " · offline"}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label>
               Session mode
-              <select
+              <Select
                 value={launchMode}
                 onChange={(e) => {
                   setLaunchMode(e.target.value as "managed" | "terminal");
@@ -1217,7 +1218,7 @@ export function SessionsView({
               >
                 <option value="managed">Managed agent</option>
                 <option value="terminal">Terminal</option>
-              </select>
+              </Select>
             </label>
             {chosen && !supported && (
               <Banner>
@@ -1228,14 +1229,14 @@ export function SessionsView({
             )}
             <label>
               Agent
-              <select required value={harness} onChange={(e) => setHarness(e.target.value)}>
+              <Select required value={harness} onChange={(e) => setHarness(e.target.value)}>
                 <option value="">Choose an agent</option>
                 {Object.keys(launchControls ?? {}).map((h) => (
                   <option value={h} key={h}>
                     {h}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             {launchControls?.[harness]?.cancel_mode === "runtime" && (
               <Banner>
@@ -1259,14 +1260,14 @@ export function SessionsView({
             </label>
             <label>
               Role
-              <select value={role} onChange={(e) => setRole(e.target.value)}>
+              <Select value={role} onChange={(e) => setRole(e.target.value)}>
                 <option value="">No role</option>
                 {roles.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <ErrorText>{error}</ErrorText>
             <Button

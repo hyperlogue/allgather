@@ -3,7 +3,7 @@ import type { Machine } from "../shared/contracts.ts";
 import type { MachineScope } from "../shared/tower-acp.ts";
 import { request } from "./api.ts";
 import { CopyId } from "./copy-id.tsx";
-import { Banner, Brand, Button, ErrorText, LoginFrame, useAction } from "./ui.tsx";
+import { Banner, Brand, Button, ErrorText, LoginFrame, Select, useAction } from "./ui.tsx";
 
 const labels: Record<MachineScope, string> = {
   read: "Read status and the repository catalog; report checkout observations",
@@ -132,7 +132,7 @@ export function TowerPairing({ machines, changed }: { machines: Machine[]; chang
         >
           <label>
             Node
-            <select
+            <Select
               value={machine}
               onChange={(event) => {
                 setMachine(event.target.value);
@@ -147,7 +147,7 @@ export function TowerPairing({ machines, changed }: { machines: Machine[]; chang
                     {machine.name}
                   </option>
                 ))}
-            </select>
+            </Select>
           </label>
           <label>
             Node name

@@ -14,6 +14,7 @@
   gap: var(--space-8);
 }
 .task-row-open {
+  border-radius: 0;
   display: flex;
   flex: 1;
   align-items: center;
@@ -46,15 +47,6 @@
   margin-top: var(--space-4);
 }
 .detail-section p {
-  font-size: var(--text-md);
-}
-.task-list-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  padding: 64px var(--space-8);
-  color: var(--text-muted);
   font-size: var(--text-md);
 }
 .history-view,
@@ -136,7 +128,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-6);
+  gap: var(--space-5);
   width: 100%;
   border: 0;
   border-bottom: 1px solid var(--border);
@@ -151,7 +143,7 @@
 .commit-message {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  margin: var(--space-6) 0;
+  margin: var(--space-5) 0;
 }
 .connections h1 {
   margin-bottom: var(--space-4);
@@ -196,7 +188,7 @@
   padding: 0;
 }
 .audit-list > li {
-  padding: var(--space-6) 0;
+  padding: var(--space-5) 0;
   border-bottom: 1px solid var(--border);
   overflow-wrap: anywhere;
 }
@@ -222,10 +214,7 @@
 }
 .detail-container,
 pre,
-.audit-change dl,
-.error,
-.notice,
-textarea {
+.audit-change dl {
   border-radius: 0;
 }
 .task-body {
@@ -233,7 +222,7 @@ textarea {
   overflow-wrap: anywhere;
   font-size: var(--text-lg);
   line-height: 1.6;
-  margin: var(--space-6) 0;
+  margin: var(--space-5) 0;
 }
 .context-row,
 .blocker-row {
@@ -282,10 +271,6 @@ textarea {
 }
 .pairing textarea {
   margin: var(--space-3) 0;
-}
-.session-request input[type="checkbox"] {
-  width: 20px;
-  min-height: 20px;
 }
 .artifact-list {
   border-top: 1px solid var(--border);
@@ -340,10 +325,9 @@ textarea {
   margin: var(--space-1) 0 0;
   flex-shrink: 0;
 }
-.permission-choice select {
+.permission-choice .select {
   margin-left: auto;
-  width: auto;
-  max-width: 13rem;
+  width: 13rem;
 }
 .approval-value {
   white-space: break-spaces;
@@ -436,10 +420,7 @@ textarea {
   margin-top: var(--space-3);
 }
 .theme-label input {
-  width: 16px;
-  min-height: 16px;
   margin: 0;
-  accent-color: var(--accent-fill);
 }
 .login-enter {
   width: 100%;
@@ -486,7 +467,7 @@ textarea {
   gap: var(--space-2);
   width: 100%;
   height: 100%;
-  padding: 0 var(--space-2) 0 var(--space-3);
+  padding: 0 var(--space-1-5) 0 var(--space-3);
   border: 0;
   background: transparent;
   color: var(--text);
@@ -543,6 +524,7 @@ textarea {
   box-shadow: 0 0 0 1.5px var(--bg-panel);
 }
 .scope-popover {
+  border-radius: var(--radius-overlay);
   position: absolute;
   z-index: 30;
   top: calc(100% + 2px);
@@ -561,6 +543,7 @@ textarea {
   margin: var(--space-1) 0;
 }
 .scope-option {
+  border-radius: 0;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -605,7 +588,7 @@ textarea {
 .scope-list .scope-option {
   flex: 1;
   min-width: 0;
-  padding-right: var(--space-2);
+  padding-right: var(--space-1-5);
 }
 .scope-list li:focus-within {
   background: var(--bg-hover);
@@ -639,37 +622,8 @@ textarea {
 .scope-list li:hover .scope-edit {
   opacity: 1;
 }
-.scope-check {
-  appearance: none;
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 14px;
-  height: 14px;
-  min-height: 14px;
+.scope-list .scope-check {
   margin: 0 var(--space-3) 0 var(--space-1);
-  padding: 0;
-  border: 1px solid var(--border-strong);
-  background: transparent;
-  cursor: pointer;
-}
-.scope-check:checked {
-  border-color: var(--accent);
-  background: var(--accent);
-}
-.scope-check:checked::after {
-  content: "";
-  width: 7px;
-  height: 4px;
-  margin-top: -2px;
-  border: solid var(--on-accent-fill);
-  border-width: 0 0 1.5px 1.5px;
-  transform: rotate(-45deg);
-}
-.scope-check:focus-visible {
-  outline: none;
-  border-color: var(--focus-ring);
-  box-shadow: var(--focus-halo);
 }
 .scope-option small {
   margin-left: auto;
@@ -754,7 +708,7 @@ textarea {
 .sidebar-section-title {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1-5);
   color: var(--text-muted);
   padding: var(--space-4) var(--space-3) var(--space-1) var(--space-4);
   font: 500 var(--text-sm) var(--ui);
@@ -767,7 +721,7 @@ textarea {
 }
 .scope-title {
   color: var(--text-secondary);
-  padding-top: var(--space-2);
+  padding-top: var(--space-1-5);
 }
 .scope-dots {
   display: inline-flex;
@@ -851,7 +805,7 @@ textarea {
 .sidebar-collapsed .sidebar-top {
   flex-direction: column;
   height: auto;
-  padding: 0 0 var(--space-2);
+  padding: 0 0 var(--space-1-5);
 }
 .sidebar-collapsed .scope-switcher {
   align-self: stretch;
@@ -874,7 +828,7 @@ textarea {
   order: -1;
 }
 .sidebar-collapsed .sidebar-section-title {
-  padding: var(--space-2) 0;
+  padding: var(--space-1-5) 0;
   margin: var(--space-1) var(--space-3);
   min-height: 14px;
   border-top: 1px solid var(--border);
@@ -892,6 +846,7 @@ textarea {
   transform: rotate(180deg);
 }
 .sidebar-scrim {
+  border-radius: 0;
   display: none;
 }
 .workspace-body {
@@ -932,31 +887,20 @@ textarea {
 .app-main {
   position: relative;
   flex: 1;
-  padding: var(--space-6);
+  padding: var(--space-5);
   min-width: 0;
 }
 .task-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-6);
+  gap: var(--space-5);
   margin-bottom: var(--space-3);
 }
 .task-list {
   align-self: start;
   border-top: 0;
   min-width: 0;
-}
-.task-group-heading {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  min-height: 38px;
-  background: var(--bg-hover);
-  border-bottom: 1px solid var(--border-subtle);
-  font-size: var(--text-md);
-  font-weight: 500;
 }
 .task-row {
   display: flex;
@@ -992,21 +936,11 @@ textarea {
 }
 .task-row-labels .label-chip {
   font-size: var(--text-sm);
-  padding: 1px var(--space-2);
+  padding: 1px var(--space-1-5);
   white-space: nowrap;
 }
 .task-row.selected {
   background: var(--bg-selected);
-}
-.task-row.selected::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 2px;
-  background: linear-gradient(var(--p400), var(--a400));
-  box-shadow: 0 0 10px color-mix(in oklch, var(--accent) 45%, transparent);
 }
 .detail-container {
   border-radius: 0;
@@ -1021,7 +955,7 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 .task-detail {
-  padding: var(--space-3) var(--space-4) var(--space-6);
+  padding: var(--space-3) var(--space-4) var(--space-5);
 }
 .task-detail h2 {
   font-size: var(--text-2xl);
@@ -1057,7 +991,7 @@ textarea {
 .session-list {
   min-width: 0;
   border-right: 1px solid var(--border);
-  padding-right: var(--space-6);
+  padding-right: var(--space-5);
   background: var(--bg-panel);
   border: 1px solid var(--border);
 }
@@ -1098,7 +1032,7 @@ textarea {
 .transcript {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-1-5);
 }
 .session-composer {
   padding-top: var(--space-4);
@@ -1194,7 +1128,7 @@ textarea {
 .metrics {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-6);
+  gap: var(--space-5);
   border-bottom: 1px solid var(--border);
   padding-bottom: var(--space-8);
   background: var(--bg-panel);
@@ -1221,7 +1155,7 @@ textarea {
 .settings h1,
 .connections h1,
 .approvals > h1 {
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-5);
   font-size: var(--text-xl);
 }
 .theme-option:has(input:checked) {
@@ -1280,7 +1214,7 @@ textarea {
 .login-card h1 {
   font-size: var(--text-2xl);
   letter-spacing: -0.025em;
-  margin: var(--space-6) 0 var(--space-2);
+  margin: var(--space-5) 0 var(--space-2);
   background: linear-gradient(var(--text), var(--text-secondary));
   background-clip: text;
   color: transparent;
@@ -1290,7 +1224,7 @@ textarea {
   font-size: var(--text-sm);
 }
 .login-card form {
-  margin: var(--space-6) 0;
+  margin: var(--space-5) 0;
 }
 .login-card form > .primary {
   width: 100%;
@@ -1315,7 +1249,7 @@ textarea {
   border: 0;
   background: transparent;
   color: var(--text-muted);
-  padding: var(--space-1) var(--space-2);
+  padding: var(--space-1) var(--space-1-5);
 }
 .command-palette {
   width: min(600px, calc(100vw - 32px));
@@ -1346,7 +1280,7 @@ textarea {
 .palette-scope {
   display: flex;
   justify-content: space-between;
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-1-5) var(--space-4);
   color: var(--text-secondary);
   font: var(--text-sm) var(--ui);
   border-bottom: 1px solid var(--border-subtle);
@@ -1358,7 +1292,7 @@ textarea {
   overflow-y: auto;
   scrollbar-gutter: stable;
   max-height: min(440px, 55dvh);
-  padding-bottom: var(--space-2);
+  padding-bottom: var(--space-1-5);
 }
 .palette-group {
   color: var(--text-muted);
@@ -1366,6 +1300,7 @@ textarea {
   padding: var(--space-3) var(--space-4) var(--space-1);
 }
 .palette-result {
+  border-radius: 0;
   width: 100%;
   border: 0;
   background: transparent;
@@ -1527,7 +1462,7 @@ textarea {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: var(--space-6);
+  gap: var(--space-5);
   color: var(--text-muted);
   margin-bottom: var(--space-2);
   font-size: var(--text-sm);
@@ -1536,13 +1471,13 @@ textarea {
   display: block;
   color: var(--text-muted);
   min-height: var(--control-sm);
-  margin: var(--space-2) var(--space-2) 0 auto;
+  margin: var(--space-1-5) var(--space-2) 0 auto;
   font-size: var(--text-xs);
   padding: 0 var(--space-1);
 }
 .task-actions {
   display: flex;
-  gap: var(--space-2);
+  gap: var(--space-1-5);
   flex-wrap: wrap;
   border-bottom: 1px solid var(--border);
   margin: var(--space-3) 0 var(--space-4);
@@ -1572,7 +1507,7 @@ textarea {
 .pairing-panels {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-6);
+  gap: var(--space-5);
   margin-top: var(--space-6);
 }
 .pairing-panels > .history-section {
@@ -1644,7 +1579,7 @@ textarea {
   overflow-wrap: anywhere;
 }
 .session-identity-warnings h3 {
-  margin-bottom: var(--space-2);
+  margin-bottom: var(--space-1-5);
 }
 .session-identity-warnings pre {
   max-height: 220px;
@@ -1692,7 +1627,7 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  padding: 1px var(--space-2);
+  padding: 1px var(--space-1-5);
   border: 1px solid var(--border);
   color: var(--text-secondary);
   font: var(--text-sm) var(--ui);
@@ -1766,15 +1701,14 @@ textarea {
   margin-left: auto;
   color: var(--text-muted);
 }
-.permission-category summary select {
-  width: auto;
-  max-width: 14rem;
-  font-size: var(--text-md);
+.permission-category summary .select {
+  width: 14rem;
 }
 .audit-change dl > div {
   margin: var(--space-3) 0;
 }
 .app-header nav button {
+  border-radius: 0;
   position: relative;
   display: flex;
   align-items: center;
@@ -1918,7 +1852,7 @@ textarea {
   }
   .heading-actions button {
     font-size: var(--text-sm);
-    padding: var(--space-2) var(--space-3);
+    padding: var(--space-1-5) var(--space-3);
   }
   .artifact-row {
     grid-template-columns: 40px 1fr;
@@ -1968,7 +1902,7 @@ textarea {
   .task-id {
     display: none;
   }
-  .agent-chip {
+  .status-chip {
     max-width: 85px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1984,7 +1918,7 @@ textarea {
     max-width: 100%;
   }
   .filters button {
-    min-height: var(--control-lg);
+    min-height: calc(var(--control-lg) - 2px);
     padding: var(--space-1) var(--space-2);
     font-size: var(--text-sm);
   }
@@ -2003,7 +1937,7 @@ textarea {
     height: calc(100dvh - 44px);
   }
   .artifact-bar {
-    gap: var(--space-2);
+    gap: var(--space-1-5);
     flex-wrap: wrap;
   }
   .login {
@@ -2029,7 +1963,7 @@ textarea {
     gap: var(--space-1);
     padding: 0 var(--space-2);
     flex-wrap: wrap;
-    padding-block: var(--space-2);
+    padding-block: var(--space-1-5);
   }
   #view-heading {
     order: 5;

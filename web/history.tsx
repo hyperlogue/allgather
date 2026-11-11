@@ -5,7 +5,16 @@ import { Checkouts } from "./checkouts.tsx";
 import { ContextLink } from "./context.tsx";
 import { CopyId } from "./copy-id.tsx";
 import { scopeFilter, singleProject } from "./project-scope.ts";
-import { Banner, Button, Checkbox, Dialog, ErrorText, PageHeading, useAction } from "./ui.tsx";
+import {
+  Banner,
+  Button,
+  Checkbox,
+  Dialog,
+  ErrorText,
+  PageHeading,
+  Select,
+  useAction,
+} from "./ui.tsx";
 export interface Repo extends Repository {
   indexed_count: number;
   sync: {
@@ -199,10 +208,10 @@ function RepositoryEditor({
         </div>
         <label>
           Cache policy
-          <select value={policy} onChange={(e) => setPolicy(e.target.value as typeof policy)}>
+          <Select value={policy} onChange={(e) => setPolicy(e.target.value as typeof policy)}>
             <option value="metadata_only">Metadata only</option>
             <option value="allow_full_cache">Allow full cache</option>
-          </select>
+          </Select>
         </label>
         <Checkbox
           label="Automatic refresh"
@@ -273,7 +282,7 @@ function RepositoryProjectsEditor({
       >
         <label>
           Project
-          <select
+          <Select
             required
             value={selected}
             onChange={(e) => {
@@ -292,7 +301,7 @@ function RepositoryProjectsEditor({
                 {repo.project_ids.includes(p.id) ? " (linked)" : ""}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <p className="muted small">
           {link ? "This project is linked to the repository." : "This project is not linked yet."}

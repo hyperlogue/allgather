@@ -1,8 +1,11 @@
 import {
   type ButtonHTMLAttributes,
+  Children,
   type InputHTMLAttributes,
+  isValidElement,
   type ReactNode,
   type RefObject,
+  type SelectHTMLAttributes,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -179,17 +182,11 @@ export function Chip({
   tone = "label",
   children,
 }: {
-  tone?: "label" | "agent" | "warning";
+  tone?: "label" | "agent" | "action" | "warning";
   children: ReactNode;
 }) {
   return (
-    <span
-      className={
-        tone === "label" ? "label-chip" : tone === "agent" ? "agent-chip" : "agent-chip warning"
-      }
-    >
-      {children}
-    </span>
+    <span className={tone === "label" ? "label-chip" : `status-chip ${tone}`}>{children}</span>
   );
 }
 
@@ -279,4 +276,92 @@ export function usePopover(
       document.removeEventListener("keydown", key, true);
     };
   }, [open, setOpen, root, items, initial, trigger]);
+}
+
+type SelectOption = { value: string; label: ReactNode; disabled: boolean };
+function selectOptions(children: ReactNode): SelectOption[] {
+  return Children.toArray(children).flatMap((child) => {
+    if (!isValidElement<{ value?: string; children?: ReactNode; disabled?: boolean }>(child))
+      return [];
+    if (child.type !== "option") return [];
+    return [
+      {
+        value: String(child.props.value ?? ""),
+        label: child.props.children,
+        disabled: !!child.props.disabled,
+      },
+    ];
+  });
+}
+export function Select({
+  children,
+  className,
+  id,
+  ...props
+}: Omit<SelectHTMLAttributes<HTMLSelectElement>, "onClick">) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const native = useRef<HTMLSelectElement>(null);
+  const options = selectOptions(children);
+  const value = String(props.value ?? "");
+  const current = options.find((option) => option.value === value);
+  usePopover(open, setOpen, root, {
+    items: ".select-option:not(:disabled)",
+    initial: '.select-option[aria-selected="true"]',
+    trigger: ".select-trigger",
+  });
+  const choose = (next: string) => {
+    const element = native.current;
+    setOpen(false);
+    root.current?.querySelector<HTMLElement>(".select-trigger")?.focus();
+    if (!element || next === value) return;
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set?.call(element, next);
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  return (
+    <div className={["select", className].filter(Boolean).join(" ")} ref={root}>
+      <select {...props} ref={native} className="select-native" tabIndex={-1} aria-hidden="true">
+        {children}
+      </select>
+      <button
+        type="button"
+        id={id}
+        className="select-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={props["aria-label"]}
+        disabled={props.disabled}
+        onClick={() => setOpen((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            setOpen(true);
+          }
+        }}
+      >
+        <span className={current?.value ? undefined : "select-placeholder"}>
+          {current?.label ?? ""}
+        </span>
+        <Icon name="chevron" />
+      </button>
+      {open && (
+        <div className="select-menu" role="listbox" aria-label={props["aria-label"]}>
+          {options.map((option) => (
+            <button
+              type="button"
+              role="option"
+              key={option.value}
+              className="select-option"
+              aria-selected={option.value === value}
+              disabled={option.disabled}
+              onClick={() => choose(option.value)}
+            >
+              <span>{option.label}</span>
+              {option.value === value && <Icon name="check" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }

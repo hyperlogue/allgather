@@ -5,6 +5,7 @@ import {
   permissions,
   type Scope,
 } from "../shared/permissions.ts";
+import { Select } from "./ui.tsx";
 
 export function Category({
   label,
@@ -47,10 +48,9 @@ export function Category({
         <small>
           {count} selected{approvalCount ? ` · ${approvalCount} need approval` : ""}
         </small>
-        <select
+        <Select
           aria-label={`${label} access`}
           value={mode}
-          onClick={(event) => event.stopPropagation()}
           onChange={(event) => change(scopes, event.target.value as PermissionMode | "deny")}
         >
           <option value="mixed" disabled>
@@ -59,14 +59,14 @@ export function Category({
           <option value="deny">Deny all</option>
           {supportsApproval && <option value="approval">Read; approve execution</option>}
           <option value="allow">Allow all</option>
-        </select>
+        </Select>
       </summary>
       {scopes.map((scope) => (
         <label key={scope} htmlFor={`${prefix}-${scope}`} className="permission-choice">
           {permissions[scope].approval ? (
             <>
               <span>{permissions[scope].label}</span>
-              <select
+              <Select
                 id={`${prefix}-${scope}`}
                 aria-label={permissions[scope].label}
                 value={modes[scope] ?? "deny"}
@@ -75,7 +75,7 @@ export function Category({
                 <option value="deny">Deny</option>
                 <option value="approval">Require approval</option>
                 <option value="allow">Allow without approval</option>
-              </select>
+              </Select>
             </>
           ) : (
             <>

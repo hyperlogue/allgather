@@ -44,3 +44,29 @@ test("watched browser assets rebuild after a source edit", async () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("module-relative assets resolve under nested document routes", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "allgather-assets-"));
+  writeFileSync(join(directory, "mark.svg"), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+  writeFileSync(
+    join(directory, "main.ts"),
+    'import mark from "./mark.svg";\ndocument.title = mark;\n',
+  );
+  writeFileSync(
+    join(directory, "index.html"),
+    '<!doctype html><html><body><script type="module" src="./main.ts"></script></body></html>\n',
+  );
+  try {
+    const bundle = (await import(join(directory, "index.html"))).default as HTMLBundle;
+    const handler = await loadAssets(bundle, (path) => /^\/nested\/[^/]+$/.test(path));
+    const html = await (await handler(new Request("http://localhost/nested/item"))).text();
+    const source = html.match(/src="(\/[^"]+\.js)"/)?.[1];
+    const code = await (await handler(new Request(`http://localhost${source}`))).text();
+    const mark = code.match(/[\w-]+\.svg/)?.[0];
+    expect(mark).toBeDefined();
+    const response = await handler(new Request(`http://localhost/nested/${mark}`));
+    expect(response.headers.get("content-type")).toContain("svg");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

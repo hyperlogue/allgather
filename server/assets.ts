@@ -84,7 +84,10 @@ export async function loadAssets(
       return buildFailure(error);
     }
     const path = new URL(request.url).pathname;
-    const asset = documentRoute(path) ? built.index : built.assets.get(path);
+    const asset =
+      built.assets.get(path) ??
+      built.assets.get(`/${path.split("/").at(-1)}`) ??
+      (documentRoute(path) ? built.index : undefined);
     if (!asset || !["GET", "HEAD"].includes(request.method))
       return new Response("Not found", { status: 404 });
     return new Response(request.method === "HEAD" ? null : asset.body, {

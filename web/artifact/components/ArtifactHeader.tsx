@@ -361,7 +361,7 @@ export function ArtifactHeader({
               aria-label={workingDescription}
               title={workingDescription}
               data-agent-working
-              className="mr-2 flex size-7 shrink-0 items-center justify-center text-primary-600 dark:text-primary-400"
+              className="mr-2 flex size-7 shrink-0 items-center justify-center text-(--agent)"
             >
               <StrokeIcon className="r3-agent-robot size-4">
                 <g className="r3-agent-bob">

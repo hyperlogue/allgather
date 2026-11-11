@@ -145,7 +145,7 @@ export function ArtifactVersionSelect({
           }
         }}
         className={cn(
-          "max-h-80 overflow-y-auto rounded border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-950",
+          "max-h-80 overflow-y-auto rounded-md border border-neutral-200 bg-white p-1 dark:border-neutral-700 dark:bg-neutral-950",
           inline
             ? cn("mt-1 w-full", !open && "hidden")
             : cn(
@@ -172,7 +172,7 @@ export function ArtifactVersionSelect({
               setOpen(false);
             }}
             className={cn(
-              "flex w-full items-center gap-2 py-1.5 pr-2.5 pl-1.5 text-left text-xs",
+              "flex w-full items-center gap-2 rounded-(--radius-menu-item) py-1.5 pr-2.5 pl-1.5 text-left text-xs",
               item.seq === version?.seq
                 ? "bg-neutral-100 dark:bg-neutral-700"
                 : "hover:bg-neutral-50 dark:hover:bg-neutral-700/60",

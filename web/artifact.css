@@ -55,10 +55,67 @@ button.bg-primary-600 {
 button.bg-primary-600:hover {
   background: var(--accent-fill);
 }
-button,
-input,
-textarea,
-select,
-[role="dialog"] {
-  border-radius: 0 !important;
+/* The artifact viewer is built with Tailwind on the R3 palette. These overrides point its
+   ramps, radii, and elevation at AllGather tokens, so its classes follow the same system as
+   the rest of the app without per-component rewrites. */
+:root {
+  --font-sans: var(--ui);
+  --color-primary-50: var(--p50);
+  --color-primary-100: var(--p100);
+  --color-primary-200: var(--p200);
+  --color-primary-300: var(--p300);
+  --color-primary-400: var(--p400);
+  --color-primary-500: var(--p500);
+  --color-primary-600: var(--p600);
+  --color-primary-700: var(--p700);
+  --color-primary-800: oklch(41% 0.075 210);
+  --color-primary-900: var(--p900);
+  --color-primary-950: oklch(24% 0.04 210);
+  /* A cool neutral ramp whose ends are the Midnight page, field, and overlay surfaces. */
+  --color-neutral-50: #f7f8f8;
+  --color-neutral-100: #efeff3;
+  --color-neutral-200: #e3e4e8;
+  --color-neutral-300: #cdd0d6;
+  --color-neutral-400: #a0a3a9;
+  --color-neutral-500: #6b6f76;
+  --color-neutral-600: #4f535a;
+  --color-neutral-700: #3a3d44;
+  --color-neutral-800: #202126;
+  --color-neutral-900: #131417;
+  --color-neutral-950: #08090a;
+  --color-success-300: var(--s300);
+  --color-success-400: var(--s400);
+  --color-success-500: var(--s500);
+  --color-success-600: var(--s600);
+  --color-warning-300: var(--w300);
+  --color-warning-400: var(--w400);
+  --color-warning-500: var(--w500);
+  --color-warning-600: var(--w600);
+  --color-danger-300: var(--d300);
+  --color-danger-400: var(--d400);
+  --color-danger-500: var(--d500);
+  --color-danger-600: var(--d600);
+  /* R3 already uses rounded for small objects, -md for controls, -lg for anchored popovers,
+     and -xl for modals. Fixed pixels keep those radii stable when the reader scales the rem size. */
+  --radius-md: var(--radius-control);
+  --radius-lg: var(--radius-menu);
+  --radius-xl: var(--radius-overlay);
+}
+/* Radius follows layer here too: popovers anchored to a control use the menu radius, and
+   modals use the dialog radius, whatever rounding class the component carries. */
+.r3-popover,
+.r3-floating {
+  border-radius: var(--radius-menu);
+}
+.r3-modal {
+  border-radius: var(--radius-overlay);
+}
+.r3-popover,
+.r3-floating,
+.r3-modal,
+.r3-sheet {
+  border-color: var(--border-control);
+  box-shadow:
+    inset 0 1px var(--rim),
+    var(--shadow-overlay);
 }

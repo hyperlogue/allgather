@@ -527,14 +527,11 @@ export const ArtifactThreadCard = memo(function ArtifactThreadCard({
         data-message-author={thread.comments[0]!.author.role}
         className={cn(
           thread.comments[0]!.author.role === "agent" &&
-            "rounded-md bg-primary-100/60 px-2.5 py-1.5 dark:bg-primary-500/15",
+            "rounded-md bg-(--agent-surface) px-2.5 py-1.5",
         )}
       >
         {thread.comments[0]!.author.role === "agent" && (
-          <div
-            className="mb-1 text-xs text-neutral-500"
-            title={thread.comments[0]!.author.sessionId}
-          >
+          <div className="mb-1 text-xs text-(--agent)" title={thread.comments[0]!.author.sessionId}>
             {t("thread.agentPrefix")}
             <AgentName id={thread.comments[0]!.author.sessionId} labels={agentLabels} />
           </div>
@@ -576,12 +573,11 @@ export const ArtifactThreadCard = memo(function ArtifactThreadCard({
             data-message-author={comment.author.role}
             className={cn(
               "mt-2.5",
-              comment.author.role === "agent" &&
-                "rounded-md bg-primary-100/60 px-2.5 py-1.5 dark:bg-primary-500/15",
+              comment.author.role === "agent" && "rounded-md bg-(--agent-surface) px-2.5 py-1.5",
             )}
           >
             {comment.author.role === "agent" && (
-              <div className="mb-1 text-xs text-neutral-500" title={comment.author.sessionId}>
+              <div className="mb-1 text-xs text-(--agent)" title={comment.author.sessionId}>
                 {t("thread.agentPrefix")}
                 <AgentName id={comment.author.sessionId} labels={agentLabels} />
               </div>

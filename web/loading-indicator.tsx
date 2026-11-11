@@ -84,16 +84,22 @@ function installStyles() {
   document.head.append(style);
 }
 
-export function LoadingIndicator({ size = "md", label }: { size?: SizeName; label?: string }) {
+export function LoadingMark({ size = "md" }: { size?: SizeName }) {
   installStyles();
   return (
+    <div className={`loading-indicator-${size}`} aria-hidden="true">
+      {Array.from({ length: sizes[size].count }, (_, k) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: Boxes are a fixed decorative sequence.
+        <i key={k} />
+      ))}
+    </div>
+  );
+}
+
+export function LoadingIndicator({ size = "md", label }: { size?: SizeName; label?: string }) {
+  return (
     <div className="loading-indicator" role="status">
-      <div className={`loading-indicator-${size}`} aria-hidden="true">
-        {Array.from({ length: sizes[size].count }, (_, k) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: Boxes are a fixed decorative sequence.
-          <i key={k} />
-        ))}
-      </div>
+      <LoadingMark size={size} />
       {label && <span>{label}</span>}
     </div>
   );

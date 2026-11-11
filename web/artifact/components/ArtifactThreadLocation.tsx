@@ -142,7 +142,7 @@ function RecordedLocations({
     <button
       type="button"
       data-thread-action={action}
-      className="block w-full px-3 py-2 text-left text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800"
+      className="block w-full rounded-(--radius-menu-item) px-2 py-2 text-left text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800"
       onClick={() => onGo(target)}
     >
       <span className="font-medium">{label}</span>
@@ -171,7 +171,7 @@ function RecordedLocations({
       onToggle={(event) => {
         if (event.newState === "closed") onClose();
       }}
-      className="fixed inset-auto m-0 w-64 max-w-[calc(100vw-1rem)] overflow-hidden rounded-lg border border-neutral-300 bg-white py-1 text-neutral-900 r3-popover dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+      className="fixed inset-auto m-0 w-64 max-w-[calc(100vw-1rem)] overflow-hidden rounded-lg border border-neutral-300 bg-white p-1 text-neutral-900 r3-popover dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
     >
       {thread.anchor && item(thread.anchor.target, t("threads.lastRecordedLocation"), "recorded")}
       {item(thread.target, t("threads.originalLocation"), "original")}

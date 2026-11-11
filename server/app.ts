@@ -227,17 +227,14 @@ export function createApp(
     workspace.onChange();
     return c.json(result, 201);
   });
-  const pollingToken = (r: Request) => {
+  const bearerToken = (r: Request) => {
     const authorization = r.headers.get("authorization");
     return authorization?.startsWith("Bearer ") ? authorization.slice(7) : "";
   };
-  app.post("/api/tower/enrollments/:id/poll", (c) =>
-    c.json(enrollment.poll(c.req.param("id"), pollingToken(c.req.raw))),
-  );
   app.post("/api/tower/enrollments/:id/confirm", async (c) => {
     const result = enrollment.confirm(
       c.req.param("id"),
-      pollingToken(c.req.raw),
+      bearerToken(c.req.raw),
       await c.req.json(),
     );
     workspace.onChange();
@@ -491,7 +488,7 @@ export function createApp(
   });
   app.post("/api/cli/pairings/:id/confirm", (c) => {
     rate(`cli-confirm:${options.peer?.(c.req.raw) ?? "local"}`, 30);
-    return c.json(cliPairings.confirm(c.req.param("id"), pollingToken(c.req.raw)));
+    return c.json(cliPairings.confirm(c.req.param("id"), bearerToken(c.req.raw)));
   });
   app.post("/api/cli/pairings/:id/revoke", (c) =>
     c.json(cliPairings.revoke(c.req.param("id"), browserOwner(c.req.raw))),

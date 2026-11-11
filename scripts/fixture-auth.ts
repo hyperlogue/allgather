@@ -99,9 +99,9 @@ export async function fixtureTowerEnrollment(
     },
     {},
   );
-  const headers = { authorization: `Bearer ${enrollment.polling_token}` },
+  const headers = { authorization: `Bearer ${enrollment.confirmation_token}` },
     path = `/api/tower/enrollments/${enrollment.enrollment_id}`;
-  const key = await post(`${path}/poll`, {}, headers);
+  const key = enrollment;
   await post(
     `${path}/confirm`,
     {

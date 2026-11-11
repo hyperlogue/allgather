@@ -163,7 +163,7 @@ try {
   try {
     for await (const message of objects(login.stdout as ReadableStream<Uint8Array>)) {
       assert(
-        !("polling_token" in message) && !("access_key" in message),
+        !("confirmation_token" in message) && !("access_key" in message),
         "Private enrollment credential was printed",
       );
       if (message.authorization_url) {

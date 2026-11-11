@@ -287,7 +287,7 @@ try {
   );
   assert(
     loggedIn.out.includes(`${origin}/tower/enroll/`) &&
-      !/(polling_token|access_key)/.test(loggedIn.out),
+      !/(confirmation_token|access_key)/.test(loggedIn.out),
     "Enrollment output leaked credentials or lost its browser URL",
   );
   machineId = (await operation<Machine[]>("machines_list"))[0].id;
@@ -469,7 +469,7 @@ try {
   ]);
   assert(rotated.code === 0 && /"state"\s*:\s*"complete"/.test(rotated.out), "Re-pairing failed");
   assert(
-    !/(polling_token|access_key)/.test(rotated.out),
+    !/(confirmation_token|access_key)/.test(rotated.out),
     "Re-pairing printed a private credential",
   );
   await connected();

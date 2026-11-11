@@ -131,7 +131,7 @@ async function enroll(scopes: MachineScope[]) {
       `Enrollment failed: ${err.slice(0, 300)}`,
     );
     assert(
-      !/"(polling_token|access_key)"\s*:/.test(out),
+      !/"(confirmation_token|access_key)"\s*:/.test(out),
       "Enrollment printed a private credential",
     );
     await until(

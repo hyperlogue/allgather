@@ -16,7 +16,6 @@ interface Enrollment {
   scopes: string;
   state: string;
   expires_at: string;
-  last_poll_at: string | null;
   machine_id: string | null;
   credential_id: string | null;
 }
@@ -132,7 +131,7 @@ export class TowerEnrollment {
       })
       .immediate();
   }
-  private pollingToken(id: string, code: string, request: string) {
+  private token(id: string, code: string, request: string) {
     return createHash("sha256")
       .update(`Allgather tower pairing poll v1\0${id}\0${code}\0${request}`)
       .digest("base64url");
@@ -208,11 +207,11 @@ export class TowerEnrollment {
               },
               owner,
             );
-          const poll = this.pollingToken(id, a.pairing_code, a.request_id);
+          const token = this.token(id, a.pairing_code, a.request_id);
           this.w.run(
             "INSERT INTO tower_enrollments(id,poll_hash,host_id,tower_version,node_label,requested_scopes,scopes,state,expires_at,created_at,machine_id) VALUES(?,?,?,?,?,?,?,'approved',?,?,?)",
             id,
-            hash(poll),
+            hash(token),
             a.host_id,
             a.tower_version,
             name,
@@ -229,13 +228,30 @@ export class TowerEnrollment {
             invitation.id,
           );
         }
-        const poll = this.pollingToken(id, a.pairing_code, a.request_id);
+        const token = this.token(id, a.pairing_code, a.request_id),
+          row = this.get(id),
+          key = this.key(id, token);
+        let credentialId = row.credential_id;
+        if (!credentialId) {
+          credentialId = this.w.executions.issueCredential(
+            row.machine_id!,
+            row.node_label,
+            JSON.parse(row.scopes),
+            key,
+          ).id;
+          this.w.run("UPDATE tower_enrollments SET credential_id=? WHERE id=?", credentialId, id);
+        } else if (!this.w.executions.authenticate(key))
+          throw new AppError("invalid_pairing_code", "This pairing is no longer available", 401);
         return {
           enrollment_id: id,
           authorization_url: `${this.origin}/tower/enroll/${id}`,
-          polling_token: poll,
+          confirmation_token: token,
           expires_at: invitation.expires_at,
-          interval: 5,
+          machine_id: row.machine_id,
+          credential_id: credentialId,
+          access_key: key,
+          node_label: row.node_label,
+          scopes: JSON.parse(row.scopes) as MachineScope[],
         };
       })
       .immediate();
@@ -269,51 +285,13 @@ export class TowerEnrollment {
       !token ||
       !this.w.one("SELECT 1 FROM tower_enrollments WHERE id=? AND poll_hash=?", id, hash(token))
     )
-      throw new AppError("unauthorized", "Private enrollment polling credential required", 401);
+      throw new AppError("unauthorized", "Private enrollment credential required", 401);
     return this.get(id);
   }
   private key(id: string, token: string) {
     return createHash("sha256")
       .update(`Allgather tower enrollment key v1\0${id}\0${token}`)
       .digest("base64url");
-  }
-  poll(id: string, token: string) {
-    return this.w.db
-      .transaction(() => {
-        const row = this.authorized(id, token),
-          now = this.w.now();
-        if (row.last_poll_at && Date.parse(now) - Date.parse(row.last_poll_at) < 5000)
-          throw new AppError("slow_down", "Poll at most once every five seconds", 429, {
-            interval: 5,
-          });
-        this.w.run("UPDATE tower_enrollments SET last_poll_at=? WHERE id=?", now, id);
-        if (row.state !== "approved") return { state: row.state, interval: 5 };
-        const key = this.key(id, token);
-        let credentialId = row.credential_id;
-        if (!credentialId) {
-          credentialId = this.w.executions.issueCredential(
-            row.machine_id!,
-            row.node_label,
-            JSON.parse(row.scopes),
-            key,
-          ).id;
-          this.w.run("UPDATE tower_enrollments SET credential_id=? WHERE id=?", credentialId, id);
-        } else if (!this.w.executions.authenticate(key)) {
-          this.w.run("UPDATE tower_enrollments SET state='denied' WHERE id=?", id);
-          return { state: "denied", interval: 5 };
-        }
-        return {
-          state: "approved",
-          machine_id: row.machine_id,
-          credential_id: credentialId,
-          access_key: key,
-          node_label: row.node_label,
-          scopes: JSON.parse(row.scopes),
-          expires_at: row.expires_at,
-          interval: 5,
-        };
-      })
-      .immediate();
   }
   confirm(id: string, token: string, input: unknown) {
     const a = parse(

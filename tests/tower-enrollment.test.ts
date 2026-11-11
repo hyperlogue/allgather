@@ -37,20 +37,14 @@ function fixture() {
     expect(r.status).toBe(201);
     return r.json();
   };
-  const poll = (e: { enrollment_id: string; polling_token: string }) =>
-    req(
-      `/api/tower/enrollments/${e.enrollment_id}/poll`,
-      {},
-      { authorization: `Bearer ${e.polling_token}` },
-    );
   const confirm = (
-    e: { enrollment_id: string; polling_token: string },
+    e: { enrollment_id: string; confirmation_token: string },
     key: { credential_id: string; access_key: string },
   ) =>
     req(
       `/api/tower/enrollments/${e.enrollment_id}/confirm`,
       { credential_id: key.credential_id, access_key_hash: hash(key.access_key) },
-      { authorization: `Bearer ${e.polling_token}` },
+      { authorization: `Bearer ${e.confirmation_token}` },
     );
   return {
     app,
@@ -62,7 +56,6 @@ function fixture() {
     invite,
     body,
     start,
-    poll,
     confirm,
     advance: (ms: number) => {
       now += ms;
@@ -120,20 +113,16 @@ test("pairing binds exact request, intersects consent, retries one key and confi
     ])
       expect((await f.req("/api/tower/enrollments", { ...input, ...patch })).status).toBe(409);
     const path = `/api/tower/enrollments/${e.enrollment_id}`;
-    expect(e.authorization_url).not.toContain(e.polling_token);
+    expect(e.authorization_url).not.toContain(e.confirmation_token);
     expect(e.authorization_url).not.toContain(i.pairing_code);
     expect((await f.req(path)).status).toBe(403);
-    expect((await f.req(`${path}/poll`, {}, { authorization: "Bearer wrong" })).status).toBe(401);
+    expect((await f.confirm({ ...e, confirmation_token: "wrong" }, e)).status).toBe(401);
     expect((await f.req(`${path}/decision`, { decision: "authorize" }, f.owner)).status).toBe(404);
-    const key = await (await f.poll(e)).json();
+    const key = e;
     expect(key).toMatchObject({
-      state: "approved",
       node_label: "Owner node",
       scopes: ["read", "acp:control"],
     });
-    expect((await f.poll(e)).status).toBe(429);
-    f.advance(5000);
-    expect(await (await f.poll(e)).json()).toEqual(key);
     expect(f.w.executions.authenticate(key.access_key)?.machine_id).toBe(key.machine_id);
     expect(
       (
@@ -151,13 +140,15 @@ test("pairing binds exact request, intersects consent, retries one key and confi
       (await f.req(`/api/tower/invitations/${i.invitation_id}/revoke`, {}, f.owner)).status,
     ).toBe(409);
     f.advance(700000);
-    expect(await (await f.poll(e)).json()).toMatchObject({ state: "confirmed" });
+    expect(await (await f.req(path, undefined, f.owner)).json()).toMatchObject({
+      state: "confirmed",
+    });
     expect(f.w.executions.authenticate(key.access_key)).not.toBeNull();
     const stored =
       JSON.stringify(f.w.all("SELECT * FROM tower_invitations")) +
       JSON.stringify(f.w.all("SELECT * FROM tower_enrollments")) +
       JSON.stringify(f.w.all("SELECT * FROM tower_credentials"));
-    for (const value of [i.pairing_code, e.polling_token, key.access_key])
+    for (const value of [i.pairing_code, e.confirmation_token, key.access_key])
       expect(stored).not.toContain(value);
   } finally {
     f.db.close();
@@ -168,7 +159,7 @@ test("re-pairing requires explicit same-host selection and replaces earlier keys
   const f = fixture();
   try {
     const first = await f.start(f.body((await f.invite()).pairing_code));
-    const old = await (await f.poll(first)).json();
+    const old = first;
     await f.confirm(first, old);
     const newNode = await f.invite();
     expect((await f.req("/api/tower/enrollments", f.body(newNode.pairing_code))).status).toBe(409);
@@ -177,7 +168,7 @@ test("re-pairing requires explicit same-host selection and replaces earlier keys
       (await f.req("/api/tower/enrollments", f.body(i.pairing_code, "wrong-host"))).status,
     ).toBe(409);
     const e = await f.start(f.body(i.pairing_code)),
-      key = await (await f.poll(e)).json();
+      key = e;
     expect(key.machine_id).toBe(old.machine_id);
     expect(key.scopes).toEqual(["read"]);
     expect(f.w.executions.authenticate(old.access_key)).not.toBeNull();
@@ -190,7 +181,7 @@ test("re-pairing requires explicit same-host selection and replaces earlier keys
     const expired = await f.start(
       f.body((await f.invite({ machine_id: old.machine_id })).pairing_code),
     );
-    const unconfirmed = await (await f.poll(expired)).json();
+    const unconfirmed = expired;
     f.advance(600001);
     expect(f.w.executions.authenticate(unconfirmed.access_key)).toBeNull();
     expect((await f.confirm(expired, unconfirmed)).status).toBe(409);
@@ -208,7 +199,7 @@ test("revoked and expired invitations cannot enroll or complete an unconfirmed c
     expect((await f.req("/api/tower/enrollments", input)).status).toBe(403);
     expect(f.w.all("SELECT * FROM machines")).toHaveLength(0);
     const e = await f.start(f.body(i.pairing_code)),
-      key = await (await f.poll(e)).json();
+      key = e;
     expect(
       (await f.req(`/api/tower/invitations/${i.invitation_id}/revoke`, {}, f.owner)).status,
     ).toBe(200);
@@ -245,7 +236,7 @@ test("HTTP machine keys can only be issued through pairing; listing and revocati
     );
     const api = { authorization: `Bearer ${token}` };
     const enrollment = await f.start(f.body((await f.invite()).pairing_code));
-    const key = await (await f.poll(enrollment)).json();
+    const key = enrollment;
     await f.confirm(enrollment, key);
     for (const headers of [f.owner, api, {}])
       expect(

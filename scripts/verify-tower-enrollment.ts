@@ -70,7 +70,7 @@ try {
   if (!response.ok) throw new Error(`Pairing failed: ${response.status}`);
   const e = await response.json(),
     path = `/api/tower/enrollments/${e.enrollment_id}`;
-  const approved = await (await post(`${path}/poll`, {}, e.polling_token)).json();
+  const approved = e;
   if (
     approved.node_label !== "Browser fixture node" ||
     approved.scopes.includes("acp:control") ||
@@ -82,7 +82,7 @@ try {
       await post(
         `${path}/confirm`,
         { credential_id: approved.credential_id, access_key_hash: hash(approved.access_key) },
-        e.polling_token,
+        e.confirmation_token,
       )
     ).ok
   )

@@ -532,7 +532,7 @@ pre,
   width: 248px;
   max-height: min(420px, calc(100dvh - 60px));
   overflow-y: auto;
-  padding: var(--space-1) 0;
+  padding: var(--overlay-inset);
   background: var(--bg-raised);
   border: 1px solid var(--border-control);
   box-shadow: var(--shadow-overlay);
@@ -543,7 +543,7 @@ pre,
   margin: var(--space-1) 0;
 }
 .scope-option {
-  border-radius: 0;
+  border-radius: var(--radius-item);
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -579,6 +579,7 @@ pre,
 }
 .scope-list li {
   margin: var(--space-2) 0;
+  border-radius: var(--radius-item);
   display: flex;
   align-items: center;
 }
@@ -617,7 +618,7 @@ pre,
   outline: none;
 }
 .scope-edit:focus-visible {
-  box-shadow: var(--focus-halo);
+  box-shadow: var(--focus-inset);
 }
 .scope-list li:hover .scope-edit {
   opacity: 1;
@@ -1292,15 +1293,15 @@ pre,
   overflow-y: auto;
   scrollbar-gutter: stable;
   max-height: min(440px, 55dvh);
-  padding-bottom: var(--space-1-5);
+  padding: 0 var(--overlay-inset) var(--overlay-inset);
 }
 .palette-group {
   color: var(--text-muted);
   font-size: var(--text-sm);
-  padding: var(--space-3) var(--space-4) var(--space-1);
+  padding: var(--space-3) var(--space-3) var(--space-1);
 }
 .palette-result {
-  border-radius: 0;
+  border-radius: var(--radius-item);
   width: 100%;
   border: 0;
   background: transparent;
@@ -1310,7 +1311,7 @@ pre,
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-3);
   min-height: var(--control-lg);
   cursor: pointer;
   color: var(--text-secondary);
@@ -1335,15 +1336,6 @@ pre,
 .palette-result.selected {
   background: var(--bg-selected);
   color: var(--text);
-}
-.palette-result.selected::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: linear-gradient(var(--p400), var(--a400));
 }
 .palette-result.selected kbd {
   visibility: visible;
@@ -1663,7 +1655,7 @@ pre,
 }
 .project-icon-controls {
   display: flex;
-  align-items: center;
+  align-items: start;
   gap: var(--space-4);
 }
 .project-icon-preview {
@@ -1681,10 +1673,28 @@ pre,
   border-radius: inherit;
 }
 .project-icon-upload {
+  flex: 1;
   min-width: 0;
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
 }
-.project-icon-upload input {
-  max-width: 100%;
+.project-icon-upload .file-field {
+  justify-self: stretch;
+}
+.project-icon-upload .file-drop {
+  min-height: 64px;
+}
+.file-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+@media (max-width: 760px) {
+  .file-pair {
+    grid-template-columns: 1fr;
+  }
 }
 .task-row .task-id {
   position: relative;

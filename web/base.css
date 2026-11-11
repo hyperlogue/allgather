@@ -174,7 +174,7 @@ textarea:focus-visible,
 select:focus-visible {
   outline: none;
   border-color: var(--focus-ring);
-  box-shadow: var(--focus-halo);
+  box-shadow: var(--focus-inset);
 }
 dialog {
   border: 1px solid var(--border);
@@ -192,22 +192,6 @@ dialog {
 dialog::backdrop {
   backdrop-filter: blur(2px);
   background: var(--scrim);
-}
-input[type="file"] {
-  padding: var(--space-1);
-}
-input[type="file"]::file-selector-button {
-  min-height: var(--control-sm);
-  margin-right: var(--space-3);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--border-control);
-  background: var(--bg-overlay);
-  color: var(--text);
-  font: inherit;
-  cursor: pointer;
-}
-input[type="file"]::file-selector-button:hover {
-  background: var(--bg-selected);
 }
 label input,
 label textarea,
@@ -279,7 +263,7 @@ input[type="checkbox"]:focus-visible,
 input[type="radio"]:focus-visible {
   outline: none;
   border-color: var(--focus-ring);
-  box-shadow: var(--focus-halo);
+  box-shadow: var(--focus-inset);
 }
 input[type="checkbox"]:disabled,
 input[type="radio"]:disabled {

@@ -74,6 +74,7 @@ const paths = {
     </>
   ),
   external: <path d="M9 2.5h4.5V7M13.5 2.5 7 9M11.5 9.5v4h-9v-9h4" />,
+  upload: <path d="M8 10.5V2.5M4.5 6 8 2.5 11.5 6M2.5 10v3.5h11V10" />,
 } satisfies Record<string, ReactNode>;
 export type IconName = keyof typeof paths;
 export function Icon({ name }: { name: IconName }) {

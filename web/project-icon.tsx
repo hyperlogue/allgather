@@ -6,7 +6,7 @@ import {
   projectIconUrl,
 } from "../shared/project-icon.ts";
 import { call, mutation } from "./api.ts";
-import { Button, Checkbox, Dialog, ErrorText, useAction } from "./ui.tsx";
+import { Button, Checkbox, Dialog, ErrorText, FileInput, useAction } from "./ui.tsx";
 
 export function ProjectIcon({ project }: { project: Project }) {
   const src = projectIconUrl(project);
@@ -90,39 +90,36 @@ export function ProjectIconInput({
           )}
         </div>
         <div className="project-icon-upload">
-          <label>
-            Upload image
-            <input
-              ref={input}
-              type="file"
-              onClick={(event) => {
-                event.currentTarget.value = "";
-              }}
-              accept="image/png,image/jpeg,image/webp"
-              disabled={disabled || loading}
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (!file) return;
-                const token = ++generation.current;
-                setError("");
-                setLoading(true);
-                pending(true);
-                void prepareIcon(file)
-                  .then((icon) => {
-                    if (token === generation.current) change(icon);
-                  })
-                  .catch((error) => {
-                    if (token === generation.current) setError(error.message);
-                  })
-                  .finally(() => {
-                    if (token === generation.current) {
-                      setLoading(false);
-                      pending(false);
-                    }
-                  });
-              }}
-            />
-          </label>
+          <FileInput
+            summary={src ? "Replace image" : "Choose an image"}
+            ref={input}
+            onClick={(event) => {
+              event.currentTarget.value = "";
+            }}
+            accept="image/png,image/jpeg,image/webp"
+            disabled={disabled || loading}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (!file) return;
+              const token = ++generation.current;
+              setError("");
+              setLoading(true);
+              pending(true);
+              void prepareIcon(file)
+                .then((icon) => {
+                  if (token === generation.current) change(icon);
+                })
+                .catch((error) => {
+                  if (token === generation.current) setError(error.message);
+                })
+                .finally(() => {
+                  if (token === generation.current) {
+                    setLoading(false);
+                    pending(false);
+                  }
+                });
+            }}
+          />
           <Button
             variant="quiet"
             disabled={disabled || (!src && !loading)}

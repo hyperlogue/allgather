@@ -10,6 +10,7 @@ import {
   Dialog,
   EmptyState,
   ErrorText,
+  FileInput,
   PageHeading,
   Segmented,
   Select,
@@ -127,23 +128,20 @@ function Publication({
           </label>
         ) : (
           <>
-            <label>
-              Files
-              <input
-                type="file"
+            <div className="file-pair">
+              <FileInput
+                label="Files"
                 multiple
                 onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
               />
-            </label>
-            <label>
-              Or choose a folder
-              <input
-                type="file"
+              <FileInput
+                label="Or a folder"
+                hint="uploads every file inside"
                 {...{ webkitdirectory: "" }}
                 multiple
                 onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
               />
-            </label>
+            </div>
             <p className="muted small">
               {files.length
                 ? `${files.length} files selected.`

@@ -4,6 +4,7 @@ import {
   type InputHTMLAttributes,
   isValidElement,
   type ReactNode,
+  type Ref,
   type RefObject,
   type SelectHTMLAttributes,
   useCallback,
@@ -363,5 +364,53 @@ export function Select({
         </div>
       )}
     </div>
+  );
+}
+export function FileInput({
+  label,
+  hint,
+  summary,
+  onChange,
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & {
+  label?: ReactNode;
+  hint?: ReactNode;
+  summary?: string;
+  ref?: Ref<HTMLInputElement>;
+}) {
+  const [names, setNames] = useState<string[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const chosen =
+    names.length === 0 ? null : names.length === 1 ? names[0] : `${names.length} files selected`;
+  return (
+    <label className="file-field">
+      {label}
+      <span
+        className={["file-drop", dragging && "dragging", props.disabled && "disabled"]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        <input
+          {...props}
+          type="file"
+          onChange={(event) => {
+            setNames(Array.from(event.target.files ?? [], (file) => file.name));
+            onChange?.(event);
+          }}
+          onDragEnter={() => setDragging(true)}
+          onDragLeave={() => setDragging(false)}
+          onDrop={() => setDragging(false)}
+        />
+        <span className="file-drop-icon" aria-hidden="true">
+          <Icon name="upload" />
+        </span>
+        <span className="file-drop-text">
+          <strong>
+            {summary ?? chosen ?? (props.multiple ? "Choose files" : "Choose a file")}
+          </strong>
+          <small>{hint ?? "or drop here"}</small>
+        </span>
+      </span>
+    </label>
   );
 }

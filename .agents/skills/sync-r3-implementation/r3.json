@@ -1,10 +1,554 @@
 {
   "repository": "https://github.com/hyperlogue/r3",
-  "baseline": "6178bc60f7413e3753b2284f376eae6ff5289df3",
+  "baseline": "b840690d1a7e328a3119cbc92597b65c763ed436",
   "bootstrap": {
     "commit": "6178bc60f7413e3753b2284f376eae6ff5289df3",
     "sourceManifest": ".agents/skills/sync-r3-implementation/r3-source.json",
-    "acceptanceTests": ["tests/artifacts.test.ts"]
+    "acceptanceTests": [
+      "tests/artifacts.test.ts"
+    ]
   },
-  "integrations": []
+  "integrations": [
+    {
+      "baseline": "6178bc60f7413e3753b2284f376eae6ff5289df3",
+      "target": "b840690d1a7e328a3119cbc92597b65c763ed436",
+      "selection": {
+        "ref": "b840690d1a7e328a3119cbc92597b65c763ed436",
+        "reason": "Remote default branch refs/heads/main on https://github.com/hyperlogue/r3 advertised b840690d1a7e328a3119cbc92597b65c763ed436 on 2026-11-13; fetched into the isolated workspace checkout and matched. User requested integration to the latest head. Supersedes unfinalized runs cli-parity.json (fcae43b) and remaining-parity.json (4128235) from baseline 6178bc6; their decisions are carried forward and their deferrals resolved here."
+      },
+      "commits": [
+        {
+          "commit": "764a5089c0dccecdde555da9e612688068dc0839",
+          "status": "incompatible",
+          "reason": "Upstream switches dark navigation bars from neutral-950 to pure black. Allgather keeps the Midnight design system: web/artifact.css remaps the neutral ramp so neutral-950 is the Midnight page surface, and the header and mobile review bar intentionally use that token.",
+          "evidence": [
+            "web/artifact.css",
+            "web/tokens.css",
+            "web/artifact/components/WorkspaceHeader.tsx",
+            "web/artifact/mobile/MobileReviewChrome.tsx",
+            "60aa98d"
+          ],
+          "tests": []
+        },
+        {
+          "commit": "a89655cef3fb3e66b81d5be54d4e1ec8cffb9ddc",
+          "status": "integrated",
+          "reason": "New artifact IDs use a 22-character alphanumeric Nano ID suffix so word selection keeps the ID whole while retaining at least 126 bits of entropy; existing IDs remain valid because IDs are opaque.",
+          "evidence": [
+            "server/artifact-store.ts",
+            "230bfef",
+            "upstream server/artifacts.test.ts artifact identity pattern"
+          ],
+          "tests": [
+            "tests/artifacts.test.ts"
+          ]
+        },
+        {
+          "commit": "384fb55f99eee134c9ff90bbda9be94a57968566",
+          "status": "skipped",
+          "reason": "Upstream documentation removal and release workflow belong to the upstream repository. Allgather already uses code as source of truth and keeps notes in workspace.",
+          "evidence": [
+            "workspace/r3-integration/upstream-changes.patch",
+            "workspace/r3-integration/cli-parity-review.md"
+          ],
+          "tests": []
+        },
+        {
+          "commit": "c79c650a794e4d5c1545f35283cb6d73e7d5a3ee",
+          "status": "integrated",
+          "reason": "Adapted isolated artifact localStorage, before-script bootstrap, nested srcdoc storage, automatic native downloads, authentication epochs, deletion handling, and legacy theme migration into Allgather. Browser fixture verifies persistence, isolation, exports and lifecycle.",
+          "evidence": [
+            "server/preview-host.ts",
+            "server/preview-support.ts",
+            "web/artifact/artifact-local-storage.ts",
+            "web/artifact/preview-storage.ts",
+            "scripts/verify-artifact-parity.ts",
+            "workspace/r3-integration/browser/parity.png",
+            "f125353"
+          ],
+          "tests": [
+            "tests/artifact-local-storage.test.ts",
+            "tests/artifacts.test.ts",
+            "tests/artifact-runtime.test.ts"
+          ]
+        },
+        {
+          "commit": "744db79bf8b49809e7bca2bbb072dde64e53068a",
+          "status": "skipped",
+          "reason": "Upstream version and release package metadata do not set Allgather release versions.",
+          "evidence": [
+            "workspace/r3-integration/upstream-changes.patch",
+            "workspace/r3-integration/cli-parity-review.md"
+          ],
+          "tests": []
+        },
+        {
+          "commit": "367e60a769cedd8871d4749eb75df536cc94505a",
+          "status": "integrated",
+          "reason": "Adapted canvas CORS preparation advice (set image.crossOrigin before src; remote images need CORS) into the executable artifact guide html; Allgather preview behavior retained.",
+          "evidence": [
+            "cli/artifact-guide.ts",
+            "25d1914",
+            "workspace/r3-integration/upstream-changes.patch"
+          ],
+          "tests": [
+            "tests/artifact-preview-ui.test.ts"
+          ]
+        },
+        {
+          "commit": "e9b2c1d57d25a4e84f9ed02cc89f15ab07cbe30e",
+          "status": "integrated",
+          "reason": "Adapted comment pick bar, parent/child navigation, keyboard shortcuts, composer hierarchy, and localized controls. Allgather retains its own shell/theme and has no upstream tutorial integration.",
+          "evidence": [
+            "web/artifact/preview-runtime.ts",
+            "web/artifact/components/ArtifactComposer.tsx",
+            "scripts/verify-artifact-parity.ts",
+            "scripts/artifact-browser.ts",
+            "df53060"
+          ],
+          "tests": [
+            "tests/artifact-runtime.test.ts"
+          ]
+        },
+        {
+          "commit": "d7944ca4ce07fdcb61792fe27783f5af5e4a5bb4",
+          "status": "skipped",
+          "reason": "Upstream README badges are not part of Allgather CLI behavior.",
+          "evidence": [
+            "workspace/r3-integration/upstream-changes.patch",
+            "workspace/r3-integration/cli-parity-review.md"
+          ],
+          "tests": []
+        },
+        {
+          "commit": "6252893e2e54ba82d7891cad7e56781bf799d0f3",
+          "status": "skipped",
+          "reason": "Upstream README badge style is not part of Allgather CLI behavior.",
+          "evidence": [
+            "workspace/r3-integration/upstream-changes.patch",
+            "workspace/r3-integration/cli-parity-review.md"
+          ],
+          "tests": []
+        },
+        {
+          "commit": "0bdf2a623682a0dce8326ccfcaf0591c91680e2c",
+          "status": "skipped",
+          "reason": "Upstream release version and package metadata do not set Allgather versions.",
+          "evidence": [
+            "workspace/r3-integration/upstream-changes.patch",
+            "workspace/r3-integration/cli-parity-review.md"
+          ],
+          "tests": []
+        },
+        {
+          "commit": "2fc6bb313ed328413b3bf0cc33a4af603bce0471",
+          "status": "skipped",
+          "reason": "Upstream README screenshots are repository marketing material outside Allgather CLI scope.",
+          "evidence": [
+            "workspace/r3-integration/upstream-changes.patch",
+            "workspace/r3-integration/cli-parity-review.md"
+          ],
+          "tests": []
+        },
+        {
+          "commit": "b107429a9ed17399a02ce482a7d6ea1d2242596c",
+          "status": "integrated",
+          "reason": "Native Markdown drag selection, within one paragraph and across paragraphs, selects text under the pointer without opening a composer mid-drag and preserves the selection when the composer opens. Translated upstream scripts/test-artifact-selection.ts into Allgather browser acceptance.",
+          "evidence": [
+            "scripts/verify-artifact-preview.ts",
+            "bf3ae85",
+            "workspace/r3-integration/browser/b840690-results.txt"
+          ],
+          "tests": [
+            "tests/artifact-runtime.test.ts"
+          ]
+        },
+        {
+          "commit": "1be3d76ea897d5ddca408bab48a46e1136ad085c",
+          "status": "skipped",
+          "reason": "Idle comparison transform change was reversed by 9f88ead; final layout matches the earlier baseline.",
+          "evidence": [
+            "workspace/r3-integration/upstream-changes.patch",
+            "workspace/r3-integration/cli-parity-review.md"
+          ],
+          "tests": []
+        },
+        {
+          "commit": "9f88ead4597f3e5ddb1c4316a60503a1c68d33fd",
+          "status": "skipped",
+          "reason": "Restores prior transform and removes paint containment; containment removal reversed by fcae43b. No final endpoint layout change to port.",
+          "evidence": [
+            "workspace/r3-integration/upstream-changes.patch",
+            "workspace/r3-integration/cli-parity-review.md"
+          ],
+          "tests": []
+        },
+        {
+          "commit": "fcae43be0f3a32cb1e85c3fb5710f39b59145702",
+          "status": "skipped",
+          "reason": "Restores paint containment, completing reversal of the preceding layout experiments. Endpoint matches baseline.",
+          "evidence": [
+            "workspace/r3-integration/upstream-changes.patch",
+            "workspace/r3-integration/cli-parity-review.md"
+          ],
+          "tests": []
+        },
+        {
+          "commit": "1d2382ba0ba335be8d97561fdd854520fdb1b1be",
+          "status": "integrated",
+          "reason": "Pen is the initial image-editor tool and Crop is last. Verified via real browser file upload and enabled Edit image control, checking aria-pressed and tool order.",
+          "evidence": [
+            "web/artifact/components/ImageEditor.tsx",
+            "scripts/verify-artifact-parity.ts",
+            "df53060"
+          ],
+          "tests": [
+            "tests/artifact-runtime.test.ts"
+          ]
+        },
+        {
+          "commit": "4128235f84abeee12a757e027a4fa8781d2eae81",
+          "status": "integrated",
+          "reason": "Upstream fixes stale archived rows in its react-query library cache. Allgather library (web/library.tsx) has no client list cache: archive and restore dispatch through Workspace, which emits a change event that reloads the list and selected detail from committed server state. Added acceptance proving archive/restore signal the reload and lists reflect the new state.",
+          "evidence": [
+            "web/library.tsx",
+            "web/main.tsx",
+            "server/app.ts",
+            "0495a8f"
+          ],
+          "tests": [
+            "tests/artifacts.test.ts"
+          ]
+        },
+        {
+          "commit": "32358d287d4a953435da8df0284e253be7d2e02c",
+          "status": "integrated",
+          "reason": "Rendered thread markers follow the selected discussion tab: Active shows open threads, Resolved shows resolved threads with a distinct resolved marker style. Browser-verified marker sets after switching tabs.",
+          "evidence": [
+            "web/artifact/artifact-navigation.ts",
+            "web/artifact/useArtifactContent.ts",
+            "web/artifact/preview-runtime.ts",
+            "shared/preview-protocol.ts",
+            "a548ab0",
+            "scripts/verify-artifact-preview.ts",
+            "workspace/r3-integration/browser/b840690-results.txt"
+          ],
+          "tests": [
+            "tests/artifact-preview-ui.test.ts"
+          ]
+        },
+        {
+          "commit": "534f37272782d57ab14be7e420b0401a7000eee9",
+          "status": "integrated",
+          "reason": "HTML guide states that nested frames loading URLs, objects, embeds and workers are blocked, matching the preview CSP (frame-src, worker-src and object-src none), and recommends inline or open-shadow-root mockups.",
+          "evidence": [
+            "cli/artifact-guide.ts",
+            "server/preview-contexts.ts",
+            "b08599f"
+          ],
+          "tests": [
+            "tests/artifact-preview-ui.test.ts"
+          ]
+        },
+        {
+          "commit": "903c5ab6df5ef6a06680dad5a9648664ca90540f",
+          "status": "integrated",
+          "reason": "Hovering or focusing the artifact header title shows a metadata card with ID copy, kind, state, latest version, created/updated times, agent publisher, storage and metadata. Owner identity is not shown, consistent with the single-user UI. Browser-verified hover open and close.",
+          "evidence": [
+            "web/artifact/components/ArtifactTitleCard.tsx",
+            "web/artifact/components/ArtifactHeader.tsx",
+            "a548ab0",
+            "scripts/verify-artifact-preview.ts",
+            "workspace/r3-integration/browser/b840690-results.txt"
+          ],
+          "tests": [
+            "tests/artifact-preview-ui.test.ts"
+          ]
+        },
+        {
+          "commit": "57a07434fecada4f4efa1d8b41d7d14860afc00a",
+          "status": "integrated",
+          "reason": "Sandboxed previews forward user clicks on links that leave the artifact. Allgather routes same-origin artifact links (/artifact-workspace/ID or /?view=artifacts&artifact=ID) in place: the standalone workspace navigates, and the library-embedded workspace hands off to the library so its selection and URL update. Other links open in a new tab; only http(s) is accepted. Adapted from the upstream client router, which Allgather does not have.",
+          "evidence": [
+            "web/artifact/preview-links.ts",
+            "web/artifact/preview-navigation.ts",
+            "web/artifact/components/ArtifactPreview.tsx",
+            "web/artifact-main.tsx",
+            "web/library.tsx",
+            "7887b50",
+            "scripts/verify-artifact-preview.ts",
+            "workspace/r3-integration/browser/b840690-results.txt"
+          ],
+          "tests": [
+            "tests/artifact-preview-ui.test.ts"
+          ]
+        },
+        {
+          "commit": "97506ff855079962e1dcd64e8c38f493835cd735",
+          "status": "skipped",
+          "reason": "Adds routeFor to upstream showcase and tutorial stand-in routers. Allgather has no client router, showcase or tutorial builds; its link routing does not import a router.",
+          "evidence": [
+            "web/artifact/preview-links.ts",
+            "workspace/r3-integration/upstream-changes.patch"
+          ],
+          "tests": []
+        },
+        {
+          "commit": "a51bf88a8ed11c8a15cb750ca3e4b4600a1892ba",
+          "status": "integrated",
+          "reason": "Outbound links require current user activation and show the full address in a confirmation dialog before opening. The network-blocked-only condition was superseded by 8659ffa at the endpoint; both are integrated as the final behavior. Browser-verified that script-dispatched clicks open nothing, Stay here opens nothing, and Open link opens with noopener,noreferrer.",
+          "evidence": [
+            "web/artifact/components/ArtifactPreviewLinkConfirm.tsx",
+            "web/artifact/components/ArtifactPreview.tsx",
+            "7887b50",
+            "workspace/r3-integration/browser/link-confirm.png",
+            "workspace/r3-integration/browser/b840690-results.txt"
+          ],
+          "tests": [
+            "tests/artifact-preview-ui.test.ts"
+          ]
+        },
+        {
+          "commit": "8659ffa8cba389d390c42953884723af3ad1d8a8",
+          "status": "integrated",
+          "reason": "Every link leaving the app origin asks for confirmation regardless of external-access grants; same-origin non-artifact links and new-tab requests open without confirmation.",
+          "evidence": [
+            "web/artifact/preview-links.ts",
+            "7887b50",
+            "workspace/r3-integration/browser/b840690-results.txt"
+          ],
+          "tests": [
+            "tests/artifact-preview-ui.test.ts"
+          ]
+        },
+        {
+          "commit": "d009c47cf502a6407ada2dd32549bf41168a7c71",
+          "status": "skipped",
+          "reason": "Upstream drops its parent-workspace direnv layer. Allgather .envrc already contains only use flake; no change applies.",
+          "evidence": [
+            ".envrc",
+            "workspace/r3-integration/upstream-changes.patch"
+          ],
+          "tests": []
+        },
+        {
+          "commit": "ad6a4432da6820e50807e1560b4768ac4361f20c",
+          "status": "incompatible",
+          "reason": "Upstream removes createDiscussion, the discussionId reply spelling and getTheme/setTheme from the page utility, breaking published pages that call them. Allgather retains these entrypoints because published HTML is immutable and server/artifact-migration.ts imports existing R3 artifacts whose pages may use them. New guidance documents only canonical methods.",
+          "evidence": [
+            "web/artifact/preview-utility.ts",
+            "web/artifact/preview-bridge.ts",
+            "server/artifact-migration.ts",
+            "cli/artifact-guide.ts"
+          ],
+          "tests": [
+            "tests/artifact-preview-ui.test.ts"
+          ]
+        },
+        {
+          "commit": "73af6f1a033b4d323d9ec77b7be429ace41c6c29",
+          "status": "integrated",
+          "reason": "Page utility exposes isCommentMode and onCommentModeChange and toggles the r3-comment-mode class on the document element, reapplying it on every display update and notifying only on change. Browser-verified utility state, class and listener sequence when entering and leaving comment mode.",
+          "evidence": [
+            "web/artifact/preview-utility.ts",
+            "shared/preview-protocol.ts",
+            "b08599f",
+            "scripts/verify-artifact-preview.ts",
+            "workspace/r3-integration/browser/b840690-results.txt"
+          ],
+          "tests": [
+            "tests/artifact-preview-ui.test.ts"
+          ]
+        },
+        {
+          "commit": "ecfa2f4bea58f0df6e32a000cd418edb8b4ae9f3",
+          "status": "integrated",
+          "reason": "Page utility documentation, later moved by 605c5d0 into its own guide topic; integrated at the endpoint as artifact guide page-utility, referenced from the HTML guide.",
+          "evidence": [
+            "cli/artifact-guide.ts",
+            "b08599f"
+          ],
+          "tests": [
+            "tests/artifact-preview-ui.test.ts"
+          ]
+        },
+        {
+          "commit": "343859e9633e67f431d0648f642c468803376ca7",
+          "status": "integrated",
+          "reason": "Focuses page utility guidance on what a page can do; integrated through the endpoint page-utility guide content (collect choices, call rules, methods, comment mode).",
+          "evidence": [
+            "cli/artifact-guide.ts",
+            "b08599f"
+          ],
+          "tests": [
+            "tests/artifact-preview-ui.test.ts"
+          ]
+        },
+        {
+          "commit": "70e0e5105d33ab8cb7e821a326b46c7aad6e6f9e",
+          "status": "integrated",
+          "reason": "Image editor moves Optimize size into the toolbar, renames the confirm action to Save with an Enter shortcut, and updates hints and Chinese strings. Browser-verified toolbar control, Save labeling and Enter saving.",
+          "evidence": [
+            "web/artifact/components/ImageEditor.tsx",
+            "web/artifact/locales/en.json",
+            "web/artifact/locales/zh-cn.json",
+            "4e9101c",
+            "scripts/verify-artifact-preview.ts",
+            "workspace/r3-integration/browser/b840690-results.txt"
+          ],
+          "tests": [
+            "tests/artifact-preview-ui.test.ts"
+          ]
+        },
+        {
+          "commit": "605c5d0a57bd3b3e9527c82eb192e2756d4666ae",
+          "status": "integrated",
+          "reason": "Adds artifact guide page-utility with a full choose-and-submit example, call rules, method and thread shapes and comment mode handling, using Allgather commands; slims the HTML guide to a pointer. CLI usage and guide errors list the new topic. Upstream publish skill update is an R3 distribution artifact; Allgather ships no equivalent skill.",
+          "evidence": [
+            "cli/artifact-guide.ts",
+            "cli/artifact-options.ts",
+            "cli/index.ts",
+            "b08599f"
+          ],
+          "tests": [
+            "tests/artifact-preview-ui.test.ts"
+          ]
+        },
+        {
+          "commit": "b840690d1a7e328a3119cbc92597b65c763ed436",
+          "status": "skipped",
+          "reason": "Adds a page-utility page to the upstream marketing/documentation site. Allgather has no documentation site; the executable CLI guide is the agent reference.",
+          "evidence": [
+            "cli/artifact-guide.ts",
+            "workspace/r3-integration/upstream-changes.patch"
+          ],
+          "tests": []
+        }
+      ],
+      "changedPaths": [
+        ".claude/skills/api-surface/SKILL.md",
+        ".claude/skills/build-and-distribution/SKILL.md",
+        ".claude/skills/mobile-tier/SKILL.md",
+        ".claude/skills/release/SKILL.md",
+        ".claude/skills/security-model/SKILL.md",
+        ".envrc",
+        "AGENTS.md",
+        "CHANGELOG.md",
+        "CONTEXT.md",
+        "README.md",
+        "cli/artifact-help.ts",
+        "cli/artifact-main.test.ts",
+        "docs/artifacts/browser-support.md",
+        "docs/artifacts/design.md",
+        "docs/artifacts/html-authoring.md",
+        "docs/artifacts/remote-protocol.md",
+        "docs/artifacts/schema.md",
+        "docs/artifacts/verification.md",
+        "npm/package.json",
+        "package.json",
+        "scripts/test-artifact-library.ts",
+        "scripts/test-artifact-navigation.ts",
+        "scripts/test-artifact-selection.ts",
+        "scripts/test-comment-images.ts",
+        "scripts/test-demo-preview.ts",
+        "scripts/test-discussion-interactions.ts",
+        "scripts/test-markdown-theme.ts",
+        "scripts/test-preview-browser.ts",
+        "scripts/test-preview-compatibility.ts",
+        "scripts/test-preview-isolation.ts",
+        "scripts/test-preview-network.ts",
+        "scripts/test-preview-shadow.ts",
+        "scripts/test-preview-storage.ts",
+        "scripts/test-preview-workspace.ts",
+        "server/artifact-server.test.ts",
+        "server/artifacts.test.ts",
+        "server/artifacts.ts",
+        "server/migration.test.ts",
+        "server/preview-contexts.ts",
+        "server/preview-host.test.ts",
+        "server/preview-host.ts",
+        "server/preview-support.ts",
+        "shared/preview-protocol.ts",
+        "shared/version.ts",
+        "site/COVERAGE.md",
+        "site/README.md",
+        "site/catalog.ts",
+        "site/content/html.md",
+        "site/content/permissions.md",
+        "site/locales/en.json",
+        "site/locales/zh-cn.json",
+        "site/locales/zh-cn/content/html.md",
+        "site/locales/zh-cn/content/permissions.md",
+        "site/locales/zh-cn/reference/page-utility.md",
+        "skills/publish-artifacts-to-r3/SKILL.md",
+        "web/src/api.ts",
+        "web/src/artifact-hooks.ts",
+        "web/src/artifact-local-storage.test.ts",
+        "web/src/artifact-local-storage.ts",
+        "web/src/artifact-navigation.test.ts",
+        "web/src/artifact-navigation.ts",
+        "web/src/artifact-page.tsx",
+        "web/src/components/ArtifactActionDialog.tsx",
+        "web/src/components/ArtifactComposer.tsx",
+        "web/src/components/ArtifactHeader.tsx",
+        "web/src/components/ArtifactPreview.tsx",
+        "web/src/components/ArtifactPreviewLinkConfirm.tsx",
+        "web/src/components/ArtifactTitleCard.tsx",
+        "web/src/components/ImageEditor.tsx",
+        "web/src/components/WorkspaceHeader.tsx",
+        "web/src/locales/en.json",
+        "web/src/locales/zh-cn.json",
+        "web/src/mobile/MobileReviewChrome.tsx",
+        "web/src/pages/ArtifactView.tsx",
+        "web/src/preview-bridge.test.ts",
+        "web/src/preview-bridge.ts",
+        "web/src/preview-labels.ts",
+        "web/src/preview-links.test.ts",
+        "web/src/preview-links.ts",
+        "web/src/preview-navigation.ts",
+        "web/src/preview-runtime.ts",
+        "web/src/preview-storage.ts",
+        "web/src/preview-theme.ts",
+        "web/src/preview-utility.ts",
+        "web/src/router.ts",
+        "web/src/showcase/index.tsx",
+        "web/src/showcase/navigation.ts",
+        "web/src/showcase/theme.ts",
+        "web/src/tutorial/Document.tsx",
+        "web/src/tutorial/Tutorial.tsx",
+        "web/src/tutorial/navigation.ts",
+        "web/src/useArtifactContent.ts",
+        "workspace/README.md"
+      ],
+      "acceptanceTests": [
+        "tests/artifacts.test.ts",
+        "tests/artifact-runtime.test.ts"
+      ],
+      "verification": {
+        "revision": "25d191469de1d45ca5b10b78d57ab3997afc23f2",
+        "commands": [
+          [
+            "bun",
+            "--no-env-file",
+            "run",
+            "typecheck"
+          ],
+          [
+            "bun",
+            "--no-env-file",
+            "test",
+            "tests/artifacts.test.ts",
+            "tests/artifact-runtime.test.ts",
+            "tests/artifact-local-storage.test.ts",
+            "tests/artifact-preview-ui.test.ts"
+          ],
+          [
+            "git",
+            "diff",
+            "--check"
+          ]
+        ]
+      }
+    }
+  ]
 }

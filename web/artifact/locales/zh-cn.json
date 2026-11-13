@@ -975,5 +975,11 @@
     "publisher": "发布者",
     "storage": "存储",
     "label": "Artifact 信息"
+  },
+  "previewLink": {
+    "cancel": "留在此页",
+    "explanation": "打开此链接会将完整地址发送到其他网站，包括页面添加到地址中的任何内容。仅在目标符合预期时打开。",
+    "open": "打开链接",
+    "title": "在 AllGather 之外打开此链接？"
   }
 }

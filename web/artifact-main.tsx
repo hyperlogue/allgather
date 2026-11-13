@@ -109,6 +109,18 @@ function Workspace() {
             )}
           </>
         ),
+        onOpenArtifact: (target, href) => {
+          if (parent !== window)
+            parent.postMessage(
+              {
+                type: "allgather-artifact-open",
+                id: target,
+                version: new URL(href, location.origin).searchParams.get("version"),
+              },
+              location.origin,
+            );
+          else location.assign(href);
+        },
         onDeleted: () => {
           if (parent !== window)
             parent.postMessage({ type: "allgather-artifact-deleted", id }, location.origin);

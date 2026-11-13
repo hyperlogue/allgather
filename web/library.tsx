@@ -244,6 +244,20 @@ export function LibraryView({
       ) {
         setSelected("");
         changed();
+      } else if (
+        e.origin === location.origin &&
+        e.source === frame.current?.contentWindow &&
+        e.data?.type === "allgather-artifact-open" &&
+        typeof e.data.id === "string"
+      ) {
+        const url = new URL(location.href);
+        url.searchParams.set("view", "artifacts");
+        url.searchParams.set("artifact", e.data.id);
+        url.searchParams.delete("version");
+        if (typeof e.data.version === "string") url.searchParams.set("version", e.data.version);
+        history.replaceState(null, "", url);
+        setSelected(e.data.id);
+        changed();
       }
     };
     window.addEventListener("message", listener);

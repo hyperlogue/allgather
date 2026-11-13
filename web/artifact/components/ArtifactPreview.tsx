@@ -19,12 +19,14 @@ import { useDarkTheme } from "../../theme.ts";
 import { artifactApi } from "../artifact-api.ts";
 import { artifactLocalStorage } from "../artifact-local-storage.ts";
 import type { ArtifactRenderedPaneProps } from "../artifact-page.tsx";
+import { useArtifactUI } from "../artifact-ui-context.tsx";
 import { t, useLocale } from "../i18n.ts";
 import { keysSuspended } from "../keys.ts";
 import { markdownCache } from "../markdown-cache.ts";
 import { previewBridgeCall, previewLocator, previewSelectionPosition } from "../preview-bridge.ts";
 import { PreviewCapture } from "../preview-capture.ts";
 import { previewLabels } from "../preview-labels.ts";
+import { previewLinkAction } from "../preview-links.ts";
 import {
   type PreviewVerification,
   previewCompatibility,
@@ -37,6 +39,7 @@ import { isReadingPosition, readingKey, readingPositions } from "../reading-posi
 import { Button, cn } from "../ui.tsx";
 import { ArtifactLoading } from "./ArtifactLoading.tsx";
 import { ArtifactPreviewCompatibilityConsent } from "./ArtifactPreviewCompatibilityConsent.tsx";
+import { ArtifactPreviewLinkConfirm } from "./ArtifactPreviewLinkConfirm.tsx";
 import { ArtifactPreviewNetworkControl } from "./ArtifactPreviewNetworkControl.tsx";
 import { ArtifactPreviewSecuritySource } from "./ArtifactPreviewSecurity.tsx";
 import { Notification } from "./Notifications.tsx";
@@ -54,6 +57,10 @@ function forgetDeniedMarkdown(error: unknown, artifactId?: string) {
     artifactLocalStorage.forget(artifactId);
     void markdownCache.forget(artifactId);
   }
+}
+
+function openLink(href: string) {
+  window.open(href, "_blank", "noopener,noreferrer");
 }
 
 export function ArtifactPreview(props: ArtifactRenderedPaneProps) {
@@ -276,6 +283,10 @@ function PreviewSession(
   const seq = props.version.seq;
   const network = props.network;
   const [screenshotRoute, setScreenshotRoute] = useState("#");
+  const [pendingLink, setPendingLink] = useState<string | null>(null);
+  const onOpenArtifact = useArtifactUI().chrome?.onOpenArtifact;
+  const openArtifact = useRef(onOpenArtifact);
+  openArtifact.current = onOpenArtifact;
   const capture = props.capture;
   useEffect(() => {
     if (!context || !ready) return;
@@ -630,6 +641,14 @@ function PreviewSession(
             /^[?#]/.test(message.route)
           )
             current.current.onDocument(message.targetPath, message.route);
+        } else if (message.type === "r3-preview-open-link") {
+          if (!navigator.userActivation?.isActive) return;
+          const action = previewLinkAction(message.href, message.newTab, location.origin);
+          if (action?.kind === "artifact") {
+            if (openArtifact.current) openArtifact.current(action.id, action.href);
+            else location.assign(action.href);
+          } else if (action?.confirm) setPendingLink(action.href);
+          else if (action) openLink(action.href);
         } else if (message.type === "r3-preview-document") {
           const route =
             typeof message.route === "string" &&
@@ -1033,6 +1052,16 @@ function PreviewSession(
               value?.key === cacheKey && value.height !== height ? { ...value, height } : value,
             )
           }
+        />
+      )}
+      {pendingLink && (
+        <ArtifactPreviewLinkConfirm
+          href={pendingLink}
+          onCancel={() => setPendingLink(null)}
+          onOpen={() => {
+            setPendingLink(null);
+            openLink(pendingLink);
+          }}
         />
       )}
       {notice && (

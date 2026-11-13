@@ -975,5 +975,11 @@
     "publisher": "Publisher",
     "storage": "Storage",
     "label": "Artifact info"
+  },
+  "previewLink": {
+    "cancel": "Stay here",
+    "explanation": "Opening this link sends its full address to another site, including anything the page added to it. Open it only if you expected this destination.",
+    "open": "Open link",
+    "title": "Open this link outside AllGather?"
   }
 }

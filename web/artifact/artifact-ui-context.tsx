@@ -51,6 +51,7 @@ export interface ArtifactPageChrome {
     trigger: RefObject<HTMLButtonElement | null>;
   }) => ReactNode;
   onDeleted?: () => void;
+  onOpenArtifact?: (id: string, href: string) => void;
 }
 export interface ArtifactUIEnvironment {
   client: ArtifactPageClient;

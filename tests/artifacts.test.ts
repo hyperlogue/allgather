@@ -52,6 +52,7 @@ test("multiple agents publish shared artifacts and reply across human and agent 
       { kind: "html", title: "Shared review", session_id: "first-run" },
       first,
     );
+    expect(artifact.id).toMatch(/^artifact_[A-Za-z0-9]{22}$/);
     const version = await call<ArtifactVersion>(
       "artifacts_publish",
       {

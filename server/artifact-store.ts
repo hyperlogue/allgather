@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { nanoid } from "nanoid";
+import { customAlphabet } from "nanoid";
 import {
   ArtifactError,
   canonicalJson,
@@ -117,6 +117,11 @@ export interface ArtifactFilter {
   meta?: Record<string, string>;
 }
 
+const artifactIdSuffix = customAlphabet(
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+  22,
+);
+
 // Owns publication visibility. Callers inject the store and renderer; importing
 // this module never opens a database or resolves a publisher's working tree.
 // The supplied connection has the artifact schema and foreign_keys enabled.
@@ -130,7 +135,7 @@ export class ArtifactStore {
     private readonly clock: () => string = nowIso,
     private readonly isWatching: (id: string) => boolean = () => false,
     private readonly workerRecords?: WorkerRecords,
-    private readonly generateArtifactId: () => string = () => `artifact_${nanoid()}`,
+    private readonly generateArtifactId: () => string = () => `artifact_${artifactIdSuffix()}`,
     private readonly access?: {
       artifact(id: string): boolean;
       project(id: string | null): boolean;

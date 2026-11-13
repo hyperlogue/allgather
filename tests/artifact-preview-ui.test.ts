@@ -79,7 +79,12 @@ test("non-web or malformed links are ignored", () => {
 test("artifact guides document page links, blocked frames, and the page utility", () => {
   const html = artifactGuide("html"),
     utility = artifactGuide("page-utility");
-  for (const text of ["Worker do not load", "confirm the full address", "guide page-utility"])
+  for (const text of [
+    "image.crossOrigin to anonymous",
+    "Worker do not load",
+    "confirm the full address",
+    "guide page-utility",
+  ])
     expect(html).toContain(text);
   for (const text of [
     'import r3 from "/r3/utility.js"',

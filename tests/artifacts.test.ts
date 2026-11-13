@@ -437,3 +437,38 @@ test("artifact lists and search accept several projects", async () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+test("archive and restore signal a library reload with the committed row state", async () => {
+  const root = mkdtempSync(join(tmpdir(), "allgather-artifact-library-")),
+    db = openDatabase(":memory:");
+  let changes = 0;
+  const w = new Workspace(db, undefined, () => changes++, { dataDir: root });
+  const call = <T>(name: Operation, input: Record<string, unknown>) =>
+    w.dispatch(
+      name,
+      { ...(operations[name].write ? { operation_key: randomUUID() } : {}), ...input },
+      owner,
+    ) as Promise<T>;
+  const states = async () =>
+    Object.fromEntries(
+      await Promise.all(
+        ["active", "archived"].map(async (state) => [
+          state,
+          (await call<{ items: Artifact[] }>("artifacts_list", { state })).items.map((a) => a.id),
+        ]),
+      ),
+    );
+  try {
+    const artifact = await call<Artifact>("artifacts_create", { kind: "html", title: "Shelf" });
+    let before = changes;
+    await call("artifacts_archive", { artifact_id: artifact.id });
+    expect(changes).toBeGreaterThan(before);
+    expect(await states()).toEqual({ active: [], archived: [artifact.id] });
+    before = changes;
+    await call("artifacts_restore", { artifact_id: artifact.id });
+    expect(changes).toBeGreaterThan(before);
+    expect(await states()).toEqual({ active: [artifact.id], archived: [] });
+  } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -18,9 +18,23 @@ export function createArtifactUtility(
     }
   >();
   const subscribers = new Set<() => void>();
+  const commentModeListeners = new Set<(commentMode: boolean) => void>();
+  let commentMode = false;
   connection.subscribe((message) => {
     if (!message || message.contextId !== config.contextId) return;
-    if (message.type === "r3-preview-changed") {
+    if (message.type === "r3-preview-display") {
+      const next = message.display?.commenting === true;
+      document.documentElement.classList.toggle("r3-comment-mode", next);
+      if (next === commentMode) return;
+      commentMode = next;
+      for (const listener of commentModeListeners) {
+        try {
+          listener(next);
+        } catch {
+          /* One consumer must not prevent other subscribers. */
+        }
+      }
+    } else if (message.type === "r3-preview-changed") {
       for (const listener of subscribers) {
         try {
           listener();
@@ -71,6 +85,13 @@ export function createArtifactUtility(
       subscribers.add(listener);
       return () => {
         subscribers.delete(listener);
+      };
+    },
+    isCommentMode: () => commentMode,
+    onCommentModeChange: (listener) => {
+      commentModeListeners.add(listener);
+      return () => {
+        commentModeListeners.delete(listener);
       };
     },
   } satisfies ArtifactUtility;

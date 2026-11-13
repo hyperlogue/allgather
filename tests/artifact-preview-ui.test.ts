@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { artifactGuide } from "../cli/artifact-guide.ts";
 import type { ArtifactDetail, ArtifactThread } from "../shared/artifacts.ts";
 import { artifactMarkerTargets } from "../web/artifact/artifact-navigation.ts";
 import { previewLinkAction } from "../web/artifact/preview-links.ts";
@@ -73,4 +74,23 @@ test("same-origin links in a new tab or outside artifact routes open without con
 test("non-web or malformed links are ignored", () => {
   for (const href of ["javascript:alert(1)", "data:text/html,x", "not a url", 7, "x".repeat(9000)])
     expect(previewLinkAction(href, false, app)).toBeNull();
+});
+
+test("artifact guides document page links, blocked frames, and the page utility", () => {
+  const html = artifactGuide("html"),
+    utility = artifactGuide("page-utility");
+  for (const text of ["Worker do not load", "confirm the full address", "guide page-utility"])
+    expect(html).toContain(text);
+  for (const text of [
+    'import r3 from "/r3/utility.js"',
+    "createThread",
+    "submit()",
+    "isCommentMode()",
+    "onCommentModeChange",
+    "r3-comment-mode",
+    "artifact comments ID",
+  ])
+    expect(utility).toContain(text);
+  expect(utility).not.toMatch(/getTheme|setTheme|createDiscussion/);
+  expect(() => artifactGuide("unknown")).toThrow("page-utility");
 });

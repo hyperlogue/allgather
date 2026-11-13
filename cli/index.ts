@@ -64,7 +64,7 @@ export const HELP = `allgather — one work record for tasks, sessions, and evid
   artifact claim THREAD ... | release THREAD ... | reanchor ID --input FILE
   artifact archive ID [--body TEXT] | restore ID | delete ID | listen ID | unlisten ID
   artifact submit ID | watchers ID | stat | gc [--apply]
-  artifact watch ID [--timeout SECONDS] | guide [files|html|diff]
+  artifact watch ID [--timeout SECONDS] | guide [files|html|diff|page-utility]
   machine list | create --name NAME | show ID | update ID --name NAME --expected-revision N
   checkout list [--machine ID] [--repository ID] [--include-removed]
   session launch --machine ID --harness NAME --cwd PATH [--mode managed|terminal] [--project ID] [--label NAME] [--role ID] [--task ID]

@@ -48,7 +48,8 @@ export function validateArtifactOptions(verb: string, p: string[], f: ArtifactFl
   );
   for (const flag of Object.keys(f))
     if (!allowed.has(flag)) throw new Error(`Unsupported --${flag} for artifact ${verb}`);
-  if (verb === "guide" && p.length > 3) throw new Error("Use artifact guide [files|html|diff]");
+  if (verb === "guide" && p.length > 3)
+    throw new Error("Use artifact guide [files|html|diff|page-utility]");
   if (verb === "reanchor" && (p.length > 3 || (f.artifact !== undefined && p.length !== 2)))
     throw new Error("Choose a positional ID or --artifact");
   if (["source", "download"].includes(verb) && (!Array.isArray(f.path) || f.path.length !== 1))

@@ -83,4 +83,6 @@ export interface ArtifactUtility {
   comment(input: { threadId: string; body: string }): Promise<unknown>;
   submit(): Promise<{ notification: ArtifactNotification }>;
   subscribe(listener: () => void): () => void;
+  isCommentMode(): boolean;
+  onCommentModeChange(listener: (commentMode: boolean) => void): () => void;
 }

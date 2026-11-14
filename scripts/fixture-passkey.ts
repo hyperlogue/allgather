@@ -7,7 +7,7 @@ import type {
   RegistrationResponseJSON,
 } from "@simplewebauthn/server";
 import { isoCBOR } from "@simplewebauthn/server/helpers";
-import { browserIdleMs } from "../server/browser-auth.ts";
+import { browserCookieName, browserIdleMs } from "../server/browser-auth.ts";
 
 const digest = (value: string | Uint8Array) => createHash("sha256").update(value).digest();
 const b64 = (value: Uint8Array) => Buffer.from(value).toString("base64url");
@@ -110,7 +110,7 @@ export function syntheticPasskey() {
     },
   };
 }
-export function fixtureBrowserCookie(db: Database) {
+export function fixtureBrowserCookie(db: Database, origin = "https://owner.example") {
   const passkey = syntheticPasskey(),
     token = randomBytes(32).toString("base64url"),
     now = new Date().toISOString();
@@ -123,7 +123,7 @@ export function fixtureBrowserCookie(db: Database) {
     passkey.id,
     now,
   );
-  return `allgather_session=${token}`;
+  return `${browserCookieName(origin, "allgather_session")}=${token}`;
 }
 export async function fixtureRegisterPasskey(
   url: string,

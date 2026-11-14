@@ -47,6 +47,10 @@ export function activeBrowserSession(
     )
     .get(sessionHash, now) as { passkey_id: string; last_used_at: string } | null;
 }
+type BrowserCookie = "allgather_session" | "allgather_ceremony";
+export function browserCookieName(origin: string, name: BrowserCookie) {
+  return origin.startsWith("https:") ? `__Host-${name}` : name;
+}
 export class BrowserAuth {
   readonly rpID: string;
   constructor(
@@ -55,8 +59,12 @@ export class BrowserAuth {
   ) {
     this.rpID = new URL(origin).hostname;
   }
-  private cookie(name: string, value: string, seconds: number, path = "/") {
-    return `${name}=${value}; HttpOnly; SameSite=Strict; Path=${path}; Max-Age=${seconds}${this.origin.startsWith("https:") ? "; Secure" : ""}`;
+  private cookie(name: BrowserCookie, value: string, seconds: number, path = "/") {
+    const secure = this.origin.startsWith("https:");
+    return `${browserCookieName(this.origin, name)}=${value}; HttpOnly; SameSite=Strict; Path=${secure ? "/" : path}; Max-Age=${seconds}${secure ? "; Secure" : ""}`;
+  }
+  private read(request: Request, name: BrowserCookie) {
+    return cookie(request, browserCookieName(this.origin, name));
   }
   private userHandle() {
     this.db
@@ -126,7 +134,7 @@ export class BrowserAuth {
     const now = new Date().toISOString();
     this.db
       .query("DELETE FROM passkey_challenges WHERE expires_at<=? OR hash=?")
-      .run(now, hash(cookie(request, "allgather_ceremony") ?? ""));
+      .run(now, hash(this.read(request, "allgather_ceremony") ?? ""));
     const count = this.db.query("SELECT COUNT(*) n FROM passkey_challenges").get() as { n: number };
     if (count.n >= 5000)
       throw new AppError("ceremony_capacity", "Try signing in again in a few minutes", 429);
@@ -144,7 +152,7 @@ export class BrowserAuth {
     );
   }
   private takeChallenge(request: Request, kind: Challenge["kind"]) {
-    const token = cookie(request, "allgather_ceremony");
+    const token = this.read(request, "allgather_ceremony");
     const row = this.db
       .query("DELETE FROM passkey_challenges WHERE hash=? RETURNING *")
       .get(hash(token ?? "")) as Challenge | null;
@@ -319,12 +327,12 @@ export class BrowserAuth {
     return this.cookie("allgather_session", token, browserIdleMs / 1000);
   }
   session(request: Request) {
-    const token = cookie(request, "allgather_session");
+    const token = this.read(request, "allgather_session");
     return token && activeBrowserSession(this.db, hash(token)) ? hash(token) : null;
   }
   renew(request: Request) {
     if (request.headers.has("authorization")) return null;
-    const token = cookie(request, "allgather_session");
+    const token = this.read(request, "allgather_session");
     if (!token) return null;
     const row = activeBrowserSession(this.db, hash(token));
     if (!row || Date.parse(row.last_used_at) > Date.now() - 60000) return null;
@@ -336,7 +344,7 @@ export class BrowserAuth {
     return this.cookie("allgather_session", token, browserIdleMs / 1000);
   }
   signOut(request: Request) {
-    const token = cookie(request, "allgather_session");
+    const token = this.read(request, "allgather_session");
     if (token) this.db.query("DELETE FROM sessions WHERE hash=?").run(hash(token));
     return this.cookie("allgather_session", "", 0);
   }

@@ -60,6 +60,17 @@ export function createApp(
       !c.req.header("authorization")
     )
       throw new AppError("origin_required", "Cookie mutations need the application origin", 403);
+    const site = c.req.header("sec-fetch-site");
+    if (
+      c.req.header("cookie") &&
+      (site === "cross-site" || site === "same-site") &&
+      !(
+        ["GET", "HEAD"].includes(c.req.method) &&
+        c.req.header("sec-fetch-mode") === "navigate" &&
+        c.req.header("sec-fetch-dest") === "document"
+      )
+    )
+      throw new AppError("forbidden_site", "Requests from other sites are not allowed", 403);
     c.header("X-Content-Type-Options", "nosniff");
     c.header("Referrer-Policy", "no-referrer");
     c.header("X-Frame-Options", "DENY");

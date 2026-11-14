@@ -47,7 +47,7 @@ test("normal handshake exposes support without granting control, and opt-out sup
       try {
         const w = running.workspace,
           auth = new Auth(w.db, running.settings.ownerUrl);
-        const cookie = fixtureBrowserCookie(w.db);
+        const cookie = fixtureBrowserCookie(w.db, running.settings.ownerUrl);
         const principal = auth.principal(new Request(auth.baseUrl, { headers: { cookie } }))!;
         const machine = w.execute(
           "machines_create",

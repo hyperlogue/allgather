@@ -52,6 +52,7 @@ export const mcpOperations = new Set<Operation>([
   "artifacts_read_file",
   "artifacts_search",
   "artifacts_create",
+  "artifacts_upload",
   "artifacts_publish",
   "artifacts_edit",
   "artifact_threads_add",

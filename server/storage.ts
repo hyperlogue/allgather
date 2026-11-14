@@ -38,7 +38,7 @@ import { migrateTerminalSessions } from "./terminal-migration.ts";
 import { migrateTower } from "./tower-migration.ts";
 import { migrateTranscriptContent } from "./transcript-migration.ts";
 
-export const SCHEMA_VERSION = 39;
+export const SCHEMA_VERSION = 40;
 export function writeDatabaseSnapshot(db: Database, path: string) {
   const directory = mkdtempSync(join(dirname(path), ".allgather-snapshot-"));
   const staged = join(directory, "snapshot.sqlite");
@@ -296,6 +296,20 @@ function initializeDatabase(db: Database, path: string) {
     `),
     ).immediate();
   if (version < 39) migrateFallbackProject(db);
+  if (version < 40)
+    db.transaction(() =>
+      db.exec(`
+      CREATE TABLE IF NOT EXISTS artifact_uploads(
+        artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        uploader TEXT NOT NULL,
+        blob_hash TEXT NOT NULL REFERENCES blobs(hash),
+        expires_at TEXT NOT NULL,
+        PRIMARY KEY(artifact_id, uploader, blob_hash)
+      ) STRICT;
+      CREATE INDEX IF NOT EXISTS artifact_upload_expiry ON artifact_uploads(expires_at);
+      PRAGMA user_version=40;
+    `),
+    ).immediate();
   return db;
 }
 export function setting(db: Database, key: string) {

@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { customAlphabet } from "nanoid";
+import { PUBLICATION_LIMITS, UPLOAD_LIMITS } from "../shared/artifact-limits.ts";
 import {
   ArtifactError,
   canonicalJson,
@@ -19,12 +20,13 @@ import type {
   ArtifactProject,
   ArtifactState,
   ArtifactStorageUsage,
+  ArtifactUpload,
   ArtifactVersion,
 } from "../shared/artifacts.ts";
 import { ArtifactAttachments } from "./artifact-attachments.ts";
 import { nowIso } from "./artifact-clock.ts";
 import { ArtifactProjects } from "./artifact-projects.ts";
-import type { BlobStore } from "./blobs.ts";
+import type { BlobStore, StoredBlob } from "./blobs.ts";
 import {
   type DocumentRenderer,
   prepareFiles,
@@ -440,16 +442,83 @@ export class ArtifactStore {
     return artifact;
   }
 
-  async publish(id: string, value: unknown, commit: ArtifactCommit): Promise<ArtifactVersion> {
-    return this.blobs.publishing(() => this.publishHeld(id, value, commit));
+  async upload(
+    id: string,
+    uploader: string,
+    bytes: Buffer,
+    commit: ArtifactCommit,
+  ): Promise<ArtifactUpload> {
+    this.get(id);
+    if (!bytes.byteLength || bytes.byteLength > UPLOAD_LIMITS.partBytes)
+      throw new ArtifactError(`An upload part holds 1 to ${UPLOAD_LIMITS.partBytes} bytes`, 413);
+    return this.blobs.publishing(async () => {
+      const blob = await this.blobs.put(bytes);
+      return commit(() => {
+        const time = this.clock();
+        const expiresAt = new Date(Date.parse(time) + UPLOAD_LIMITS.ttlMs).toISOString();
+        this.db
+          .query(
+            "INSERT INTO blobs(hash, byte_length, created_at) VALUES (?, ?, ?) ON CONFLICT(hash) DO NOTHING",
+          )
+          .run(blob.hash, blob.byteLength, time);
+        this.db
+          .query(
+            "INSERT INTO artifact_uploads VALUES (?, ?, ?, ?) ON CONFLICT DO UPDATE SET expires_at = excluded.expires_at",
+          )
+          .run(id, uploader, blob.hash, expiresAt);
+        return { hash: blob.hash, byteLength: blob.byteLength, expiresAt };
+      });
+    });
+  }
+
+  private async assemble(id: string, uploader: string, parts: string[]): Promise<StoredBlob> {
+    const now = this.clock();
+    const query = this.db.query<{ byteLength: number }, [string, string, string, string]>(
+      `SELECT b.byte_length AS byteLength FROM artifact_uploads u JOIN blobs b ON b.hash = u.blob_hash
+      WHERE u.artifact_id = ? AND u.uploader = ? AND u.blob_hash = ? AND u.expires_at > ?`,
+    );
+    let total = 0;
+    for (const part of parts) {
+      const row = query.get(id, uploader, part, now);
+      if (!row)
+        throw new ArtifactError(
+          `Part ${part} is not an unexpired upload for this artifact; upload it again`,
+          409,
+        );
+      total += row.byteLength;
+    }
+    if (total > PUBLICATION_LIMITS.fileBytes)
+      throw new ArtifactError("File exceeds the publication size limit", 413);
+    if (parts.length === 1) return { hash: parts[0] as string, byteLength: total };
+    const blobs = this.blobs;
+    return blobs.putStream(
+      (async function* () {
+        for (const part of parts) yield* blobs.stream(part);
+      })(),
+      PUBLICATION_LIMITS.fileBytes,
+    );
+  }
+
+  async publish(
+    id: string,
+    value: unknown,
+    commit: ArtifactCommit,
+    uploader?: string,
+  ): Promise<ArtifactVersion> {
+    return this.blobs.publishing(() => this.publishHeld(id, value, commit, uploader));
   }
 
   private async publishHeld(
     id: string,
     value: unknown,
     commit: ArtifactCommit,
+    uploader?: string,
   ): Promise<ArtifactVersion> {
-    const publication = validatePublication(value);
+    const publication = await validatePublication(
+      value,
+      undefined,
+      uploader === undefined ? undefined : (parts) => this.assemble(id, uploader, parts),
+    );
     this.validateActor(publication.actor);
     this.get(id);
     const previous = this.retry(id, publication);

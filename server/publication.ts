@@ -1,4 +1,4 @@
-import { PUBLICATION_LIMITS } from "../shared/artifact-limits.ts";
+import { PUBLICATION_LIMITS, UPLOAD_LIMITS } from "../shared/artifact-limits.ts";
 import {
   ArtifactError,
   canonicalJson,
@@ -15,11 +15,13 @@ import type { ArtifactActor, ArtifactKind } from "../shared/artifacts.ts";
 import { type BlobStore, hashBytes, type StoredBlob } from "./blobs.ts";
 import { validateStoredPatch } from "./patch-content.ts";
 
-interface DecodedFile {
+interface DecodedFile extends StoredBlob {
   path: string;
   mediaType: string;
-  bytes: Buffer;
+  bytes: Buffer | null;
 }
+
+export type PartAssembler = (parts: string[]) => Promise<StoredBlob>;
 
 export interface ValidatedPublication {
   expectedSeq: number;
@@ -48,22 +50,46 @@ export type DocumentRenderer = {
   readonly revision?: string;
 };
 
-function decodeMarkdown(file: DecodedFile): string {
-  if (file.bytes.byteLength > PUBLICATION_LIMITS.markdownBytes) {
+function decodeMarkdown(bytes: Buffer): string {
+  if (bytes.byteLength > PUBLICATION_LIMITS.markdownBytes) {
     throw new ArtifactError("Markdown exceeds the rendering size limit", 413);
   }
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(file.bytes);
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
     throw new ArtifactError("Markdown must contain valid UTF-8");
   }
 }
 
-function decodeFile(value: unknown): DecodedFile {
+function requireParts(value: unknown): string[] {
+  if (
+    !Array.isArray(value) ||
+    !value.length ||
+    value.length > UPLOAD_LIMITS.parts ||
+    value.some((part) => typeof part !== "string" || !/^[0-9a-f]{64}$/.test(part))
+  )
+    throw new ArtifactError(
+      `File parts must list 1 to ${UPLOAD_LIMITS.parts} uploaded SHA-256 hashes`,
+    );
+  return value;
+}
+
+async function decodeFile(value: unknown, assemble?: PartAssembler): Promise<DecodedFile> {
   const file = requireObject(value, "File");
   const path = requireArtifactPath(file.path);
   const mediaType = requireMediaType(file.mediaType);
-  if (typeof file.base64 !== "string") throw new ArtifactError("File bytes must be base64 text");
+  if (file.parts !== undefined) {
+    if (file.base64 !== undefined)
+      throw new ArtifactError("A file takes base64 or parts, not both");
+    const parts = requireParts(file.parts);
+    if (!assemble) throw new ArtifactError("Uploaded parts are not available here");
+    const blob = await assemble(parts);
+    if (blob.byteLength > PUBLICATION_LIMITS.fileBytes)
+      throw new ArtifactError("File exceeds the publication size limit", 413);
+    return { path, mediaType, ...blob, bytes: null };
+  }
+  if (typeof file.base64 !== "string")
+    throw new ArtifactError("File bytes must be base64 text or uploaded parts");
   if (file.base64.length > Math.ceil(PUBLICATION_LIMITS.fileBytes / 3) * 4) {
     throw new ArtifactError("File exceeds the publication size limit", 413);
   }
@@ -75,13 +101,14 @@ function decodeFile(value: unknown): DecodedFile {
   if (bytes.byteLength > PUBLICATION_LIMITS.fileBytes) {
     throw new ArtifactError("File exceeds the publication size limit", 413);
   }
-  return { path, mediaType, bytes };
+  return { path, mediaType, hash: hashBytes(bytes), byteLength: bytes.byteLength, bytes };
 }
 
-export function validatePublication(
+export async function validatePublication(
   value: unknown,
   directoryLimits: { files: number; totalBytes: number } = PUBLICATION_LIMITS,
-): ValidatedPublication {
+  assemble?: PartAssembler,
+): Promise<ValidatedPublication> {
   const body = requireObject(value, "Publication");
   const content = requireObject(body.content, "Publication content");
   const metadata = {
@@ -117,15 +144,20 @@ export function validatePublication(
     throw new ArtifactError("Publication contains too many files", 413);
   }
   let total = 0;
-  const files = content.files.map((input) => {
-    const file = decodeFile(input);
-    total += file.bytes.byteLength;
+  const files: DecodedFile[] = [];
+  for (const input of content.files) {
+    const file = await decodeFile(input, assemble);
+    total += file.byteLength;
     if (total > directoryLimits.totalBytes) {
       throw new ArtifactError("Publication exceeds the total size limit", 413);
     }
-    if (/\.(md|markdown)$/i.test(file.path)) decodeMarkdown(file);
-    return file;
-  });
+    if (/\.(md|markdown)$/i.test(file.path)) {
+      if (file.byteLength > PUBLICATION_LIMITS.markdownBytes)
+        throw new ArtifactError("Markdown exceeds the rendering size limit", 413);
+      if (file.bytes) decodeMarkdown(file.bytes);
+    }
+    files.push(file);
+  }
   files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   const paths = new Set<string>();
   for (const file of files) {
@@ -168,7 +200,7 @@ export function validatePublication(
         files: files.map((file) => ({
           path: file.path,
           mediaType: file.mediaType,
-          hash: hashBytes(file.bytes),
+          hash: file.hash,
         })),
       }),
     ),
@@ -185,10 +217,12 @@ export async function prepareFiles(
 ): Promise<PreparedFile[]> {
   const prepared: PreparedFile[] = [];
   for (const file of publication.files) {
-    const stored = await blobs.put(file.bytes);
+    const stored: StoredBlob = file.bytes
+      ? await blobs.put(file.bytes)
+      : { hash: file.hash, byteLength: file.byteLength };
     let rendered: PreparedFile["rendered"] = null;
     if (/\.(md|markdown)$/i.test(file.path)) {
-      const source = decodeMarkdown(file);
+      const source = decodeMarkdown(file.bytes ?? (await blobs.read(file.hash)));
       const declared = renderDocument.revision;
       const cached = declared ? retained?.(stored.hash, file.path, declared) : null;
       if (cached && declared) {

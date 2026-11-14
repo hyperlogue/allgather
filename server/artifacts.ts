@@ -209,6 +209,7 @@ export class Artifacts {
         value = commit(() => ({ ...prepared.commit(), notification }));
       } else if (
         [
+          "artifacts_upload",
           "artifacts_publish",
           "artifact_threads_add",
           "artifact_threads_edit",
@@ -217,7 +218,7 @@ export class Artifacts {
           "artifact_threads_reanchor",
         ].includes(name)
       ) {
-        value = await this.asyncWrite(name, a, actor, commit);
+        value = await this.asyncWrite(name, a, actor, commit, p);
         if (!committed) value = commit(() => value);
       } else {
         value = commit(() => this.write(name, a, actor, p));
@@ -305,9 +306,21 @@ export class Artifacts {
       lines: lines.slice(start - 1, start - 1 + limit),
     };
   }
-  private asyncWrite(name: Operation, a: Input, actor: ArtifactActor, commit: ArtifactCommit) {
+  private asyncWrite(
+    name: Operation,
+    a: Input,
+    actor: ArtifactActor,
+    commit: ArtifactCommit,
+    p: Principal,
+  ) {
     const input = { ...((a.input as Input) ?? {}), actor, operationKey: a.operation_key };
     switch (name) {
+      case "artifacts_upload": {
+        const bytes = Buffer.from(String(a.data), "base64");
+        if (bytes.toString("base64") !== a.data)
+          throw new AppError("invalid_input", "Upload data must be canonical base64");
+        return this.store.upload(String(a.artifact_id), p.id, bytes, commit);
+      }
       case "artifacts_publish":
         return this.store.publish(
           String(a.artifact_id),
@@ -321,6 +334,7 @@ export class Artifacts {
             provenance: a.provenance,
           },
           commit,
+          p.id,
         );
       case "artifact_threads_add":
         return this.conversations.add(String(a.artifact_id), input, commit);
@@ -405,7 +419,8 @@ export class Artifacts {
   }
   async collectBlobs() {
     return this.blobs.collect(() => {
-      const roots = `SELECT blob_hash hash FROM version_files UNION SELECT rendered_blob_hash FROM version_files WHERE rendered_blob_hash IS NOT NULL UNION SELECT blob_hash FROM message_attachments UNION SELECT blob_hash FROM thread_anchor_frames UNION SELECT blob_hash FROM session_assets`;
+      this.w.run("DELETE FROM artifact_uploads WHERE expires_at <= ?", this.w.now());
+      const roots = `SELECT blob_hash hash FROM artifact_uploads UNION SELECT blob_hash FROM version_files UNION SELECT rendered_blob_hash FROM version_files WHERE rendered_blob_hash IS NOT NULL UNION SELECT blob_hash FROM message_attachments UNION SELECT blob_hash FROM thread_anchor_frames UNION SELECT blob_hash FROM session_assets`;
       const live = new Set(this.w.all<{ hash: string }>(roots).map((r) => r.hash));
       this.w.run(`DELETE FROM blobs WHERE hash NOT IN (${roots})`);
       return live;

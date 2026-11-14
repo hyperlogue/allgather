@@ -105,7 +105,7 @@ test("public MCP exposes work tools and rejects private operations before dispat
     );
     const inventory = await client.listTools();
     const names = inventory.tools.map((tool) => tool.name);
-    expect(names).toHaveLength(61);
+    expect(names).toHaveLength(62);
     for (const name of [
       "tasks_create",
       "tasks_ready",
@@ -235,6 +235,60 @@ test("public MCP exposes work tools and rejects private operations before dispat
     ).toBe(true);
     const published = await client.callTool({ name: "artifacts_publish", arguments: publish });
     expect(published.isError).not.toBe(true);
+    const large = Buffer.alloc(3 * 1024 * 1024 + 7);
+    for (let i = 0; i < large.length; i++) large[i] = (i * 31) % 251;
+    const halves = [large.subarray(0, 2 * 1024 * 1024), large.subarray(2 * 1024 * 1024)];
+    const parts: string[] = [];
+    for (const half of halves) {
+      const uploaded = await client.callTool({
+        name: "artifacts_upload",
+        arguments: {
+          artifact_id: artifact.id,
+          session_id: "remote-review",
+          operation_key: randomUUID(),
+          data: half.toString("base64"),
+        },
+      });
+      expect(uploaded.isError).not.toBe(true);
+      parts.push((uploaded.structuredContent as { result: { hash: string } }).result.hash);
+    }
+    const staged = await client.callTool({
+      name: "artifacts_publish",
+      arguments: {
+        ...publish,
+        expected_seq: 1,
+        operation_key: randomUUID(),
+        content: {
+          kind: "html",
+          files: [
+            ...publish.content.files,
+            { path: "data.bin", mediaType: "application/octet-stream", parts },
+          ],
+        },
+      },
+    });
+    expect(staged.isError).not.toBe(true);
+    expect(
+      Buffer.from(await s.w.artifacts!.store.readFile(artifact.id, 2, "data.bin")).equals(large),
+    ).toBe(true);
+    await expect(
+      s.w.dispatch(
+        "artifacts_publish",
+        {
+          ...publish,
+          expected_seq: 2,
+          operation_key: randomUUID(),
+          content: {
+            kind: "files",
+            files: [{ path: "data.bin", mediaType: "application/octet-stream", parts }],
+          },
+        },
+        broadMcp,
+      ),
+    ).rejects.toMatchObject({
+      code: "artifact_conflict",
+      message: expect.stringContaining("upload it again"),
+    });
     const opened = await client.callTool({
       name: "artifact_threads_add",
       arguments: {

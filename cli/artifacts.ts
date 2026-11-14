@@ -19,6 +19,7 @@ import {
   metadata,
   validateArtifactOptions,
 } from "./artifact-options.ts";
+import { stageLargeFiles } from "./artifact-upload.ts";
 import { watchArtifact, watchOperator } from "./artifact-watch.ts";
 import { captureFiles } from "./capture.ts";
 import { captureGitCommit, captureGitDiff, captureGitFiles } from "./capture-git.ts";
@@ -116,11 +117,27 @@ export async function artifactCommand(client: Client, p: string[], f: Flags) {
     publicationKey: string,
   ) => {
     try {
+      const staged = await stageLargeFiles(content, async (data) => {
+        const uploaded = (await call("artifacts_upload", {
+          operation_key: createHash("sha256")
+            .update(
+              JSON.stringify([
+                publicationKey,
+                "upload",
+                createHash("sha256").update(data).digest("hex"),
+              ]),
+            )
+            .digest("hex"),
+          artifact_id: artifactId,
+          data,
+        })) as { hash: string };
+        return uploaded.hash;
+      });
       const result = await call("artifacts_publish", {
         operation_key: publicationKey,
         artifact_id: artifactId,
         expected_seq: expected,
-        content,
+        content: staged,
         label: text("version-label") ?? text("label"),
         summary: text("summary"),
         task_id: text("task"),
@@ -153,7 +170,7 @@ export async function artifactCommand(client: Client, p: string[], f: Flags) {
       throw new Error("Initial publication requires --expected-seq 0");
     const content = hasCapture ? await capture(kind) : undefined;
     if (hasCapture)
-      validatePublication({
+      await validatePublication({
         content,
         expectedSeq: 0,
         publicationKey: phaseKey("publish"),

@@ -22,6 +22,12 @@ function isFsError(error: unknown, code: string): boolean {
 // blob, but can never replace bytes already referenced by a published version.
 // The caller owns the private directory and coordinates any garbage collection
 // with publications. There is deliberately no per-version deletion operation.
+export class BlobLimitError extends Error {
+  constructor() {
+    super("Blob exceeds its size limit");
+  }
+}
+
 export class BlobStore {
   private publications = 0;
   private publication = new AsyncLocalStorage<{ active: boolean }>();
@@ -71,6 +77,14 @@ export class BlobStore {
         throw error;
       });
       for (const entry of directories) {
+        if (entry.isDirectory() && entry.name === "staging") {
+          for (const file of await readdir(join(this.root, entry.name)))
+            if (/^\.upload-[0-9a-f-]{36}$/.test(file)) {
+              await unlink(join(this.root, entry.name, file));
+              removed++;
+            }
+          continue;
+        }
         if (!entry.isDirectory() || !/^[0-9a-f]{2}$/.test(entry.name)) continue;
         const directory = join(this.root, entry.name);
         let changed = false;
@@ -108,25 +122,51 @@ export class BlobStore {
   async put(input: Uint8Array | string): Promise<StoredBlob> {
     // Own the buffer across awaits: callers may reuse an upload buffer.
     const bytes = typeof input === "string" ? Buffer.from(input, "utf8") : Buffer.from(input);
-    const hash = hashBytes(bytes);
-    const { directory, file } = this.location(hash);
+    return this.install(async (output) => {
+      await output.writeFile(bytes);
+      return { hash: hashBytes(bytes), byteLength: bytes.byteLength };
+    });
+  }
+
+  async putStream(source: AsyncIterable<Uint8Array>, maxBytes: number): Promise<StoredBlob> {
+    return this.install(async (output) => {
+      const digest = createHash("sha256");
+      let byteLength = 0;
+      for await (const chunk of source) {
+        byteLength += chunk.byteLength;
+        if (byteLength > maxBytes) throw new BlobLimitError();
+        digest.update(chunk);
+        await output.write(chunk);
+      }
+      return { hash: digest.digest("hex"), byteLength };
+    });
+  }
+
+  private async install(
+    write: (output: Awaited<ReturnType<typeof open>>) => Promise<StoredBlob>,
+  ): Promise<StoredBlob> {
     await mkdir(this.root, { recursive: true, mode: 0o700 });
-    await mkdir(directory, { mode: 0o700 }).catch((error: unknown) => {
+    const staging = join(this.root, "staging");
+    await mkdir(staging, { mode: 0o700 }).catch((error: unknown) => {
       if (!isFsError(error, "EEXIST")) throw error;
     });
-    const temporary = join(directory, `.upload-${randomUUID()}`);
+    const temporary = join(staging, `.upload-${randomUUID()}`);
     const output = await open(temporary, "wx", 0o600);
     try {
-      await output.writeFile(bytes);
+      const blob = await write(output);
       await output.sync();
       await output.close();
+      const { directory, file } = this.location(blob.hash);
+      await mkdir(directory, { mode: 0o700 }).catch((error: unknown) => {
+        if (!isFsError(error, "EEXIST")) throw error;
+      });
       try {
         // Unlike rename, link cannot overwrite an existing blob.
         await link(temporary, file);
       } catch (error) {
         if (!isFsError(error, "EEXIST")) throw error;
-        const existing = await this.read(hash);
-        if (!existing.equals(bytes)) throw new Error("Stored blob does not match its digest");
+        // Reading verifies the existing entry against the digest both share.
+        for await (const _ of this.stream(blob.hash));
       }
       // Persist the directory entry before SQL is allowed to refer to it.
       for (const path of [directory, this.root]) {
@@ -137,7 +177,7 @@ export class BlobStore {
           await handle.close();
         }
       }
-      return { hash, byteLength: bytes.byteLength };
+      return blob;
     } finally {
       await output.close();
       await unlink(temporary);

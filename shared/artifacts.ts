@@ -361,10 +361,14 @@ export interface ArtifactSource {
 }
 // Binary-safe transfer. The version owns the complete path membership. Missing
 // members are absent from this version; reads never fall back to its predecessor.
-export interface PublicationFile {
-  path: string;
-  mediaType: string;
-  base64: string;
+export type PublicationFile = { path: string; mediaType: string } & (
+  | { base64: string }
+  | { parts: string[] }
+);
+export interface ArtifactUpload {
+  hash: string;
+  byteLength: number;
+  expiresAt: string;
 }
 export interface PublishArtifactBody {
   listen?: boolean;

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { UPLOAD_LIMITS } from "./artifact-limits.ts";
 import {
   PROJECT_ICON_MAX_BYTES,
   type ProjectIconInfo,
@@ -489,7 +490,20 @@ export const operations = {
       listen: z.boolean().default(true),
     }),
     "artifacts:contribute",
-    "Publish an immutable complete file/HTML capture or standalone diff.",
+    "Publish an immutable complete file/HTML capture or standalone diff. content is {kind:'files'|'html', files:[{path, mediaType, base64}]} or {kind:'diff', patch}; html needs a root index.html. A file may give parts (ordered SHA-256 hashes from artifacts_upload) instead of base64; files can be up to 256 MiB.",
+    true,
+  ),
+  artifacts_upload: spec(
+    z.object({
+      ...key,
+      artifact_id: id,
+      data: z
+        .string()
+        .min(1)
+        .max(Math.ceil(UPLOAD_LIMITS.partBytes / 3) * 4),
+    }),
+    "artifacts:contribute",
+    "Stage one part of a file for artifacts_publish: base64 data of at most 16 MiB. Returns its SHA-256 hash; list hashes in order as a file's parts. Parts stay available to the same client for this artifact for 24 hours and can be reused across files and versions.",
     true,
   ),
   artifacts_edit: spec(

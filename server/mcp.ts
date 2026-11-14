@@ -67,7 +67,7 @@ export async function mcpResponse(request: Request, workspace: Workspace, princi
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
-    maxRequestBodySize: 1024 * 1024,
+    maxRequestBodySize: 32 * 1024 * 1024,
   });
   await server.connect(transport);
   try {

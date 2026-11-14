@@ -27,6 +27,17 @@ export class Updates {
     };
   }
 }
+const applicationPolicy = (ancestors: string) =>
+  `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; frame-src 'self'; media-src 'self' blob:; frame-ancestors ${ancestors}; object-src 'none'; base-uri 'none'`;
+const securityHeaders = (path: string): Record<string, string> => ({
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+  "X-Frame-Options": "DENY",
+  "Content-Security-Policy": applicationPolicy("'none'"),
+  "Cache-Control": "no-store",
+  "Cross-Origin-Resource-Policy": "same-origin",
+  ...(path.startsWith("/oauth/") ? {} : { "Cross-Origin-Opener-Policy": "same-origin" }),
+});
 export function createApp(
   workspace: Workspace,
   auth: Auth,
@@ -46,6 +57,19 @@ export function createApp(
   const surface = options.surface ?? "private";
   const originUrl = surface === "public" ? auth.mcpBaseUrl : auth.baseUrl;
   const rates = new RateLimits();
+  app.use("*", async (c, next) => {
+    await next();
+    const defaults = securityHeaders(c.req.path);
+    const missing = Object.entries(defaults).filter(([name]) => !c.res.headers.has(name));
+    if (!missing.length) return;
+    const headers = new Headers(c.res.headers);
+    for (const [name, value] of missing) headers.set(name, value);
+    c.res = new Response(c.res.body, {
+      status: c.res.status,
+      statusText: c.res.statusText,
+      headers,
+    });
+  });
   app.use("*", async (c, next) => {
     if (surface === "public" && !isPublicRoute(c.req.raw)) return c.text("Not found", 404);
     const rejected = listenerRejection(c.req.raw, originUrl, surface);
@@ -71,14 +95,6 @@ export function createApp(
       )
     )
       throw new AppError("forbidden_site", "Requests from other sites are not allowed", 403);
-    c.header("X-Content-Type-Options", "nosniff");
-    c.header("Referrer-Policy", "no-referrer");
-    c.header("X-Frame-Options", "DENY");
-    c.header(
-      "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; frame-src 'self'; media-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'",
-    );
-    c.header("Cache-Control", "no-store");
     if (
       surface === "private" &&
       c.req.path !== "/api/logout" &&
@@ -578,14 +594,13 @@ export function createApp(
     return mcpResponse(c.req.raw, workspace, principal);
   });
   app.route("/", artifactApi(workspace, auth, updates));
-  app.get("/artifact-workspace/:id", (c) => {
+  app.get("/artifact-workspace/:id", async (c) => {
     if (!auth.principal(c.req.raw)) throw new AppError("unauthorized", "Sign in to Allgather", 401);
-    c.header("X-Frame-Options", "SAMEORIGIN");
-    c.header(
-      "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'none'",
-    );
-    return options.assets?.(c.req.raw) ?? c.text("Not found", 404);
+    const page = await (options.assets?.(c.req.raw) ?? c.text("Not found", 404));
+    const headers = new Headers(page.headers);
+    headers.set("X-Frame-Options", "SAMEORIGIN");
+    headers.set("Content-Security-Policy", applicationPolicy("'self'"));
+    return new Response(page.body, { status: page.status, headers });
   });
   app.all("*", (c) => options.assets?.(c.req.raw) ?? new Response("Not found", { status: 404 }));
   return app;

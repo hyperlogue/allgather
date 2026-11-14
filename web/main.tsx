@@ -1,3 +1,4 @@
+import "./zod-config.ts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { RegisteredClient } from "../shared/client-access.ts";

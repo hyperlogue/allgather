@@ -96,3 +96,52 @@ test("cookie-bearing requests from other sites are rejected except top-level nav
     db.close();
   }
 });
+
+test("every application response carries the security headers, including pages and errors", async () => {
+  const db = openDatabase(":memory:"),
+    auth = new Auth(db, "https://owner.example");
+  const app = createApp(new Workspace(db), auth, new Updates(), {
+    assets: () =>
+      new Response("<!doctype html>", {
+        headers: { "content-type": "text/html", "cache-control": "no-cache" },
+      }),
+  });
+  const cookie = fixtureBrowserCookie(db);
+  const get = (path: string, init: RequestInit = {}) =>
+    app.fetch(new Request(auth.baseUrl + path, init));
+  try {
+    for (const [path, init, frame, ancestors] of [
+      ["/", {}, "DENY", "'none'"],
+      ["/api/session", {}, "DENY", "'none'"],
+      ["/health", {}, "DENY", "'none'"],
+      ["/api/session", { headers: { origin: "https://elsewhere.example" } }, "DENY", "'none'"],
+      ["/missing-route", { method: "POST" }, "DENY", "'none'"],
+      ["/artifact-workspace/artifact_x", { headers: { cookie } }, "SAMEORIGIN", "'self'"],
+      ["/oauth/authorize", {}, "DENY", "'none'"],
+    ] as [string, RequestInit, string, string][]) {
+      const response = await get(path, init),
+        header = (name: string) => [path, name, response.headers.get(name)];
+      expect(header("x-frame-options")).toEqual([path, "x-frame-options", frame]);
+      expect(header("content-security-policy")).toEqual([
+        path,
+        "content-security-policy",
+        expect.stringContaining(`frame-ancestors ${ancestors};`),
+      ]);
+      expect(header("x-content-type-options")).toEqual([path, "x-content-type-options", "nosniff"]);
+      expect(header("cross-origin-resource-policy")).toEqual([
+        path,
+        "cross-origin-resource-policy",
+        "same-origin",
+      ]);
+      expect(header("cross-origin-opener-policy")).toEqual([
+        path,
+        "cross-origin-opener-policy",
+        path.startsWith("/oauth/") ? null : "same-origin",
+      ]);
+    }
+    expect((await get("/")).headers.get("cache-control")).toBe("no-cache");
+    expect((await get("/api/session")).headers.get("cache-control")).toBe("no-store");
+  } finally {
+    db.close();
+  }
+});

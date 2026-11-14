@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { fixtureBrowserCookie, fixtureRegisterPasskey } from "../scripts/fixture-passkey.ts";
 import { createApp, Updates } from "../server/app.ts";
 import { Auth } from "../server/auth.ts";
+import { browserIdleMs } from "../server/browser-auth.ts";
 import { openDatabase } from "../server/storage.ts";
 import { Workspace } from "../server/workspace.ts";
 
@@ -141,6 +142,41 @@ test("every application response carries the security headers, including pages a
     }
     expect((await get("/")).headers.get("cache-control")).toBe("no-cache");
     expect((await get("/api/session")).headers.get("cache-control")).toBe("no-store");
+  } finally {
+    db.close();
+  }
+});
+
+test("session renewal reaches the browser on pages and API responses alike", async () => {
+  const db = openDatabase(":memory:"),
+    auth = new Auth(db, "https://owner.example");
+  const app = createApp(new Workspace(db), auth, new Updates(), {
+    assets: () => new Response("<!doctype html>", { headers: { "content-type": "text/html" } }),
+  });
+  const cookie = fixtureBrowserCookie(db);
+  const age = () =>
+    db.query("UPDATE sessions SET last_used_at=?").run(new Date(Date.now() - 120000).toISOString());
+  const renewal = async (path: string) =>
+    (
+      await app.fetch(new Request(auth.baseUrl + path, { headers: { cookie } }))
+    ).headers.getSetCookie();
+  try {
+    for (const path of ["/", "/artifact-workspace/artifact_x", "/api/session"]) {
+      age();
+      expect([path, await renewal(path)]).toEqual([
+        path,
+        [`${cookie}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${browserIdleMs / 1000}; Secure`],
+      ]);
+      expect([path, await renewal(path)]).toEqual([path, []]);
+    }
+    age();
+    const signOut = await app.fetch(
+      new Request(`${auth.baseUrl}/api/logout`, {
+        method: "POST",
+        headers: { cookie, origin: auth.baseUrl },
+      }),
+    );
+    expect(signOut.headers.getSetCookie()).toEqual([expect.stringContaining("Max-Age=0")]);
   } finally {
     db.close();
   }

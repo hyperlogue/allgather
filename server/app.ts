@@ -57,13 +57,23 @@ export function createApp(
   const surface = options.surface ?? "private";
   const originUrl = surface === "public" ? auth.mcpBaseUrl : auth.baseUrl;
   const rates = new RateLimits();
+  const renewals = new WeakMap<Request, string>();
   app.use("*", async (c, next) => {
     await next();
     const defaults = securityHeaders(c.req.path);
     const missing = Object.entries(defaults).filter(([name]) => !c.res.headers.has(name));
-    if (!missing.length) return;
+    const renewed = renewals.get(c.req.raw);
+    const renewal =
+      renewed &&
+      !c.res.headers
+        .getSetCookie()
+        .some((cookie) => cookie.startsWith(renewed.slice(0, renewed.indexOf("=") + 1)))
+        ? renewed
+        : null;
+    if (!missing.length && !renewal) return;
     const headers = new Headers(c.res.headers);
     for (const [name, value] of missing) headers.set(name, value);
+    if (renewal) headers.append("Set-Cookie", renewal);
     c.res = new Response(c.res.body, {
       status: c.res.status,
       statusText: c.res.statusText,
@@ -101,7 +111,7 @@ export function createApp(
       !c.req.path.startsWith("/api/passkeys")
     ) {
       const renewed = auth.browser.renew(c.req.raw);
-      if (renewed) c.header("Set-Cookie", renewed);
+      if (renewed) renewals.set(c.req.raw, renewed);
     }
     await next();
   });

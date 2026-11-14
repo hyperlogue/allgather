@@ -7,7 +7,8 @@ import { startServer } from "../server/index.ts";
 import { redIcon } from "./fixtures/project-icons.ts";
 
 const cli = resolve("cli/index.ts");
-test("artifact CLI publishes, filters, targets, reanchors, delivers and streams through the server", async () => {
+
+async function harness() {
   const root = mkdtempSync(join(tmpdir(), "allgather-artifact-cli-"));
   const running = await startServer({
     dataDir: join(root, "state"),
@@ -63,7 +64,33 @@ test("artifact CLI publishes, filters, targets, reanchors, delivers and streams 
     expect(result.code).toBe(0);
     return result.json();
   };
-  try {
+  return {
+    root,
+    capture,
+    png,
+    running,
+    invoke,
+    ok,
+    close: async () => {
+      await running.stop();
+      rmSync(root, { recursive: true, force: true });
+    },
+  };
+}
+
+const withHarness =
+  (run: (h: Awaited<ReturnType<typeof harness>>) => Promise<void>) => async () => {
+    const h = await harness();
+    try {
+      await run(h);
+    } finally {
+      await h.close();
+    }
+  };
+
+test(
+  "artifact CLI creates idempotently, filters, reads sources, downloads and rejects conflicts",
+  withHarness(async ({ root, capture, running, invoke, ok }) => {
     const created = await ok(
       "create",
       "--kind",
@@ -122,6 +149,52 @@ test("artifact CLI publishes, filters, targets, reanchors, delivers and streams 
     await ok("download", id, "--path", "binary.bin", "--output", saved);
     expect((await invoke(["download", id, "--path", "note.txt", "--output", saved])).code).toBe(1);
     expect(readFileSync(saved)).toEqual(download.out);
+    const empty = await ok("create", "--kind", "files");
+    expect(await ok("versions", empty.id)).toEqual([]);
+    const rejected = await invoke([
+      "create",
+      "--kind",
+      "files",
+      "--root",
+      capture,
+      "--typo",
+      "value",
+    ]);
+    expect(rejected.code).toBe(1);
+    expect(rejected.err).toContain("Unsupported --typo");
+    const conflict = await invoke([
+      "publish",
+      id,
+      "--root",
+      capture,
+      "--expected-seq",
+      "0",
+      "--key",
+      "preserved",
+    ]);
+    expect(conflict.code).toBe(1);
+    expect(conflict.err).toContain('"key":"preserved","expected_seq":0');
+  }),
+  20000,
+);
+
+test(
+  "artifact CLI threads, attaches, delivers, watches, reanchors, archives and deletes",
+  withHarness(async ({ root, capture, png, running, invoke, ok }) => {
+    const created = await ok(
+      "create",
+      "--kind",
+      "files",
+      "--root",
+      capture,
+      "--key",
+      "create-review",
+      "--meta",
+      "topic=review",
+      "--meta",
+      "session=reviewer",
+    );
+    const id = created.id;
     const thread = await ok(
       "thread-add",
       id,
@@ -274,31 +347,13 @@ test("artifact CLI publishes, filters, targets, reanchors, delivers and streams 
     await ok("restore", id);
     await ok("thread-delete", thread.id);
     expect((await ok("show", id)).threads).toEqual([]);
-    const empty = await ok("create", "--kind", "files");
-    expect(await ok("versions", empty.id)).toEqual([]);
-    const rejected = await invoke([
-      "create",
-      "--kind",
-      "files",
-      "--root",
-      capture,
-      "--typo",
-      "value",
-    ]);
-    expect(rejected.code).toBe(1);
-    expect(rejected.err).toContain("Unsupported --typo");
-    const conflict = await invoke([
-      "publish",
-      id,
-      "--root",
-      capture,
-      "--expected-seq",
-      "0",
-      "--key",
-      "preserved",
-    ]);
-    expect(conflict.code).toBe(1);
-    expect(conflict.err).toContain('"key":"preserved","expected_seq":0');
+  }),
+  20000,
+);
+
+test(
+  "artifact CLI covers diff, HTML and media targets, agent sessions, stdin and guides",
+  withHarness(async ({ capture, png, invoke, ok }) => {
     const patchText =
       "diff --git a/note.txt b/note.txt\n--- a/note.txt\n+++ b/note.txt\n@@ -1 +1 @@\n-old\n+new\n";
     const diff = await invoke(["create", "--kind", "diff", "--patch", "-"], patchText);
@@ -401,8 +456,6 @@ test("artifact CLI publishes, filters, targets, reanchors, delivers and streams 
     expect(stdinPublish.json().summary).toBe("Summary from stdin");
     for (const topic of ["files", "html", "diff"])
       expect((await invoke(["guide", topic])).code).toBe(0);
-  } finally {
-    await running.stop();
-    rmSync(root, { recursive: true, force: true });
-  }
-}, 20000);
+  }),
+  20000,
+);

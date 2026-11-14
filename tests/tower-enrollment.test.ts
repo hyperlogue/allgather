@@ -12,7 +12,7 @@ function fixture() {
   const w = new Workspace(db, () => new Date(now)),
     auth = new Auth(db, origin);
   const app = createApp(w, auth, new Updates());
-  const cookie = fixtureBrowserCookie(db);
+  const cookie = fixtureBrowserCookie(db, origin);
   const owner = { cookie, origin };
   const req = (path: string, body?: unknown, headers: Record<string, string> = {}) =>
     app.request(origin + path, {

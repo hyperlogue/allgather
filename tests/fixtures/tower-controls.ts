@@ -7,7 +7,7 @@ import type { Principal } from "../../shared/contracts.ts";
 import type { HarnessControls } from "../../shared/tower-acp.ts";
 export function fixtureOwner(w: Workspace): Principal {
   const auth = new Auth(w.db, "https://allgather.example");
-  const cookie = fixtureBrowserCookie(w.db);
+  const cookie = fixtureBrowserCookie(w.db, auth.baseUrl);
   const principal = auth.principal(new Request(auth.baseUrl, { headers: { cookie } }));
   if (!principal) throw new Error("Fixture authentication failed");
   return principal;
@@ -18,7 +18,7 @@ export async function fixtureAgent(
 ): Promise<Principal> {
   const auth = new Auth(w.db, origin);
   const app = createApp(w, auth, new Updates());
-  const cookie = fixtureBrowserCookie(w.db);
+  const cookie = fixtureBrowserCookie(w.db, origin);
   const token = await fixtureApiToken(origin, cookie, ["admin"], (request) => app.fetch(request));
   const principal = auth.principal(
     new Request(origin, { headers: { authorization: `Bearer ${token}` } }),

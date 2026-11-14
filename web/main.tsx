@@ -14,6 +14,7 @@ import { CommandPalette } from "./command-palette.tsx";
 import { CopyId } from "./copy-id.tsx";
 import { HistoryView, type Repo } from "./history.tsx";
 import { LibraryView } from "./library.tsx";
+import { liveEvents } from "./live-events.ts";
 import { Login } from "./login.tsx";
 import { MachineConnections } from "./machine-connections.tsx";
 import { McpPairing } from "./mcp-pairing.tsx";
@@ -400,16 +401,18 @@ function WorkspaceApp({ mcp }: { mcp: string }) {
       live = false;
     };
   }, [scope, refresh]);
-  useEffect(() => {
-    const events = new EventSource("/api/events");
-    events.addEventListener("ready", () => {
-      setConnected(true);
-      changed();
-    });
-    events.addEventListener("change", changed);
-    events.onerror = () => setConnected(false);
-    return () => events.close();
-  }, [changed]);
+  useEffect(
+    () =>
+      liveEvents({
+        ready: () => {
+          setConnected(true);
+          changed();
+        },
+        change: changed,
+        error: () => setConnected(false),
+      }),
+    [changed],
+  );
   return (
     <div className={`workspace-shell ${collapsed ? "sidebar-collapsed" : ""}`}>
       <Sidebar

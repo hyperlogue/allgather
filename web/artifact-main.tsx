@@ -9,6 +9,7 @@ import { artifactApi } from "./artifact/artifact-api.ts";
 import { ArtifactPage } from "./artifact/artifact-page.tsx";
 import { ArtifactPreview } from "./artifact/components/ArtifactPreview.tsx";
 import { WorkspaceHeader } from "./artifact/components/WorkspaceHeader.tsx";
+import { liveEvents } from "./live-events.ts";
 import { useDarkTheme } from "./theme.ts";
 
 const data = { ...artifactApi, themeStyle: api.themeStyle };
@@ -26,7 +27,7 @@ function Workspace() {
   useEffect(() => {
     let active = true,
       timer: ReturnType<typeof setTimeout> | undefined,
-      events: EventSource | undefined;
+      stopEvents: (() => void) | undefined;
     const refresh = () => {
       void queryClient.invalidateQueries({ queryKey: ["artifact-watchers", id] });
       clearTimeout(timer);
@@ -54,15 +55,13 @@ function Workspace() {
         const detail = await artifactApi.detail(id);
         if (!active) return;
         setDetail(detail);
-        events = new EventSource("/api/events");
-        events.addEventListener("change", refresh);
-        events.addEventListener("ready", refresh);
+        stopEvents = liveEvents({ change: refresh, ready: refresh });
       })
       .catch((e) => active && setError(e.message));
     return () => {
       active = false;
       clearTimeout(timer);
-      events?.close();
+      stopEvents?.();
     };
   }, [id, queryClient]);
   if (auth)
